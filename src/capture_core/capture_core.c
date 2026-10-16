@@ -39,6 +39,7 @@
  * frames in between, which are then never read and leave no record (2026-10-15: 1,352 video packets in one second). */
 #define XFERS CC_XFERS_PER_ENDPOINT
 #define NXF (XFERS*2)
+#define SCHED_MAXDOUBT 8   /* unread-slot model: open doubts (and held gaps) per endpoint; a ninth resolves the window early */
 
 #define REC_MAGIC 0x31504143u
 enum { REC_DATA=0, REC_HOSTLOSS=1, REC_XFERERR=2, REC_SESSION=3, REC_TICK=4 };
@@ -93,7 +94,11 @@ struct cc_session {
      * transfer = npk x 125 us. A window's minimum lateness that steps up and stays up means slots were skipped. */
     struct { int anchored; uint64_t origin_ns; int64_t corr_ns, wmin_ns; int wn, high_windows;
              int64_t lib_qend, data_end; int64_t tf; int uncertain;
-             int doubt, defer; int64_t defer_min, defer_end; uint32_t defer_seq; } sch[2];
+             int doubt; uint32_t doubt_seq; int64_t doubt_end;   /* a failed submit whose carrier completed with an error */
+             int defer, nd, npg;                                  /* completions left in the window; open doubts; held gaps */
+             struct { uint32_t seq; int64_t end, min; } dq[SCHED_MAXDOUBT];   /* each: carrier, minimum lateness from it on */
+             struct { uint32_t seq; int64_t end; uint32_t frames; } pg[SCHED_MAXDOUBT];   /* gaps predicted against an open doubt */
+             } sch[2];
     double abs_to_ns;
     _Atomic uint64_t unsched_events, unsched_pkts[2], unsched_late;
     int sched_off; char sched_note[160];   /* the unread-slot model is off when the endpoints are not bInterval 1 */
@@ -381,7 +386,8 @@ static void* delivery_main(void *arg){
             }
             if(s->cb.on_loss_ex) s->cb.on_loss_ex(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len,
                                                   rh.pkt_index==CC_PI_UNSCHEDULED?CC_LOSS_UNSCHEDULED:rh.pkt_index==CC_PI_UNSCHEDULED_LATE?CC_LOSS_UNSCHEDULED_LATE:CC_LOSS_RING,rh.submit_seq);
-            else if(s->cb.on_loss) s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
+            else if(s->cb.on_loss && rh.pkt_index!=CC_PI_UNSCHEDULED_LATE)   /* a late record has no position: on_loss would flag where it lands */
+                s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
             break;
         case REC_XFERERR:
             if(s->cb.on_error) s->cb.on_error(s->cb.ctx,rh.endpoint,rh.submit_seq,
@@ -506,45 +512,84 @@ static int sched_submit_(cc_session *s, xinfo *xi, int initial_index){
     } else { q->uncertain++; xi->gap_frames=0; xi->uncertain=0; }
     return rc;
 }
-/* Move the model's queue on this endpoint `shift` frames later: libusb's queue end, and every transfer in flight
- * queued after `after` (by queue position, not seq: a retried transfer keeps the seq of its failed attempt). */
-static void sched_shift_(cc_session *s, const xinfo *xi, int64_t after, int64_t shift){
-    __typeof__(s->sch[0]) *q=&s->sch[ep_i(xi->ep)];
-    for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].ep==xi->ep && &s->xs[i]!=xi && s->xs[i].end_frame>after)
-        s->xs[i].end_frame+=shift;
-    q->lib_qend+=shift; q->data_end+=shift;
+/* Settle the open doubts of one endpoint (event thread). Doubt i's minimum covers completions from its carrier on,
+ * so the minimums only grow down the list; doubt i is credited with the step from the one before it (a phantom
+ * transfer adds a whole transfer to every later completion). When no completion between two carriers came on time,
+ * the step lands on the earlier carrier: the total is exact, its split between them is not.
+ * The model then catches up, walking the queue in order with a running offset: each phantom adds to it, and a gap
+ * predicted against the unshifted queue was too large by it (a drained queue restarts at the bus frame either way),
+ * so the gap shrinks by the offset and the offset by the gap. Gaps of transfers already delivered were held back,
+ * and are written now as late records; transfers still in flight move by the offset at their place. */
+static void sched_resolve_(cc_session *s, int e, xinfo *xi, int64_t *r, const char *why){
+    __typeof__(s->sch[0]) *q=&s->sch[e]; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO;
+    int64_t half=q->tf*SCHED_FRAME_NS/2, prev=0, shift[SCHED_MAXDOUBT];
+    for(int i=0;i<q->nd;i++){
+        int64_t m=q->dq[i].min>prev?q->dq[i].min:prev, p=m-prev;
+        shift[i]=p>half?(p+SCHED_FRAME_NS/2)/SCHED_FRAME_NS:0;
+        prev+=shift[i]*SCHED_FRAME_NS;
+        if(shift[i]){
+            sched_count_(s,e,(uint64_t)shift[i]); atomic_fetch_add(&s->unsched_late,1);
+            sched_place_(s,ep,q->dq[i].seq,(uint64_t)shift[i],(uint16_t)CC_PI_UNSCHEDULED_LATE);
+        }
+    }
+    if(why && prev){ char line[160]; snprintf(line,sizeof line,"capture_core: unread-slot doubt settled %s, from fewer completions than usual",why);
+                     if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line); }
+    /* the walk: doubts (+offset), held gaps, and this endpoint's transfers (in flight, and xi itself), by end frame */
+    struct { int64_t end; int kind, idx; } it[2*SCHED_MAXDOUBT+NXF+1]; int n=0;
+    for(int i=0;i<q->nd;i++) it[n++]=(__typeof__(it[0])){q->dq[i].end,0,i};
+    for(int i=0;i<q->npg;i++) it[n++]=(__typeof__(it[0])){q->pg[i].end,1,i};
+    for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].ep==ep && !s->xs[i].pending) it[n++]=(__typeof__(it[0])){s->xs[i].end_frame,2,i};
+    for(int a=1;a<n;a++){ __typeof__(it[0]) v=it[a]; int b=a; while(b>0 && (it[b-1].end>v.end || (it[b-1].end==v.end && it[b-1].kind>v.kind))){ it[b]=it[b-1]; b--; } it[b]=v; }
+    int64_t o=0;
+    for(int a=0;a<n;a++){
+        if(it[a].kind==0){ o+=shift[it[a].idx]; continue; }
+        uint32_t g=it[a].kind==1?q->pg[it[a].idx].frames:s->xs[it[a].idx].gap_frames;
+        if(g){
+            int64_t real=(int64_t)g>o?(int64_t)g-o:0; o=o>(int64_t)g?o-(int64_t)g:0;
+            if(real<(int64_t)g){ atomic_fetch_sub(&s->unsched_pkts[e],((uint64_t)g-(uint64_t)real)*SCHED_PKTS_PER_FRAME); if(!real) atomic_fetch_sub(&s->unsched_events,1); }
+            if(it[a].kind==1){ if(real){ atomic_fetch_add(&s->unsched_late,1); sched_place_(s,ep,q->pg[it[a].idx].seq,(uint64_t)real,(uint16_t)CC_PI_UNSCHEDULED_LATE); } }
+            else s->xs[it[a].idx].gap_frames=(uint32_t)real;
+        }
+        if(it[a].kind==2){
+            xinfo *x=&s->xs[it[a].idx]; x->end_frame+=o;
+            if(x==xi && r) *r-=o*SCHED_FRAME_NS;
+        }
+    }
+    q->lib_qend+=o; q->data_end+=o;
+    q->nd=0; q->npg=0; q->defer=0; q->wn=0; q->high_windows=0;
 }
 /* before the transfer's data, on the event thread */
 static void sched_complete_(cc_session *s, xinfo *xi, int normal){
     if(s->sched_off) return;
     int e=ep_i(xi->ep); __typeof__(s->sch[0]) *q=&s->sch[e];
     uint64_t now=sched_now_ns_(s);
-    if(!normal){ if(xi->uncertain){ q->doubt=1; xi->uncertain=0; } return; }   /* no timing here: the next normal completion settles it */
-    if(!q->anchored){ q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0; }
-    int64_t r=(int64_t)(now-q->origin_ns)-xi->end_frame*SCHED_FRAME_NS;
-    int64_t half=q->tf*SCHED_FRAME_NS/2;
-    if(xi->uncertain || q->doubt){                    /* a failed submit before this one: the next completions settle it */
-        /* Late by a transfer or more means a phantom transfer before this one (libusb advanced its queue end) or a
-         * held event thread, and one completion cannot tell them apart: a phantom keeps every later completion late,
-         * a hold catches up. So the minimum lateness over this and the next SCHED_DEFER completions decides. The data
-         * the gap precedes has gone by then, so a phantom is written as a late record naming this transfer. */
-        xi->uncertain=0; q->doubt=0;
-        q->defer=SCHED_DEFER; q->defer_min=r-q->corr_ns; q->defer_seq=xi->seq; q->defer_end=xi->end_frame;
-    } else if(q->defer){
-        int64_t late=r-q->corr_ns; if(late<q->defer_min) q->defer_min=late;
-        if(--q->defer==0){
-            if(q->defer_min>half){                    /* it stayed late: a phantom transfer */
-                int64_t shift=(q->defer_min+SCHED_FRAME_NS/2)/SCHED_FRAME_NS;
-                sched_count_(s,e,(uint64_t)shift); atomic_fetch_add(&s->unsched_late,1);
-                sched_place_(s,xi->ep,q->defer_seq,(uint64_t)shift,(uint16_t)CC_PI_UNSCHEDULED_LATE);
-                sched_shift_(s,xi,q->defer_end,shift); xi->end_frame+=shift; r-=shift*SCHED_FRAME_NS;
-            }
-            q->wn=0; q->high_windows=0;
-        }
+    if(!normal){                                      /* no timing here: the next normal completion opens its doubt */
+        if(xi->uncertain && !q->doubt){ q->doubt=1; q->doubt_seq=xi->seq; q->doubt_end=xi->end_frame; }
+        xi->uncertain=0; return;
     }
-    if(xi->gap_frames){ sched_place_(s,xi->ep,xi->seq,xi->gap_frames,(uint16_t)CC_PI_UNSCHEDULED); xi->gap_frames=0; }
+    if(!q->anchored){ q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0; }
+    int64_t r=(int64_t)(now-q->origin_ns)-xi->end_frame*SCHED_FRAME_NS, late=r-q->corr_ns;
+    /* A failed submit before this transfer: libusb may have advanced its queue end (a phantom transfer: unread slots)
+     * or not, and a held event thread looks the same in one completion. A phantom keeps every later completion late,
+     * a hold catches up, so the minimum lateness over the next SCHED_DEFER completions decides; by then the data has
+     * gone by, and a phantom is written as a late record naming the transfer it precedes. */
+    for(int k=0;k<2;k++){
+        int open=k==0?q->doubt:xi->uncertain; if(!open) continue;
+        if(q->nd==SCHED_MAXDOUBT) sched_resolve_(s,e,NULL,NULL,"early (too many open doubts)");
+        q->dq[q->nd].seq=k==0?q->doubt_seq:xi->seq; q->dq[q->nd].end=k==0?q->doubt_end:xi->end_frame; q->dq[q->nd].min=late; q->nd++;
+        q->defer=SCHED_DEFER;
+        if(k==0) q->doubt=0; else xi->uncertain=0;
+    }
+    for(int i=0;i<q->nd;i++) if(late<q->dq[i].min) q->dq[i].min=late;
+    if(xi->gap_frames){
+        if(q->nd && q->npg<SCHED_MAXDOUBT){           /* predicted against a queue an open doubt may have moved */
+            q->pg[q->npg].seq=xi->seq; q->pg[q->npg].end=xi->end_frame; q->pg[q->npg].frames=xi->gap_frames; q->npg++;
+        } else sched_place_(s,xi->ep,xi->seq,xi->gap_frames,(uint16_t)CC_PI_UNSCHEDULED);
+        xi->gap_frames=0;
+    }
+    if(q->nd && --q->defer==0) sched_resolve_(s,e,xi,&r,NULL);
     if(r<q->corr_ns) q->corr_ns=r;                    /* latency floor: any decrease at once */
-    if(q->defer) return;                              /* the deferred decision owns this stretch, not the backstop */
+    if(q->nd) return;                                 /* the open doubts own this stretch, not the backstop */
     if(!q->wn || r<q->wmin_ns) q->wmin_ns=r;
     if(++q->wn<16) return;
     q->wn=0;
@@ -728,6 +773,8 @@ stopping:
     }
     cc_test_input_done();
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
+    /* doubts still open (a failed submit within a window of the end): settled from what was seen, never dropped */
+    if(!s->sched_off) for(int e=0;e<2;e++) if(s->sch[e].nd) sched_resolve_(s,e,NULL,NULL,"at stop");
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);

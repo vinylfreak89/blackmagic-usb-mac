@@ -58,14 +58,31 @@ static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int 
 
 void replay_shim_gaps(int ep_index, long long *frames, long *events, long *first_transfer);
 /* placement check: an unread-slot report must be followed, on its endpoint, by packet 0 of the transfer it names */
-static struct { int n, misplaced, late; int pending[2]; uint32_t seq[2]; } lt;
+static struct { int n, misplaced, late; int pending[2]; uint32_t seq[2];
+                int nfail, nlate, nv; uint32_t fail[16], lateseq[64], vorder[1024]; } lt;
+/* Transfers are delivered in the order they were submitted, so the carrier of a failed submit (the first transfer
+ * submitted after it, which may be its own retry) is the one delivered right after the transfer submitted just
+ * before it (seq failed-1). That is where a late record must point, found without the model. */
+static void lt_reset(void){ memset(&lt,0,sizeof lt); }
+static int lt_late_located(void){
+    for(int i=0;i<lt.nlate;i++){
+        int ok=0;
+        for(int f=0;f<lt.nfail;f++) for(int j=0;j+1<lt.nv;j++) if(lt.vorder[j]==lt.fail[f]-1 && lt.vorder[j+1]==lt.lateseq[i]) ok=1;
+        if(!ok) return 0;
+    }
+    return 1;
+}
+static void lt_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
+    (void)ctx; (void)st; if(ep==CC_EP_VIDEO && kind==CC_ERROR_SUBMIT && lt.nfail<16) lt.fail[lt.nfail++]=seq;
+}
 static void lt_packet(void *ctx, const cc_packet *p){
     t_packet(ctx,p); int e=p->endpoint==CC_EP_AUDIO;
+    if(!e && p->pkt_index==0 && lt.nv<1024) lt.vorder[lt.nv++]=p->submit_seq;
     if(lt.pending[e]){ if(p->submit_seq!=lt.seq[e] || p->pkt_index!=0) lt.misplaced++; lt.pending[e]=0; }
 }
 static void lt_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
     (void)ctx; (void)pk; (void)by;
-    if(kind==CC_LOSS_UNSCHEDULED_LATE){ lt.late++; return; }   /* located by seq, not position */
+    if(kind==CC_LOSS_UNSCHEDULED_LATE){ lt.late++; if(ep==CC_EP_VIDEO && lt.nlate<64) lt.lateseq[lt.nlate++]=seq; return; }   /* located by seq, not position */
     if(kind!=CC_LOSS_UNSCHEDULED) return;
     int e=ep==CC_EP_AUDIO; if(lt.pending[e]) lt.misplaced++;
     lt.pending[e]=1; lt.seq[e]=seq; lt.n++;
@@ -73,7 +90,7 @@ static void lt_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind
 static int run_device_lt(cc_stats *st, tally *t){
     memset(t,0,sizeof *t);
     cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16;
-    cc_callbacks cb={0}; cb.on_packet=lt_packet; cb.on_end=t_end; cb.ctx=t; cb.on_loss_ex=lt_loss_ex;
+    cc_callbacks cb={0}; cb.on_packet=lt_packet; cb.on_end=t_end; cb.ctx=t; cb.on_loss_ex=lt_loss_ex; cb.on_error=lt_error;
     cc_session *s=NULL; int rc=cc_open(&s,&cfg,&cb); if(rc!=CC_OK) return rc;
     rc=cc_start(s); if(rc!=CC_OK){ cc_get_stats(s,st); cc_close(s); return rc; }
     wait_device_end(t,20);
@@ -201,7 +218,7 @@ int main(int argc, char **argv){
             char ms[16], at[16]; snprintf(ms,sizeof ms,"%d",sc[i].ms); snprintf(at,sizeof at,"%d",sc[i].at);
             if(sc[i].ms){ setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT",at,1); }
             else { unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); }
-            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            lt_reset();
             CHECK(run_device_lt(&st,&t)==CC_OK,"stall %d@%d: open",sc[i].ms,sc[i].at);
             for(int e=0;e<2;e++){
                 long long tf; long tev, tfirst; replay_shim_gaps(e,&tf,&tev,&tfirst);
@@ -223,7 +240,7 @@ int main(int argc, char **argv){
         for(unsigned i=0;i<sizeof lc/sizeof lc[0];i++){
             char lat[16], ms[16]; snprintf(lat,sizeof lat,"%d",lc[i].lat_us); snprintf(ms,sizeof ms,"%d",lc[i].ms);
             setenv("REPLAY_LAT_US",lat,1); setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT","100",1);
-            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            lt_reset();
             CHECK(run_device_lt(&st,&t)==CC_OK,"latency %d us stall %d: open",lc[i].lat_us,lc[i].ms);
             long long slack=((lc[i].lat_us+999)/1000+1)*8;
             for(int e=0;e<2;e++){
@@ -241,7 +258,7 @@ int main(int argc, char **argv){
         // 7c: a failed submit: no loss if libusb did not advance its queue end; one phantom transfer if it did
         for(int adv=0;adv<2;adv++){
             setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
-            lt.n=0; lt.late=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            lt_reset();
             CHECK(run_device_lt(&st,&t)==CC_OK,"failed submit (advances %d): open",adv);
             long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
             long long got=(long long)st.unscheduled_packets[0], want=tf*8;
@@ -261,25 +278,49 @@ int main(int argc, char **argv){
             setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
             setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT",at,1);
             { char ph[8]; snprintf(ph,sizeof ph,"%d",hc[i].aphase); setenv("REPLAY_APHASE_MS",ph,1); }
-            lt.n=0; lt.late=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            lt_reset();
             CHECK(run_device_lt(&st,&t)==CC_OK,"failed submit + hold %d@%d (advances %d): open",hc[i].ms,hc[i].at,adv);
             long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
             long long placed=(long long)st.unscheduled_packets[0], shifted=(long long)st.schedule_shift_frames*8, want=tf*8;
             CHECK(placed>=want-8 && placed<=want+8 && !shifted,"failed submit + hold %d@%d (advances %d): reported %lld + %lld shifted, truth %lld",
                   hc[i].ms,hc[i].at,adv,placed,shifted,want);
-            CHECK(lt.n==0 && lt.late==adv,"failed submit + hold %d@%d (advances %d): %d records at the data, %d late (want %d)",hc[i].ms,hc[i].at,adv,lt.n,lt.late,adv);
+            CHECK(lt.n==0 && lt.late==adv && lt_late_located(),"failed submit + hold %d@%d (advances %d): %d records at the data, %d late (want %d), located %d",hc[i].ms,hc[i].at,adv,lt.n,lt.late,adv,lt_late_located());
             CHECK(lt.misplaced==0,"failed submit + hold %d@%d (advances %d): %d misplaced",hc[i].ms,hc[i].at,adv,lt.misplaced);
             printf("  failed submit + hold %3d ms @%d, audio phase %2d ms, libusb %s: truth %lld; reported %lld (late records %d), shifts %lld; misplaced %d\n",
                    hc[i].ms,hc[i].at,hc[i].aphase,adv?"advances":"does not advance",want,placed,lt.late,shifted,lt.misplaced);
         }
         unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_APHASE_MS");
+        // 7f (review, fifth round): two failed submits in one window keep their own locations; a phantom followed by a
+        // drain is not counted twice; a doubt still open at the end is settled, not dropped
+        struct { int f1, a1, f2, a2, hold_ms, hold_at; const char *what; } fc[]={
+            {100,1,110,0,0,0,"first advances, second does not"},{100,0,110,1,0,0,"first does not, second advances"},
+            {100,1,110,1,0,0,"both advance"},{100,1,0,0,600,110,"advancing, then a hold that drains the queue"},
+            {240,1,0,0,0,0,"advancing, 10 transfers before the end"}};
+        for(size_t i=0;i<sizeof fc/sizeof fc[0];i++){
+            char b1[16],b2[16],hm[16],ha[16];
+            snprintf(b1,sizeof b1,"%d",fc[i].f1); setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT",b1,1); if(fc[i].a1) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
+            if(fc[i].f2){ snprintf(b2,sizeof b2,"%d",fc[i].f2); setenv("REPLAY_FAIL2_AT",b2,1); } else unsetenv("REPLAY_FAIL2_AT");
+            if(fc[i].a2) setenv("REPLAY_FAIL2_ADVANCES","1",1); else unsetenv("REPLAY_FAIL2_ADVANCES");
+            if(fc[i].hold_ms){ snprintf(hm,sizeof hm,"%d",fc[i].hold_ms); snprintf(ha,sizeof ha,"%d",fc[i].hold_at); setenv("REPLAY_STALL_MS",hm,1); setenv("REPLAY_STALL_VIDEO_AT",ha,1); }
+            else { unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); }
+            lt_reset();
+            CHECK(run_device_lt(&st,&t)==CC_OK,"two failures (%s): open",fc[i].what);
+            long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+            long long got=(long long)st.unscheduled_packets[0], want=tf*8; int phantoms=fc[i].a1+fc[i].a2;
+            CHECK(got>=want-8 && got<=want+8 && !st.schedule_shifts,"failure case (%s): reported %lld, truth %lld, shifts %llu",fc[i].what,got,want,(unsigned long long)st.schedule_shifts);
+            CHECK(lt.late>=phantoms && lt_late_located(),"failure case (%s): %d late records (want %d), all at a carrier: %d",fc[i].what,lt.late,phantoms,lt_late_located());
+            CHECK(lt.misplaced==0,"failure case (%s): %d misplaced",fc[i].what,lt.misplaced);
+            printf("  %s: truth %lld; reported %lld (%d late records, at their carriers: %s; %d at the data); misplaced %d\n",
+                   fc[i].what,want,got,lt.late,lt_late_located()?"yes":"NO",lt.n,lt.misplaced);
+        }
+        unsetenv("REPLAY_FAIL2_AT"); unsetenv("REPLAY_FAIL2_ADVANCES"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
         unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES");
         // 7e: the model's packets-per-frame comes from bInterval 1: read from the device, it stays on at 1 and turns
         // off (nothing reported) at any other interval, here with a stall that leaves unread slots
         for(int iv=1;iv<=4;iv+=3){
             char b[4]; snprintf(b,sizeof b,"%d",iv); setenv("REPLAY_BINTERVAL",b,1);
             setenv("REPLAY_STALL_MS","800",1); setenv("REPLAY_STALL_VIDEO_AT","100",1);
-            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            lt_reset();
             CHECK(run_device_lt(&st,&t)==CC_OK,"bInterval %d: open",iv);
             long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
             if(iv==1) CHECK((long long)st.unscheduled_packets[0]==tf*8 && tf>0,"bInterval 1: reported %llu, truth %lld",(unsigned long long)st.unscheduled_packets[0],tf*8);
