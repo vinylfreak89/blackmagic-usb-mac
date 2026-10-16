@@ -277,6 +277,28 @@ static void run_replay(const char *path, int ring_mb, tally *t){
     run_replay_opt(path,ring_mb,t,0,0,0);
 }
 
+/* 8: offline replay (replay_block_when_full): a slow consumer slows the replay, never sheds; stop while it waits */
+typedef struct { uint64_t bytes[2], loss; _Atomic int ended; int sleep_every, sleep_us; uint64_t n; } slow_t;
+static void slow_packet(void *ctx, const cc_packet *p){
+    slow_t *t=ctx; t->bytes[p->endpoint==CC_EP_AUDIO]+=p->actual_len; test_live_note(&live);
+    ++t->n;
+    if(t->sleep_every>0 && t->n%(uint64_t)t->sleep_every==0) usleep((useconds_t)t->sleep_us);
+    else if(t->sleep_every<0 && t->n==(uint64_t)(-t->sleep_every)) usleep((useconds_t)t->sleep_us);   /* one stall */
+}
+static void slow_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){ slow_t *t=ctx; (void)ep; (void)pk; t->loss+=by; }
+static void slow_end(void *ctx, enum cc_end r){ slow_t *t=ctx; (void)r; atomic_store(&t->ended,1); }
+static double slow_run(const char *path, int block, int every, int us, slow_t *t, double stop_after_s, cc_stats *st){
+    memset(t,0,sizeof *t); t->sleep_every=every; t->sleep_us=us;
+    cc_config cfg={0}; cfg.replay_path=path; cfg.ring_mb=1; cfg.replay_block_when_full=block;
+    cc_callbacks cb={0}; cb.on_packet=slow_packet; cb.on_loss=slow_loss; cb.on_end=slow_end; cb.ctx=t;
+    cc_session *s=NULL; if(cc_open(&s,&cfg,&cb)!=CC_OK || cc_start(s)!=CC_OK){ CHECK(0,"slow replay open/start"); if(s) cc_close(s); return -1; }
+    double t0=test_clock();
+    if(stop_after_s>0){ usleep((useconds_t)(stop_after_s*1e6)); }
+    else while(!atomic_load(&t->ended) && test_clock()-t0<120) usleep(20000);
+    double ts=test_clock(); CHECK(cc_stop(s)==CC_OK,"slow replay stop"); double stop_s=test_clock()-ts;
+    cc_get_stats(s,st); cc_close(s); return stop_s;
+}
+
 int main(int argc, char **argv){
     test_supervise(argv, "CC_TEST_TOTAL_S", "capture_core_test");
     if (argc == 3 && !strcmp(argv[1], "--deadline-probe")) {
@@ -309,6 +331,27 @@ int main(int argc, char **argv){
     CHECK(t.end_reason==CC_END_REPLAY_EOF,"end reason %d",t.end_reason);
     CHECK(t.end_count==1,"on_end fired %d times",t.end_count);
     CHECK(!t.cb_on_main,"callbacks ran on the caller's thread");
+
+    // 8: offline replay waits instead of shedding
+    {
+        cc_config d={0}; d.input=CC_INPUT_SVIDEO; d.replay_block_when_full=1;
+        cc_callbacks cb={0}; cb.on_packet=slow_packet; cb.on_end=slow_end; slow_t dummy={0}; cb.ctx=&dummy; cc_session *x=NULL;
+        CHECK(cc_open(&x,&d,&cb)==CC_ERR_ARGS,"a device session accepted replay_block_when_full");
+        if(x) cc_close(x);
+        slow_t t8; cc_stats st8;
+        slow_run(slice,0,64,2000,&t8,0,&st8);
+        CHECK(t8.loss>0,"slow consumer + 1 MB ring without the flag lost nothing: the test cannot see loss");
+        slow_run(slice,1,64,2000,&t8,0,&st8);
+        CHECK(t8.loss==0 && st8.lost_bytes[0]==0 && st8.lost_bytes[1]==0,"offline replay shed %llu bytes",(unsigned long long)t8.loss);
+        CHECK(t8.bytes[0]==vB && t8.bytes[1]==aB,"offline replay delivered %llu/%llu of %llu/%llu bytes",
+              (unsigned long long)t8.bytes[0],(unsigned long long)t8.bytes[1],(unsigned long long)vB,(unsigned long long)aB);
+        CHECK(st8.replay_space_waits>0,"offline replay never waited: the consumer was not slow enough to test it");
+        /* the consumer stalls 1.5 s at packet 50; with a 1 MB ring the replay is blocked waiting when stop comes (at 0.5 s).
+         * Stop must return once the consumer resumes and drains the ring: about 1 s, never a hang. */
+        double stop_s=slow_run(slice,1,-50,1500000,&t8,0.5,&st8);
+        CHECK(stop_s>=0 && stop_s<3.0,"stop while the offline replay waits took %.2f s",stop_s);
+        printf("offline replay: 0 shed, %llu waits; stop while waiting %.2f s\n",(unsigned long long)st8.replay_space_waits,stop_s);
+    }
 
     // 2: honesty under forced overflow (1 MB ring, condition-held consumer)
     run_replay_opt(slice,1,&t,1,0,0);
