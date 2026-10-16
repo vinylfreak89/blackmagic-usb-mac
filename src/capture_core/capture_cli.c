@@ -28,6 +28,18 @@ static void end_cb(void *ctx, enum cc_end r){
     atomic_store(&g_done,1);
 }
 
+/* spill recovery on a thread, guarded by progress like the drain at close (it may move gigabytes to a network volume) */
+struct recover_job { const char *dir; cc_spill_recover_stats *st; _Atomic uint64_t progress; int rc; _Atomic int done; };
+static void *recoverer(void *a){ struct recover_job *j=a; j->rc=cc_spill_recover(j->dir,NULL,NULL,NULL,&j->progress,j->st); atomic_store(&j->done,1); return NULL; }
+static int recover_guarded(const char *dir, cc_spill_recover_stats *st, double seconds){
+    static const char phase[]="spill recovery: the destination took nothing for the lifecycle period (it resumes at the next start)";
+    struct recover_job j={dir,st,0,0,0}; uint64_t seen=0; pthread_t t;
+    tool_guard(phase,seconds);
+    if(pthread_create(&t,NULL,recoverer,&j)!=0) return cc_spill_recover(dir,NULL,NULL,NULL,NULL,st);
+    while(!atomic_load(&j.done)){ usleep(100000); uint64_t now=atomic_load(&j.progress); if(now!=seen){ seen=now; tool_guard(phase,seconds); } }
+    pthread_join(t,NULL);
+    return j.rc;
+}
 struct sink_finish_job { cc_async_sink *k; _Atomic int done; };
 static void *sink_finisher(void *a){ struct sink_finish_job *j=a; cc_async_sink_finish(j->k); atomic_store(&j->done,1); return NULL; }
 /* drain on a thread while this one re-arms the guard on progress; the sink is freed only after the drain is joined */
@@ -153,8 +165,9 @@ int main(int argc,char**argv){
                  cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     char spill_dir[64]; snprintf(spill_dir,sizeof spill_dir,CLI_SPILL_FMT,(unsigned)getuid());
     { cc_spill_recover_stats rs;                   /* a capture that crashed before: its spill goes home first */
-      if(cc_spill_recover(spill_dir,NULL,NULL,&rs)==0 && (rs.recovered||rs.kept||rs.failed))
-          fprintf(stderr,"spill recovery: %u captures recovered (%.1f MB), %u kept, %u failed\n",rs.recovered,rs.bytes/1e6,rs.kept,rs.failed); }
+      if(recover_guarded(spill_dir,&rs,lifecycle_s)==0 && (rs.recovered||rs.kept||rs.failed))
+          fprintf(stderr,"spill recovery: %u captures recovered (%.1f MB), %u kept, %u failed\n",rs.recovered,rs.bytes/1e6,rs.kept,rs.failed);
+      tool_guard("open output / cc_open / cc_start",lifecycle_s); }
     cc_async_sink_spill spill={spill_dir,0,0,0};
     if(cc_async_sink_open_spill(&g_k,sink_path,session_note,CLI_SINK_RING,1u<<20,&spill)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;

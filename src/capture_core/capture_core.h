@@ -30,7 +30,8 @@ enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB =
                  CC_ERR_NOMEM = -4, CC_ERR_STATE = -5, CC_ERR_IO = -6 };
 enum cc_loss_kind { CC_LOSS_RING = 0,         /* delivery-ring overflow: packets that crossed the bus, then shed */
                     CC_LOSS_UNSCHEDULED = 1,   /* USB slots never read (.tpc HostLoss pkt_index CC_PI_UNSCHEDULED) */
-                    CC_LOSS_UNSCHEDULED_LATE = 2 }; /* the same, found after the affected data went by (CC_PI_UNSCHEDULED_LATE) */
+                    CC_LOSS_UNSCHEDULED_LATE = 2, /* the same, found after the affected data went by (CC_PI_UNSCHEDULED_LATE) */
+                    CC_LOSS_UNCLOSED = 3 };    /* the capture ended without closing (CC_PI_UNCLOSED, replayed) */
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
@@ -168,6 +169,7 @@ typedef struct {
     uint64_t replay_space_waits;    // replay_block_when_full: times the replay waited for the consumer (never data lost)
     uint64_t unscheduled_events;    // device: gaps of never-read USB slots found (see CC_PI_UNSCHEDULED), all endpoints; one record can carry two
     uint64_t unscheduled_late;      // of those, found only after their data went by (CC_PI_UNSCHEDULED_LATE records)
+    uint64_t unclosed_marks;        // replay: CC_PI_UNCLOSED records met (the capture ended without closing there)
     uint64_t unscheduled_packets[2];// [0]=video [1]=audio: slots never read (libusb's Darwin scheduling rule, +-1 frame)
     int rt_event_thread;            // device: 1 if the USB event thread got real-time scheduling at start
     int rt_libusb_threads;          // device: libusb-internal threads promoted (expected 1: org.libusb.device-hotplug)
@@ -260,11 +262,21 @@ void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t
 // manifest naming its destination. This puts it where it belongs: for each such writer (its manifest lock is free),
 // the undelivered records are appended to the destination in order (a record cut by the crash is removed first and
 // what already arrived is skipped), followed by a CC_PI_UNCLOSED HostLoss; the appended bytes are read back, and only
-// then are the segments and manifest deleted. Anything it cannot do keeps them and is logged. Run it at start-up
-// (shuttle-capture and the OBS plugin do); log(ctx, line) gets one line per writer (NULL: stderr). 0, or -EPERM for
-// a spill directory that is not this user's private one.
+// then are the segments and manifest deleted. It appends in pieces of at most 1 MiB, each read back and recorded in
+// the manifest, so a stop or failure resumes exactly at the next run. Anything it cannot do keeps them and is
+// logged. Run it at start-up (shuttle-capture and the OBS plugin do); log(ctx, line) gets one line per writer (NULL:
+// stderr); *stop (optional) is checked between pieces; *progress (optional) counts bytes appended. 0, or -EPERM for
+// a spill directory that is not this user's private one. Known limit: this covers a process that died (the kernel
+// kept what it wrote). A system crash or power loss is not covered: the spill directories live in /private/tmp,
+// which macOS clears at restart, and the destination then simply ends where its last flushed write did, unmarked.
 typedef struct { unsigned recovered, kept, failed; uint64_t bytes; } cc_spill_recover_stats;
-int  cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), void *ctx, cc_spill_recover_stats *st);
+// The manifest's on-disk form, <spill dir>/<dest name>.p<pid>.<tag>.manifest next to its segments
+// <...>.spill<6 digits>, each whole records from offset 0: next_seg/next_off is the first byte not yet delivered.
+#define CC_SPILL_MANIFEST_MAGIC "CCSPILL1"
+struct cc_spill_manifest_s { char magic[8]; uint32_t version, pid; uint64_t next_seg, next_off; char dest[1024]; };
+int  cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), void *ctx, const _Atomic int *stop,
+                      _Atomic uint64_t *progress, cc_spill_recover_stats *st);
+extern ssize_t (*cc_spill_recover_test_write)(int fd, const void *buf, size_t n, off_t off);   /* recovery's writes */
 // Bytes the writer has finished with (written + discarded): a close that drains a backlog advances it.
 uint64_t cc_async_sink_progress(cc_async_sink *k);
 void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/loss/error/tick

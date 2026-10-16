@@ -113,6 +113,10 @@ static ssize_t failing_spill_read(int fd,void *b,size_t n,off_t off){
     if(atomic_fetch_add(&sread_calls,1)+1==atomic_load(&sread_fail_at)){ errno=EIO; return -1; }
     return pread(fd,b,n,off);
 }
+static void replay_pkt_(void *ctx, const cc_packet *p){ (void)ctx; (void)p; }
+static void replay_end_(void *ctx, enum cc_end r){ (void)r; atomic_store((_Atomic int*)ctx,1); }
+static void replay_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
+    (void)ep;(void)pk;(void)by;(void)seq; if(kind==CC_LOSS_UNCLOSED) atomic_fetch_add((_Atomic int*)ctx+1,1); }
 struct prog { cc_async_sink *k; _Atomic int stop; int advances; };
 static void *watch_progress(void *a){
     struct prog *p=a; uint64_t last=cc_async_sink_progress(p->k);
@@ -120,13 +124,64 @@ static void *watch_progress(void *a){
         uint64_t now=cc_async_sink_progress(p->k); if(now!=last){ p->advances++; last=now; } }
     return NULL;
 }
+/* hand-made leftovers of a crashed writer (test 16): records k0..k1-1 (video DATA, seq k, 100-byte payload) */
+static void put_recs(FILE *f, int k0, int k1){
+    for(int k=k0;k<k1;k++){ struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } h={0x31504143u,0,CC_EP_VIDEO,0,(uint32_t)k,0,100,100};
+        uint8_t pay[100]; memset(pay,(uint8_t)k,sizeof pay); fwrite(&h,1,24,f); fwrite(pay,1,100,f); }
+}
+static void make_leftovers(const char *sdir, const char *dest, int dest_to, int cut_bytes, uint64_t next_seg, uint64_t next_off){
+    FILE *f=fopen(dest,"wb"); assert(f); put_recs(f,0,dest_to);
+    if(cut_bytes){                                     /* a record the crash cut: the first bytes of the next one */
+        struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } h={0x31504143u,0,CC_EP_VIDEO,0,(uint32_t)dest_to,0,100,100};
+        uint8_t r[124]; memcpy(r,&h,24); memset(r+24,(uint8_t)dest_to,100); fwrite(r,1,(size_t)cut_bytes,f); }
+    fclose(f);
+    for(int s=0;s<3;s++){ char sn[600]; snprintf(sn,sizeof sn,"%s/hand.tpc.p99999.0000abcd.spill%06d",sdir,s);
+        f=fopen(sn,"wb"); assert(f); put_recs(f,10+10*s,20+10*s); fclose(f); }
+    struct cc_spill_manifest_s m; memset(&m,0,sizeof m); memcpy(m.magic,CC_SPILL_MANIFEST_MAGIC,8); m.version=1; m.pid=99999;
+    m.next_seg=next_seg; m.next_off=next_off; snprintf(m.dest,sizeof m.dest,"%s",dest);
+    char mn[600]; snprintf(mn,sizeof mn,"%s/hand.tpc.p99999.0000abcd.manifest",sdir); f=fopen(mn,"wb"); assert(f); fwrite(&m,1,sizeof m,f); fclose(f);
+}
+/* the destination must be records 0..n-1 then (if ended) the end marker, nothing else */
+static int dest_is(const char *dest, int n, int ended){
+    FILE *f=fopen(dest,"rb"); if(!f) return 0; int k=0, ok=1;
+    struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } h; uint8_t pay[100];
+    while(fread(&h,1,24,f)==24){
+        if(h.type==1 && h.pi==0xFFFA){ ok=ok&&ended&&k==n; if(fread(&h,1,1,f)==1) ok=0; break; }
+        if(h.type!=0 || h.seq!=(uint32_t)k || fread(pay,1,100,f)!=100 || pay[0]!=(uint8_t)k){ ok=0; break; }
+        k++;
+    }
+    if(!ended && k!=n) ok=0;
+    fclose(f); return ok;
+}
+static _Atomic int rw_calls, rw_fail_at, rw_zero_at; static _Atomic int rw_stop;
+static ssize_t recov_write(int fd,const void *b,size_t n,off_t off){
+    int c=atomic_fetch_add(&rw_calls,1)+1;
+    if(c==atomic_load(&rw_fail_at)){ errno=EIO; return -1; }
+    if(c==atomic_load(&rw_zero_at)){ uint8_t z[4096]={0}; size_t d=0; while(d<n){ size_t m=n-d<sizeof z?n-d:sizeof z; if(pwrite(fd,z,m,off+(off_t)d)!=(ssize_t)m) return -1; d+=m; } return (ssize_t)n; }   /* acknowledged, but zeros */
+    ssize_t w=pwrite(fd,b,n,off);
+    if(c==2) atomic_store(&rw_stop,1);                  /* a stop asked for after the second piece */
+    return w;
+}
 /* the crash child (test 15), run as its own process: spill with the destination stalled, let the writer cut a
  * record mid-write, then exit without closing */
-static int crash_child(const char *dest, const char *sdir){
+/* the fifth spill write writes half its records and fails (a disk filling up) */
+static _Atomic int hw_calls;
+static ssize_t half_failing_spill(int fd,const void *b,size_t n,off_t off){
+    if(atomic_fetch_add(&hw_calls,1)+1==5){ if(pwrite(fd,b,n/2,off)<0) return -1; errno=ENOSPC; return -1; }
+    return pwrite(fd,b,n,off);
+}
+/* the crash children exit without closing on purpose: under TSan that is a thread leak, not a finding */
+static char **crash_env(void){
+    static char *env[512]; int n=0; static char tsan[]="TSAN_OPTIONS=report_thread_leaks=0";
+    for(char **e=environ; *e && n<510; e++) if(strncmp(*e,"TSAN_OPTIONS=",13)) env[n++]=*e;
+    env[n++]=tsan; env[n]=NULL; return env;
+}
+static int crash_child(const char *dest, const char *sdir, int sfail){
     cc_async_sink_spill sp={sdir,1,1u<<20,1u<<20}; cc_async_sink *cs; cc_callbacks cc;
     for(size_t i=0;i<sizeof payload;i++) payload[i]=(uint8_t)(i*7);
     cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
-    if(cc_async_sink_open_spill(&cs,dest,"spill",8u<<20,65536,&sp)!=CC_OK) return 2;
+    if(sfail) cc_async_sink_test_spill_write=half_failing_spill;
+    if(cc_async_sink_open_spill(&cs,dest,"spill",sfail?64u<<20:8u<<20,65536,&sp)!=CC_OK) return 2;
     cc_async_sink_callbacks(cs,&cc);
     for(int i=0;!atomic_load(&in_gate);i++){ if(i>5000) return 3; struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
     feed_paced(&cc,3000);
@@ -134,7 +189,8 @@ static int crash_child(const char *dest, const char *sdir){
     _exit(0);                                          /* no close: the crash */
 }
 int main(int argc, char **argv){
-    if(argc==4 && !strcmp(argv[1],"--crash-child")) return crash_child(argv[2],argv[3]);
+    if(argc==4 && !strcmp(argv[1],"--crash-child")) return crash_child(argv[2],argv[3],0);
+    if(argc==4 && !strcmp(argv[1],"--crash-child-sfail")) return crash_child(argv[2],argv[3],1);
     for(size_t i=0;i<sizeof payload;i++) payload[i]=(uint8_t)(i*7);
     char dir[]="/tmp/async_sink_XXXXXX"; assert(mkdtemp(dir));
     char a[256],b[256],c[256]; snprintf(a,sizeof a,"%s/sync.tpc",dir); snprintf(b,sizeof b,"%s/async.tpc",dir); snprintf(c,sizeof c,"%s/stall.tpc",dir);
@@ -359,13 +415,13 @@ int main(int argc, char **argv){
      * A live writer's spill is never touched. */
     { char s15[256]; snprintf(s15,sizeof s15,"%s/crash15.tpc",dir); cc_async_sink_test_spill_any_volume=1;
       pid_t c; char *cargv[]={argv[0],(char*)"--crash-child",s15,sdir,NULL};
-      assert(posix_spawn(&c,argv[0],NULL,NULL,cargv,environ)==0);
+      assert(posix_spawn(&c,argv[0],NULL,NULL,cargv,crash_env())==0);
       int ws; assert(waitpid(c,&ws,0)==c && WIFEXITED(ws) && WEXITSTATUS(ws)==0);
       assert(spill_files(sdir)>0);                   /* something was left on the local disk */
       struct stat before; assert(stat(s15,&before)==0);
       /* a live writer alongside: its manifest is locked, so recovery leaves it */
       char s15b[256]; snprintf(s15b,sizeof s15b,"%s/live15.tpc",dir); cc_async_sink *lv; assert(cc_async_sink_open_spill(&lv,s15b,"live",1u<<20,65536,&sp)==CC_OK);
-      cc_spill_recover_stats rs; assert(cc_spill_recover(sdir,NULL,NULL,&rs)==0);
+      cc_spill_recover_stats rs; assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0);
       assert(rs.recovered==1 && !rs.failed && !rs.kept);
 #if !defined(__has_feature) || !__has_feature(thread_sanitizer)
       assert(rs.bytes>0);                              /* timing under TSan can leave nothing spilled to recover */
@@ -381,6 +437,56 @@ int main(int argc, char **argv){
       printf("  crash without close: %.1f MB in the destination before (%lld B), %.1f MB recovered after it, %ld B of stream now, marked ended\n",
              before.st_size/1e6,(long long)before.st_size,rs.bytes/1e6,lastpos);
       fclose(g); fclose(rf); unlink(s15); cc_async_sink_test_spill_any_volume=0; cc_async_sink_test_write=NULL; atomic_store(&gate_open,1); }
+    /* 16. recovery that stops or fails part-way resumes exactly (review, eighth round): leftovers built by hand
+     * (destination 0-9 plus a cut record; segments 10-19, 20-29, 30-39). Each piece is read back and recorded in the
+     * manifest, and a failed one is cut off the destination again, so nothing is duplicated, reordered or left damaged. */
+    { char hd[300]; snprintf(hd,sizeof hd,"%s/hand.tpc",dir); cc_spill_recover_stats rs;
+      /* (a) the third piece fails, then a clean rerun */
+      make_leftovers(sdir,hd,10,60,0,0); cc_spill_recover_test_write=recov_write; atomic_store(&rw_calls,0); atomic_store(&rw_fail_at,3); atomic_store(&rw_zero_at,0);
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.failed==1 && !rs.recovered);
+      assert(dest_is(hd,30,0));                          /* the verified pieces stay, the cut record and failed piece are gone */
+      cc_spill_recover_test_write=NULL;
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_is(hd,40,1) && spill_files(sdir)==0);
+      /* (b) a write acknowledged but read back as zeros (a network volume): cut back, then exact */
+      unlink(hd); make_leftovers(sdir,hd,10,0,0,0); cc_spill_recover_test_write=recov_write; atomic_store(&rw_calls,0); atomic_store(&rw_fail_at,0); atomic_store(&rw_zero_at,2);
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.failed==1 && dest_is(hd,20,0));
+      cc_spill_recover_test_write=NULL; atomic_store(&rw_zero_at,0);
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_is(hd,40,1) && spill_files(sdir)==0);
+      /* (c) a stop after the second piece (OBS quitting), then a rerun */
+      unlink(hd); make_leftovers(sdir,hd,10,0,0,0); cc_spill_recover_test_write=recov_write; atomic_store(&rw_calls,0); atomic_store(&rw_stop,0);
+      assert(cc_spill_recover(sdir,NULL,NULL,&rw_stop,NULL,&rs)==0 && !rs.recovered && rs.kept==1 && dest_is(hd,30,0));
+      cc_spill_recover_test_write=NULL;
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_is(hd,40,1) && spill_files(sdir)==0);
+      /* (d) the first undelivered chunk already in the destination (a crash between its write and the manifest), and a
+       * run after an earlier one wrote its end marker: neither duplicates */
+      unlink(hd); make_leftovers(sdir,hd,15,0,0,0);
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_is(hd,40,1));
+      unlink(hd); printf("  recovery resumes exactly after a failed piece, a piece read back as zeros, and a stop; overlap skipped\n"); }
+    /* 17. a spill write that failed part-way, records the writer then delivered from memory, then a crash: the failed
+     * write's bytes must not come back from the segment (review, eighth round: they did, after newer data). The
+     * recovered file is a prefix of the full stream plus the end marker; replayed, the marker comes through. */
+    { char s17[256]; snprintf(s17,sizeof s17,"%s/crash17.tpc",dir);
+      pid_t c; char *cargv[]={argv[0],(char*)"--crash-child-sfail",s17,sdir,NULL};
+      assert(posix_spawn(&c,argv[0],NULL,NULL,cargv,crash_env())==0);
+      int ws; assert(waitpid(c,&ws,0)==c && WIFEXITED(ws) && WEXITSTATUS(ws)==0);
+      cc_spill_recover_stats rs; assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && spill_files(sdir)==0);
+      FILE *g=fopen(s17,"rb"), *rf=fopen(r7,"rb"); assert(g && rf);
+      struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } hh; long lastpos=-1; uint16_t lastpi=0; uint8_t lasttype=9;
+      while(fread(&hh,1,24,g)==24){ assert(hh.magic==0x31504143u); lastpos=ftell(g)-24; lasttype=hh.type; lastpi=hh.pi; if(hh.type==0||hh.type==3) fseek(g,hh.al,SEEK_CUR); }
+      assert(lasttype==1 && lastpi==0xFFFA);
+      fseek(g,0,SEEK_SET); for(long i=0;i<lastpos;i++) assert(fgetc(g)==fgetc(rf));
+      fclose(g); fclose(rf);
+      uint64_t dt[2],lo[2]; parse(s17,dt,lo);              /* also: DATA strictly in order per endpoint */
+      /* replay: the end mark reaches the callbacks and the stats */
+      cc_config rc={0}; rc.replay_path=s17; struct { _Atomic int ended, unclosed; } rx={0,0};
+      cc_callbacks rcb={0}; rcb.ctx=&rx;
+      rcb.on_packet=replay_pkt_; rcb.on_end=replay_end_; rcb.on_loss_ex=replay_loss_ex_;
+      cc_session *rs2; assert(cc_open(&rs2,&rc,&rcb)==CC_OK && cc_start(rs2)==CC_OK);
+      for(int i=0;!atomic_load(&rx.ended);i++){ assert(i<20000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+      cc_stats cst; cc_stop(rs2); cc_get_stats(rs2,&cst); cc_close(rs2);
+      assert(atomic_load(&rx.unclosed)==1 && cst.unclosed_marks==1);
+      printf("  failed spill write, then a crash: recovered file is a prefix of the stream (%ld B), in order; replay sees the end mark\n",lastpos);
+      unlink(s17); }
     unlink(r7); unlink(s7); unlink(s8); unlink(s9); rmdir(sdir);
     unlink(a); unlink(b); unlink(c); unlink(d); rmdir(dir);
     puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept, unreadable spill chunk confessed exactly and the capture goes on, a crashed writer's spill recovered into its destination");

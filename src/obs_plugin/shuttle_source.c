@@ -1160,11 +1160,11 @@ static struct obs_source_info shuttle_info = {
 
 /* A capture that ended without closing (an OBS crash) left its undelivered raw .tpc spill in scratch: it is put
  * into its .tpc on a background thread at load, never on the UI thread (cc_spill_recover). */
-static pthread_t spill_recover_thr; static int spill_recover_started;
+static pthread_t spill_recover_thr; static int spill_recover_started; static _Atomic int spill_recover_stop;
 static void spill_recover_log(void *ctx, const char *line){ (void)ctx; blog(strstr(line, "recovered") ? LOG_WARNING : LOG_ERROR, "[shuttle-source] %s", line); }
 static void *spill_recover_main(void *arg){
     (void)arg; char dir[64]; snprintf(dir, sizeof dir, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
-    cc_spill_recover_stats rs; int rc = cc_spill_recover(dir, spill_recover_log, NULL, &rs);
+    cc_spill_recover_stats rs; int rc = cc_spill_recover(dir, spill_recover_log, NULL, &spill_recover_stop, NULL, &rs);
     if (rc != 0) blog(LOG_ERROR, "[shuttle-source] spill recovery: %s is not a private directory of this user; nothing recovered", dir);
     return NULL;
 }
@@ -1176,4 +1176,4 @@ bool obs_module_load(void){
     blog(LOG_INFO, "[shuttle-source] loaded (libobs API %u.%u.%u)", LIBOBS_API_MAJOR_VER, LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
     return true;
 }
-void obs_module_unload(void){ tracking_meter_shutdown(); if (spill_recover_started) pthread_join(spill_recover_thr, NULL); }
+void obs_module_unload(void){ tracking_meter_shutdown(); if (spill_recover_started){ atomic_store(&spill_recover_stop, 1); pthread_join(spill_recover_thr, NULL); } }   /* a paused recovery resumes at the next load */
