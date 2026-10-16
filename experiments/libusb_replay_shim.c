@@ -34,6 +34,7 @@
 //                                the capture core cannot observe)
 //   REPLAY_FAIL_ADVANCES=1       a REPLAY_FAIL_SUBMIT_VIDEO_AT failure still advances the queue end by one transfer
 //   REPLAY_FAIL2_AT=N, REPLAY_FAIL2_ADVANCES=1  a second single failure, at the Nth video submit, advancing or not
+//   REPLAY_FAIL_EVERY=N:A:B      every Nth video submit from A to B fails, never advancing (intermittent failures)
 //                                (libusb sets frames[] after a failing IOKit call); default: it returns before
 //   REPLAY_STALL_VIDEO_AT=N, REPLAY_STALL_MS=M  the event thread is held off for M ms at the Nth video completion
 //   REPLAY_APHASE_MS=P  the audio endpoint's first transfer starts P frames after video's would (endpoint phase)
@@ -80,7 +81,7 @@ static epstate EP83, EP84;
 static FILE *g_in;
 static long g_data_seen=0, g_max_data=-1;
 static long g_v_completed=0, g_drop_video=-1;
-static long g_v_submits=0, g_fail_submit_at=-1, g_fail_submit_from=-1, g_fail2_at=-1; static int g_fail2_advances=0;
+static long g_v_submits=0, g_fail_submit_at=-1, g_fail_submit_from=-1, g_fail2_at=-1, g_fail_every=0, g_fail_every_from=0, g_fail_every_to=0; static int g_fail2_advances=0;
 static int g_fail_submit_code=LIBUSB_ERROR_BUSY;
 static long g_alt_calls=0, g_fail_alt_at=-1, g_control_calls=0, g_fail_control_at=-1,
             g_short_control_at=-1, g_alloc_calls=0, g_fail_alloc_at=-1;
@@ -154,6 +155,7 @@ int libusb_init(libusb_context **ctx){
     if(getenv("REPLAY_DROP_VIDEO_XFER")) g_drop_video=atol(getenv("REPLAY_DROP_VIDEO_XFER"));
     if(getenv("REPLAY_FAIL_SUBMIT_VIDEO_AT")) g_fail_submit_at=atol(getenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"));
     if(getenv("REPLAY_FAIL2_AT")) g_fail2_at=atol(getenv("REPLAY_FAIL2_AT")); g_fail2_advances=getenv("REPLAY_FAIL2_ADVANCES")!=NULL;
+    g_fail_every=0; if(getenv("REPLAY_FAIL_EVERY") && sscanf(getenv("REPLAY_FAIL_EVERY"),"%ld:%ld:%ld",&g_fail_every,&g_fail_every_from,&g_fail_every_to)!=3) g_fail_every=0;
     if(getenv("REPLAY_FAIL_SUBMIT_VIDEO_FROM")) g_fail_submit_from=atol(getenv("REPLAY_FAIL_SUBMIT_VIDEO_FROM"));
     if(getenv("REPLAY_FAIL_SUBMIT_CODE")) g_fail_submit_code=atoi(getenv("REPLAY_FAIL_SUBMIT_CODE")); else g_fail_submit_code=LIBUSB_ERROR_BUSY;
     if(getenv("REPLAY_FAIL_ALT_AT")) g_fail_alt_at=atol(getenv("REPLAY_FAIL_ALT_AT"));
@@ -219,6 +221,8 @@ int libusb_submit_transfer(struct libusb_transfer *x){
     epstate *s=eps(x->endpoint);
     if(x->endpoint==0x83){
         g_v_submits++;
+        if(g_fail_every>0 && g_v_submits>=g_fail_every_from && g_v_submits<=g_fail_every_to && (g_v_submits-g_fail_every_from)%g_fail_every==0)
+            return g_fail_submit_code;
         int f1=g_fail_submit_at>0 && g_v_submits==g_fail_submit_at, f2=g_fail2_at>0 && g_v_submits==g_fail2_at;
         if(f1 || f2){
             int adv=f1?g_fail_advances:g_fail2_advances;

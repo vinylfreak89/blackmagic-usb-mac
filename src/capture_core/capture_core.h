@@ -229,7 +229,8 @@ typedef struct {
     uint64_t spill_floor_refusals;           // times a new segment was refused because it would break the free-space floor
     uint64_t spill_max_write_ns;             // longest local spill write
     // Spilled chunks the local disk would not give back: each is replaced in the file by HostLoss records
-    // (pkt_index 0xFFFB) carrying exactly the packets and bytes it held, and the capture goes on.
+    // (pkt_index 0xFFFB) carrying exactly the packets and bytes it held, and the capture goes on. Loss records inside
+    // it fold into those counts (an unread-slot record's kind and seq are not kept); its other records count as dropped.
     uint64_t spill_read_errors, spill_read_lost_packets[2], spill_read_lost_bytes[2];
 } cc_async_sink_stats;
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,

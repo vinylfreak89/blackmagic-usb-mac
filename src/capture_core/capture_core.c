@@ -39,7 +39,7 @@
  * frames in between, which are then never read and leave no record (2026-10-15: 1,352 video packets in one second). */
 #define XFERS CC_XFERS_PER_ENDPOINT
 #define NXF (XFERS*2)
-#define SCHED_MAXDOUBT 8   /* unread-slot model: open doubts (and held gaps) per endpoint; a ninth resolves the window early */
+#define SCHED_MAXDOUBT 8   /* unread-slot model: open doubts (and held gaps) per endpoint; a ninth merges the two oldest */
 
 #define REC_MAGIC 0x31504143u
 enum { REC_DATA=0, REC_HOSTLOSS=1, REC_XFERERR=2, REC_SESSION=3, REC_TICK=4 };
@@ -94,9 +94,10 @@ struct cc_session {
      * transfer = npk x 125 us. A window's minimum lateness that steps up and stays up means slots were skipped. */
     struct { int anchored; uint64_t origin_ns; int64_t corr_ns, wmin_ns; int wn, high_windows;
              int64_t lib_qend, data_end; int64_t tf; int uncertain;
-             int doubt; uint32_t doubt_seq; int64_t doubt_end;   /* a failed submit whose carrier completed with an error */
-             int defer, nd, npg;                                  /* completions left in the window; open doubts; held gaps */
-             struct { uint32_t seq; int64_t end, min; } dq[SCHED_MAXDOUBT];   /* each: carrier, minimum lateness from it on */
+             int nd, npg;                                         /* open doubts; held gaps */
+             struct { uint32_t seq; int64_t end, min, fmin; int left, frozen; } dq[SCHED_MAXDOUBT];
+             /* each doubt: its carrier; minimum lateness from it on; the same up to the first gap held after it (a
+              * drain realigns the schedule, so later completions no longer show the phantom); completions left */
              struct { uint32_t seq; int64_t end; uint32_t frames; } pg[SCHED_MAXDOUBT];   /* gaps predicted against an open doubt */
              } sch[2];
     double abs_to_ns;
@@ -512,43 +513,54 @@ static int sched_submit_(cc_session *s, xinfo *xi, int initial_index){
     } else { q->uncertain++; xi->gap_frames=0; xi->uncertain=0; }
     return rc;
 }
-/* Settle the open doubts of one endpoint (event thread). Doubt i's minimum covers completions from its carrier on,
- * so the minimums only grow down the list; doubt i is credited with the step from the one before it (a phantom
- * transfer adds a whole transfer to every later completion). When no completion between two carriers came on time,
- * the step lands on the earlier carrier: the total is exact, its split between them is not.
- * The model then catches up, walking the queue in order with a running offset: each phantom adds to it, and a gap
+/* Settle the oldest open doubt of one endpoint (event thread), once it has seen SCHED_DEFER normal completions. A
+ * phantom transfer adds a whole transfer to every later completion, a hold catches up: its minimum lateness, less
+ * what earlier settled doubts already took out of the model, is its phantom (later doubts' minimums only grow, so the
+ * total stays exact; when no completion between two carriers came on time, the step lands on the earlier one).
+ * The model then catches up, walking the queue in order with a running offset: the phantom adds to it, a gap
  * predicted against the unshifted queue was too large by it (a drained queue restarts at the bus frame either way),
- * so the gap shrinks by the offset and the offset by the gap. Gaps of transfers already delivered were held back,
- * and are written now as late records; transfers still in flight move by the offset at their place. */
-static void sched_resolve_(cc_session *s, int e, xinfo *xi, int64_t *r, const char *why){
+ * so the gap shrinks by the offset and the offset by the gap; transfers in flight move by the offset at their place.
+ * Held gaps before the next open doubt's carrier are final and written as late records; later ones stay held.
+ * A drain after the carrier hides the phantom from the full minimum (the gap swallows it): then the minimum frozen
+ * at that gap, when it is whole transfers and the gap is at least as large, is the phantom, named at its carrier. */
+static void sched_settle_(cc_session *s, int e, xinfo *xi, int64_t *r, const char *why){
     __typeof__(s->sch[0]) *q=&s->sch[e]; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO;
-    int64_t half=q->tf*SCHED_FRAME_NS/2, prev=0, shift[SCHED_MAXDOUBT];
-    for(int i=0;i<q->nd;i++){
-        int64_t m=q->dq[i].min>prev?q->dq[i].min:prev, p=m-prev;
-        shift[i]=p>half?(p+SCHED_FRAME_NS/2)/SCHED_FRAME_NS:0;
-        prev+=shift[i]*SCHED_FRAME_NS;
-        if(shift[i]){
-            sched_count_(s,e,(uint64_t)shift[i]); atomic_fetch_add(&s->unsched_late,1);
-            sched_place_(s,ep,q->dq[i].seq,(uint64_t)shift[i],(uint16_t)CC_PI_UNSCHEDULED_LATE);
-        }
+    int64_t half=q->tf*SCHED_FRAME_NS/2, tfn=q->tf*SCHED_FRAME_NS, c=q->dq[0].min;
+    int64_t sh=c>half && c<INT64_MAX/2?(c+SCHED_FRAME_NS/2)/SCHED_FRAME_NS:0;   /* no normal completion after it: no evidence */
+    uint32_t seq=q->dq[0].seq; int64_t dend=q->dq[0].end, fm=q->dq[0].fmin, next=q->nd>1?q->dq[1].end:INT64_MAX;
+    int64_t reloc=0;                                  /* frames of a drained-over phantom to name at the carrier */
+    if(!sh && q->dq[0].frozen && fm>half && fm<INT64_MAX/2){
+        int64_t k=(fm+tfn/2)/tfn, res=fm-k*tfn;
+        if(k>=1 && res<=2*SCHED_FRAME_NS && res>=-2*SCHED_FRAME_NS) reloc=k*q->tf;
     }
-    if(why && prev){ char line[160]; snprintf(line,sizeof line,"capture_core: unread-slot doubt settled %s, from fewer completions than usual",why);
-                     if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line); }
-    /* the walk: doubts (+offset), held gaps, and this endpoint's transfers (in flight, and xi itself), by end frame */
-    struct { int64_t end; int kind, idx; } it[2*SCHED_MAXDOUBT+NXF+1]; int n=0;
-    for(int i=0;i<q->nd;i++) it[n++]=(__typeof__(it[0])){q->dq[i].end,0,i};
+    for(int i=1;i<q->nd;i++){ q->dq[i].min-=sh*SCHED_FRAME_NS; if(q->dq[i].fmin<INT64_MAX/2) q->dq[i].fmin-=sh*SCHED_FRAME_NS; }
+    if(sh){ sched_count_(s,e,(uint64_t)sh); atomic_fetch_add(&s->unsched_late,1); sched_place_(s,ep,seq,(uint64_t)sh,(uint16_t)CC_PI_UNSCHEDULED_LATE); }
+    if(why && sh){ char line[160]; snprintf(line,sizeof line,"capture_core: unread-slot doubt settled %s, from fewer completions than usual",why);
+                   if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line); }
+    /* the walk: this doubt (+offset), held gaps, and this endpoint's transfers (in flight, and xi itself), by end */
+    struct { int64_t end; int kind, idx; } it[SCHED_MAXDOUBT+NXF+1]; int n=0;
+    it[n++]=(__typeof__(it[0])){dend,0,0};
     for(int i=0;i<q->npg;i++) it[n++]=(__typeof__(it[0])){q->pg[i].end,1,i};
     for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].ep==ep && !s->xs[i].pending) it[n++]=(__typeof__(it[0])){s->xs[i].end_frame,2,i};
     for(int a=1;a<n;a++){ __typeof__(it[0]) v=it[a]; int b=a; while(b>0 && (it[b-1].end>v.end || (it[b-1].end==v.end && it[b-1].kind>v.kind))){ it[b]=it[b-1]; b--; } it[b]=v; }
-    int64_t o=0;
+    int64_t o=0; int keep[SCHED_MAXDOUBT]={0};
     for(int a=0;a<n;a++){
-        if(it[a].kind==0){ o+=shift[it[a].idx]; continue; }
-        uint32_t g=it[a].kind==1?q->pg[it[a].idx].frames:s->xs[it[a].idx].gap_frames;
+        if(it[a].kind==0){ o+=sh; continue; }
+        int pgi=it[a].kind==1?it[a].idx:-1;
+        uint32_t g=pgi>=0?q->pg[pgi].frames:s->xs[it[a].idx].gap_frames;
         if(g){
             int64_t real=(int64_t)g>o?(int64_t)g-o:0; o=o>(int64_t)g?o-(int64_t)g:0;
             if(real<(int64_t)g){ atomic_fetch_sub(&s->unsched_pkts[e],((uint64_t)g-(uint64_t)real)*SCHED_PKTS_PER_FRAME); if(!real) atomic_fetch_sub(&s->unsched_events,1); }
-            if(it[a].kind==1){ if(real){ atomic_fetch_add(&s->unsched_late,1); sched_place_(s,ep,q->pg[it[a].idx].seq,(uint64_t)real,(uint16_t)CC_PI_UNSCHEDULED_LATE); } }
-            else s->xs[it[a].idx].gap_frames=(uint32_t)real;
+            if(reloc && it[a].end>dend && real>=reloc){   /* the first gap after the carrier swallowed its phantom */
+                real-=reloc; atomic_fetch_add(&s->unsched_late,1);
+                sched_place_(s,ep,seq,(uint64_t)reloc,(uint16_t)CC_PI_UNSCHEDULED_LATE);
+                if(real) atomic_fetch_add(&s->unsched_events,1);   /* one gap became two records */
+                reloc=0;
+            } else if(it[a].end>dend) reloc=0;            /* only the first gap after it */
+            if(pgi>=0){
+                if(q->pg[pgi].end<next){ if(real){ atomic_fetch_add(&s->unsched_late,1); sched_place_(s,ep,q->pg[pgi].seq,(uint64_t)real,(uint16_t)CC_PI_UNSCHEDULED_LATE); } }
+                else { q->pg[pgi].frames=(uint32_t)real; keep[pgi]=1; }   /* after a later open doubt: still held */
+            } else s->xs[it[a].idx].gap_frames=(uint32_t)real;
         }
         if(it[a].kind==2){
             xinfo *x=&s->xs[it[a].idx]; x->end_frame+=o;
@@ -556,38 +568,51 @@ static void sched_resolve_(cc_session *s, int e, xinfo *xi, int64_t *r, const ch
         }
     }
     q->lib_qend+=o; q->data_end+=o;
-    q->nd=0; q->npg=0; q->defer=0; q->wn=0; q->high_windows=0;
+    int w=0; for(int i=0;i<q->npg;i++) if(keep[i]) q->pg[w++]=q->pg[i]; q->npg=w;
+    for(int i=1;i<q->nd;i++) q->dq[i-1]=q->dq[i]; q->nd--;
+    if(!q->nd){ q->wn=0; q->high_windows=0; }
+}
+static void sched_open_doubt_(cc_session *s, int e, uint32_t seq, int64_t end, int64_t late){
+    __typeof__(s->sch[0]) *q=&s->sch[e]; (void)s;
+    if(q->nd==SCHED_MAXDOUBT){                        /* full: the two oldest become one (older carrier; total kept) */
+        q->dq[1].seq=q->dq[0].seq; q->dq[1].end=q->dq[0].end;
+        if(q->dq[0].fmin<q->dq[1].fmin) q->dq[1].fmin=q->dq[0].fmin;
+        q->dq[1].frozen|=q->dq[0].frozen;
+        for(int i=1;i<q->nd;i++) q->dq[i-1]=q->dq[i]; q->nd--;
+    }
+    q->dq[q->nd].seq=seq; q->dq[q->nd].end=end; q->dq[q->nd].min=late; q->dq[q->nd].fmin=late;
+    q->dq[q->nd].left=SCHED_DEFER; q->dq[q->nd].frozen=0; q->nd++;
 }
 /* before the transfer's data, on the event thread */
 static void sched_complete_(cc_session *s, xinfo *xi, int normal){
     if(s->sched_off) return;
     int e=ep_i(xi->ep); __typeof__(s->sch[0]) *q=&s->sch[e];
     uint64_t now=sched_now_ns_(s);
-    if(!normal){                                      /* no timing here: the next normal completion opens its doubt */
-        if(xi->uncertain && !q->doubt){ q->doubt=1; q->doubt_seq=xi->seq; q->doubt_end=xi->end_frame; }
+    if(!normal){                                      /* no timing here: its doubt opens without a sample */
+        if(xi->uncertain) sched_open_doubt_(s,e,xi->seq,xi->end_frame,INT64_MAX);
         xi->uncertain=0; return;
     }
     if(!q->anchored){ q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0; }
     int64_t r=(int64_t)(now-q->origin_ns)-xi->end_frame*SCHED_FRAME_NS, late=r-q->corr_ns;
     /* A failed submit before this transfer: libusb may have advanced its queue end (a phantom transfer: unread slots)
      * or not, and a held event thread looks the same in one completion. A phantom keeps every later completion late,
-     * a hold catches up, so the minimum lateness over the next SCHED_DEFER completions decides; by then the data has
-     * gone by, and a phantom is written as a late record naming the transfer it precedes. */
-    for(int k=0;k<2;k++){
-        int open=k==0?q->doubt:xi->uncertain; if(!open) continue;
-        if(q->nd==SCHED_MAXDOUBT) sched_resolve_(s,e,NULL,NULL,"early (too many open doubts)");
-        q->dq[q->nd].seq=k==0?q->doubt_seq:xi->seq; q->dq[q->nd].end=k==0?q->doubt_end:xi->end_frame; q->dq[q->nd].min=late; q->nd++;
-        q->defer=SCHED_DEFER;
-        if(k==0) q->doubt=0; else xi->uncertain=0;
+     * a hold catches up, so each doubt's minimum lateness over its next SCHED_DEFER completions decides; by then the
+     * data has gone by, and a phantom is written as a late record naming the transfer it precedes. */
+    if(xi->uncertain){ sched_open_doubt_(s,e,xi->seq,xi->end_frame,late); xi->uncertain=0; }
+    /* a gap here realigned the schedule: this completion no longer shows an earlier phantom, so it freezes first */
+    if(xi->gap_frames && q->nd && q->npg<SCHED_MAXDOUBT) for(int i=0;i<q->nd;i++) q->dq[i].frozen=1;
+    for(int i=0;i<q->nd;i++){
+        if(late<q->dq[i].min) q->dq[i].min=late;
+        if(!q->dq[i].frozen && late<q->dq[i].fmin) q->dq[i].fmin=late;
+        q->dq[i].left--;
     }
-    for(int i=0;i<q->nd;i++) if(late<q->dq[i].min) q->dq[i].min=late;
     if(xi->gap_frames){
         if(q->nd && q->npg<SCHED_MAXDOUBT){           /* predicted against a queue an open doubt may have moved */
             q->pg[q->npg].seq=xi->seq; q->pg[q->npg].end=xi->end_frame; q->pg[q->npg].frames=xi->gap_frames; q->npg++;
         } else sched_place_(s,xi->ep,xi->seq,xi->gap_frames,(uint16_t)CC_PI_UNSCHEDULED);
         xi->gap_frames=0;
     }
-    if(q->nd && --q->defer==0) sched_resolve_(s,e,xi,&r,NULL);
+    while(q->nd && q->dq[0].left<=0) sched_settle_(s,e,xi,&r,NULL);
     if(r<q->corr_ns) q->corr_ns=r;                    /* latency floor: any decrease at once */
     if(q->nd) return;                                 /* the open doubts own this stretch, not the backstop */
     if(!q->wn || r<q->wmin_ns) q->wmin_ns=r;
@@ -774,7 +799,7 @@ stopping:
     cc_test_input_done();
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
     /* doubts still open (a failed submit within a window of the end): settled from what was seen, never dropped */
-    if(!s->sched_off) for(int e=0;e<2;e++) if(s->sch[e].nd) sched_resolve_(s,e,NULL,NULL,"at stop");
+    if(!s->sched_off) for(int e=0;e<2;e++) while(s->sch[e].nd) sched_settle_(s,e,NULL,NULL,"at stop");
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
@@ -1748,7 +1773,8 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
     atomic_store(&k->a_wake_at,SIZE_MAX);
     size_t page=(size_t)getpagesize(), g=ring_bytes/64<(1u<<20)?ring_bytes/64:(1u<<20);
     k->granule=ring_bytes%page?0:g-g%page;                /* a ring that is not whole pages publishes exactly and keeps its memory */
-    k->bcap=chunk+((size_t)128<<10); k->bbuf=malloc(k->bcap);   /* a chunk, or one record larger than it */
+    size_t nl=note?strlen(note):0;
+    k->bcap=chunk+((size_t)128<<10)+nl; k->bbuf=malloc(k->bcap);   /* a chunk, or one record larger than it (the session note too) */
     k->ring=k->bbuf?mmap(NULL,ring_bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0):MAP_FAILED;
     if(k->ring==MAP_FAILED){ free(k->bbuf); free(k); return CC_ERR_NOMEM; }
     k->fd=open(path,O_WRONLY|O_CREAT|O_EXCL,0644);
@@ -1768,6 +1794,7 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
             k->sdir=strdup(sp->dir); k->sbase=strdup(b?b+1:path); k->stag=arc4random();
             k->sfloor=sp->floor?sp->floor:32000000000ull;   /* 32 GB (owner's staging floor, decimal) */
             k->sseg=sp->segment?sp->segment:(size_t)128<<20;
+            if(k->sseg<k->bcap) k->sseg=k->bcap;   /* a segment holds at least one take */
             size_t def=ring_bytes/16; if(def<((size_t)8<<20)) def=(size_t)8<<20; if(def>((size_t)256<<20)) def=(size_t)256<<20;
             k->safter=sp->after?sp->after:def;
             k->sdq=mmap(NULL,AS_SD_CAP*sizeof *k->sdq,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);   /* touched as used */

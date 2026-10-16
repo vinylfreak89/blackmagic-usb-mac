@@ -59,7 +59,7 @@ static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int 
 void replay_shim_gaps(int ep_index, long long *frames, long *events, long *first_transfer);
 /* placement check: an unread-slot report must be followed, on its endpoint, by packet 0 of the transfer it names */
 static struct { int n, misplaced, late; int pending[2]; uint32_t seq[2];
-                int nfail, nlate, nv; uint32_t fail[16], lateseq[64], vorder[1024]; } lt;
+                int nfail, nlate, nv; uint32_t fail[64], lateseq[64], latepk[64], vorder[1024]; } lt;
 /* Transfers are delivered in the order they were submitted, so the carrier of a failed submit (the first transfer
  * submitted after it, which may be its own retry) is the one delivered right after the transfer submitted just
  * before it (seq failed-1). That is where a late record must point, found without the model. */
@@ -73,7 +73,7 @@ static int lt_late_located(void){
     return 1;
 }
 static void lt_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
-    (void)ctx; (void)st; if(ep==CC_EP_VIDEO && kind==CC_ERROR_SUBMIT && lt.nfail<16) lt.fail[lt.nfail++]=seq;
+    (void)ctx; (void)st; if(ep==CC_EP_VIDEO && kind==CC_ERROR_SUBMIT && lt.nfail<64) lt.fail[lt.nfail++]=seq;
 }
 static void lt_packet(void *ctx, const cc_packet *p){
     t_packet(ctx,p); int e=p->endpoint==CC_EP_AUDIO;
@@ -81,8 +81,8 @@ static void lt_packet(void *ctx, const cc_packet *p){
     if(lt.pending[e]){ if(p->submit_seq!=lt.seq[e] || p->pkt_index!=0) lt.misplaced++; lt.pending[e]=0; }
 }
 static void lt_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
-    (void)ctx; (void)pk; (void)by;
-    if(kind==CC_LOSS_UNSCHEDULED_LATE){ lt.late++; if(ep==CC_EP_VIDEO && lt.nlate<64) lt.lateseq[lt.nlate++]=seq; return; }   /* located by seq, not position */
+    (void)ctx; (void)by;
+    if(kind==CC_LOSS_UNSCHEDULED_LATE){ lt.late++; if(ep==CC_EP_VIDEO && lt.nlate<64){ lt.latepk[lt.nlate]=pk; lt.lateseq[lt.nlate++]=seq; } return; }   /* located by seq, not position */
     if(kind!=CC_LOSS_UNSCHEDULED) return;
     int e=ep==CC_EP_AUDIO; if(lt.pending[e]) lt.misplaced++;
     lt.pending[e]=1; lt.seq[e]=seq; lt.n++;
@@ -314,6 +314,35 @@ int main(int argc, char **argv){
                    fc[i].what,want,got,lt.late,lt_late_located()?"yes":"NO",lt.n,lt.misplaced);
         }
         unsetenv("REPLAY_FAIL2_AT"); unsetenv("REPLAY_FAIL2_ADVANCES"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
+        // 7g (review, sixth round): intermittent failures (every 5th submit from 100 to 200, none advancing) with a
+        // lossless 200 ms hold: nothing was skipped, so nothing may be reported (an early settlement once wrote 760)
+        unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES");
+        for(int at=105;at<=165;at+=10){
+            char h[16]; snprintf(h,sizeof h,"%d",at); setenv("REPLAY_FAIL_EVERY","5:100:200",1); setenv("REPLAY_STALL_MS","200",1); setenv("REPLAY_STALL_VIDEO_AT",h,1);
+            lt_reset(); CHECK(run_device_lt(&st,&t)==CC_OK,"intermittent failures + hold @%d: open",at);
+            long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+            CHECK(tf==0 && st.unscheduled_packets[0]==0 && !lt.late,"intermittent failures + hold 200 @%d: reported %llu (late %d), truth %lld",at,(unsigned long long)st.unscheduled_packets[0],lt.late,tf*8);
+            if(at==125||at==155) printf("  intermittent failures (%d) + hold 200 ms @%d: truth 0, reported %llu\n",lt.nfail,at,(unsigned long long)st.unscheduled_packets[0]);
+        }
+        unsetenv("REPLAY_FAIL_EVERY");
+        // a phantom with a drain inside its window: the phantom is named at its carrier, the drain at its own transfer
+        { setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); setenv("REPLAY_FAIL_ADVANCES","1",1); setenv("REPLAY_STALL_MS","600",1); setenv("REPLAY_STALL_VIDEO_AT","102",1);
+          lt_reset(); CHECK(run_device_lt(&st,&t)==CC_OK,"phantom + early drain: open");
+          long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+          int at_carrier=0; for(int i=0;i<lt.nlate;i++) if(lt.latepk[i]==128){ uint32_t s1=lt.lateseq[i]; lt.nlate=1; lt.lateseq[0]=s1; at_carrier=lt_late_located(); }
+          CHECK((long long)st.unscheduled_packets[0]==tf*8 && at_carrier,"phantom + early drain: reported %llu, truth %lld, 128 at the carrier: %d",(unsigned long long)st.unscheduled_packets[0],tf*8,at_carrier);
+          printf("  phantom + a drain inside its window: truth %lld, reported %llu, its 128 named at the carrier: %s\n",tf*8,(unsigned long long)st.unscheduled_packets[0],at_carrier?"yes":"NO");
+          unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); }
+        // and with no phantom, a drain right at the carrier must keep its exact count (a held carrier can read as one)
+        for(int adv=0;adv<2;adv++) for(int at=99;at<=101;at++){
+            char h[16]; snprintf(h,sizeof h,"%d",at); setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
+            setenv("REPLAY_STALL_MS","600",1); setenv("REPLAY_STALL_VIDEO_AT",h,1);
+            lt_reset(); CHECK(run_device_lt(&st,&t)==CC_OK,"drain at the carrier: open");
+            long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+            CHECK((long long)st.unscheduled_packets[0]==tf*8,"failed submit (advances %d) + hold 600 @%d: reported %llu, truth %lld",adv,at,(unsigned long long)st.unscheduled_packets[0],tf*8);
+            printf("  failed submit (advances %d) + draining hold 600 ms @%d: truth %lld, reported %llu\n",adv,at,tf*8,(unsigned long long)st.unscheduled_packets[0]);
+        }
+        unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
         unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES");
         // 7e: the model's packets-per-frame comes from bInterval 1: read from the device, it stays on at 1 and turns
         // off (nothing reported) at any other interval, here with a stall that leaves unread slots
