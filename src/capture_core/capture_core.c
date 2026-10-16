@@ -543,7 +543,7 @@ static void sched_settle_(cc_session *s, int e, xinfo *xi, int64_t *r, const cha
     for(int i=0;i<q->npg;i++) it[n++]=(__typeof__(it[0])){q->pg[i].end,1,i};
     for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].ep==ep && !s->xs[i].pending) it[n++]=(__typeof__(it[0])){s->xs[i].end_frame,2,i};
     for(int a=1;a<n;a++){ __typeof__(it[0]) v=it[a]; int b=a; while(b>0 && (it[b-1].end>v.end || (it[b-1].end==v.end && it[b-1].kind>v.kind))){ it[b]=it[b-1]; b--; } it[b]=v; }
-    int64_t o=0; int keep[SCHED_MAXDOUBT]={0};
+    int64_t o=0, reloc_done=0, reloc_gap=0; int keep[SCHED_MAXDOUBT]={0};
     for(int a=0;a<n;a++){
         if(it[a].kind==0){ o+=sh; continue; }
         int pgi=it[a].kind==1?it[a].idx:-1;
@@ -554,6 +554,7 @@ static void sched_settle_(cc_session *s, int e, xinfo *xi, int64_t *r, const cha
             if(reloc && it[a].end>dend && real>=reloc){   /* the first gap after the carrier swallowed its phantom */
                 real-=reloc; atomic_fetch_add(&s->unsched_late,1);
                 sched_place_(s,ep,seq,(uint64_t)reloc,(uint16_t)CC_PI_UNSCHEDULED_LATE);
+                reloc_done=reloc; reloc_gap=it[a].end;
                 if(real) atomic_fetch_add(&s->unsched_events,1);   /* one gap became two records */
                 reloc=0;
             } else if(it[a].end>dend) reloc=0;            /* only the first gap after it */
@@ -568,6 +569,8 @@ static void sched_settle_(cc_session *s, int e, xinfo *xi, int64_t *r, const cha
         }
     }
     q->lib_qend+=o; q->data_end+=o;
+    /* a later doubt opened before that drain saw the same phantom in its frozen minimum: it has been named now */
+    if(reloc_done) for(int i=1;i<q->nd;i++) if(q->dq[i].end<reloc_gap && q->dq[i].fmin<INT64_MAX/2) q->dq[i].fmin-=reloc_done*SCHED_FRAME_NS;
     int w=0; for(int i=0;i<q->npg;i++) if(keep[i]) q->pg[w++]=q->pg[i]; q->npg=w;
     for(int i=1;i<q->nd;i++) q->dq[i-1]=q->dq[i]; q->nd--;
     if(!q->nd){ q->wn=0; q->high_windows=0; }
@@ -576,7 +579,9 @@ static void sched_open_doubt_(cc_session *s, int e, uint32_t seq, int64_t end, i
     __typeof__(s->sch[0]) *q=&s->sch[e]; (void)s;
     if(q->nd==SCHED_MAXDOUBT){                        /* full: the two oldest become one (older carrier; total kept) */
         q->dq[1].seq=q->dq[0].seq; q->dq[1].end=q->dq[0].end;
-        if(q->dq[0].fmin<q->dq[1].fmin) q->dq[1].fmin=q->dq[0].fmin;
+        /* both frozen by one drain: the later frozen minimum holds both phantoms (nested); otherwise the drain came
+         * between them and only the older one's frozen minimum describes the stretch before it */
+        if(!(q->dq[0].frozen && q->dq[1].frozen)) q->dq[1].fmin=q->dq[0].fmin;
         q->dq[1].frozen|=q->dq[0].frozen;
         for(int i=1;i<q->nd;i++) q->dq[i-1]=q->dq[i]; q->nd--;
     }

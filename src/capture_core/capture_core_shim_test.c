@@ -333,6 +333,18 @@ int main(int argc, char **argv){
           CHECK((long long)st.unscheduled_packets[0]==tf*8 && at_carrier,"phantom + early drain: reported %llu, truth %lld, 128 at the carrier: %d",(unsigned long long)st.unscheduled_packets[0],tf*8,at_carrier);
           printf("  phantom + a drain inside its window: truth %lld, reported %llu, its 128 named at the carrier: %s\n",tf*8,(unsigned long long)st.unscheduled_packets[0],at_carrier?"yes":"NO");
           unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); }
+        // two doubts before one drain, only the first advancing: its phantom is named once, at its own carrier
+        { setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); setenv("REPLAY_FAIL_ADVANCES","1",1); setenv("REPLAY_FAIL2_AT","102",1); unsetenv("REPLAY_FAIL2_ADVANCES");
+          setenv("REPLAY_STALL_MS","600",1); setenv("REPLAY_STALL_VIDEO_AT","104",1);
+          lt_reset(); CHECK(run_device_lt(&st,&t)==CC_OK,"two doubts before a drain: open");
+          long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+          int n128=0; for(int i=0;i<lt.nlate;i++) if(lt.latepk[i]==128) n128++;
+          uint32_t keep_s=0; for(int i=0;i<lt.nlate;i++) if(lt.latepk[i]==128) keep_s=lt.lateseq[i];
+          lt.nlate=1; lt.lateseq[0]=keep_s; int at=lt_late_located();
+          CHECK((long long)st.unscheduled_packets[0]==tf*8 && n128==1 && at,"two doubts before a drain: reported %llu, truth %lld, 128-packet records %d, at the first carrier %d",
+                (unsigned long long)st.unscheduled_packets[0],tf*8,n128,at);
+          printf("  two doubts before one drain (first advancing): truth %lld, reported %llu, phantom named once at its carrier: %s\n",tf*8,(unsigned long long)st.unscheduled_packets[0],n128==1&&at?"yes":"NO");
+          unsetenv("REPLAY_FAIL2_AT"); unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); }
         // and with no phantom, a drain right at the carrier must keep its exact count (a held carrier can read as one)
         for(int adv=0;adv<2;adv++) for(int at=99;at<=101;at++){
             char h[16]; snprintf(h,sizeof h,"%d",at); setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
