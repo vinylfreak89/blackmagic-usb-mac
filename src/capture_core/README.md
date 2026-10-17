@@ -83,8 +83,15 @@ Measured on hardware, 2026-10-17 (M3, bars), by holding the completion queue (`s
   bus frames read before and after the enqueue, allowing for that, and holds of 490 to 505 ms
   (24 to 120 packets) all fell inside. The session names any transfer whose count does not.
 - Every transfer was deallocated by the time the device closed; close reports any that are not.
-- Not exercised on hardware: an unplug during capture, and a refusal other than lateness (both
-  are in the fake-device test).
+- Cable pulled during a capture: the session ended by itself as DeviceGone about a second
+  later, with every transfer before the pull intact (seq gaps 0) and the file published. The 64
+  transfers in flight completed as `kIOReturnAborted`, each marked with a TransferError and its
+  packets' status. Requeues were then refused with `kIOReturnBadArgument` (once
+  `kIOReturnNotFound`), not a no-device code. The removal notice is what named the end. After
+  the replug the device opened and streamed normally; a capture 3 s after power-on had 37
+  short units while the decoder settled, against 7 at 37 s.
+- Not exercised on hardware: a refusal other than lateness or removal (it is in the fake-device
+  test).
 
 ## Lifecycle and statistics
 
