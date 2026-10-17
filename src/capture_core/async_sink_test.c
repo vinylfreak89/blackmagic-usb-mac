@@ -361,6 +361,11 @@ int main(int argc, char **argv){
     { char s10[256]; snprintf(s10,sizeof s10,"%s/same10.tpc",dir);
       assert(cc_async_sink_open_spill(&as,s10,"x",1u<<20,65536,&sp)==CC_OK && cc_async_sink_spill_state(as)==0);
       assert(cc_async_sink_close(as,&st)==CC_OK && st.spill_state==0); unlink(s10); }
+    /* 10b. a destination that is not a regular file (/dev/null) gets no spill: nothing could be recovered into it */
+    { cc_async_sink_test_spill_any_volume=1;
+      assert(cc_async_sink_open_spill(&as,"/dev/null","x",1u<<20,65536,&sp)==CC_OK && cc_async_sink_spill_state(as)==0);
+      assert(cc_async_sink_close(as,&st)==CC_OK); cc_async_sink_test_spill_any_volume=0;
+      DIR *dd=opendir(sdir); struct dirent *de; int mfs=0; while((de=readdir(dd))) if(strstr(de->d_name,".manifest")) mfs++; closedir(dd); assert(!mfs); }
     /* 11. an unread-slot record arriving while ring loss is pending, with under a record's room left: it must not
      * overrun the ring (it once wrote over bytes the writer had not yet written, corrupting the file) */
     { char e11[256]; snprintf(e11,sizeof e11,"%s/unsched11.tpc",dir);

@@ -119,7 +119,8 @@ static int stage_path(const char *dest,const char *scratch,char staged[PATH_MAX]
     }
     int fd=mkstemp(staged);
     if(fd<0){ perror("mkstemp"); return -1; }
-    close(fd);
+    /* the name is chosen; the writer creates the file itself, exclusively (it refuses an existing one) */
+    close(fd); unlink(staged);
     return 0;
 }
 int main(int argc,char**argv){

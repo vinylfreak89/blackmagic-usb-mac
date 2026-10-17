@@ -26,6 +26,7 @@
 #include <dirent.h>
 #include <signal.h>
 #include <sys/file.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 #define VID 0x1EDB
 #define PID 0xBD3B
@@ -1709,8 +1710,22 @@ static void *as_writer_(void *arg){
     pthread_mutex_unlock(&k->m);
     return NULL;
 }
+/* Free space as macOS counts it for work the user asked for: what is free plus what it will purge to make room (Time
+ * Machine local snapshots, caches). statfs/df leave the purgeable part out and read ~29 GB low on this Mac
+ * (2026-10-16: 34.0 GB against 62.8 GB); the owner's snapshot pruner counts the same important-usage figure. */
 static uint64_t as_free_bytes_(struct cc_async_sink *k){
     if(cc_async_sink_test_free) return cc_async_sink_test_free(k->sdir);
+    uint64_t v=0; int got=0;
+    CFURLRef u=CFURLCreateFromFileSystemRepresentation(NULL,(const UInt8*)k->sdir,(CFIndex)strlen(k->sdir),true);
+    if(u){
+        CFNumberRef num=NULL;
+        if(CFURLCopyResourcePropertyForKey(u,kCFURLVolumeAvailableCapacityForImportantUsageKey,&num,NULL) && num){
+            int64_t x=0; if(CFNumberGetValue(num,kCFNumberSInt64Type,&x) && x>0){ v=(uint64_t)x; got=1; }
+        }
+        if(num) CFRelease(num);
+        CFRelease(u);
+    }
+    if(got) return v;
     struct statfs s; if(statfs(k->sdir,&s)!=0) return 0;   /* unknown free space is no free space */
     return (uint64_t)s.f_bavail*(uint64_t)s.f_bsize;
 }
@@ -1987,8 +2002,13 @@ int cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), 
         if(flock(mfd,LOCK_EX|LOCK_NB)!=0 || fstat(mfd,&ms)!=0 || ms.st_nlink==0){ close(mfd); continue; }   /* alive, or done by another run */
         struct as_manifest mf;
         if(!rv_pread_(mfd,&mf,sizeof mf,0) || memcmp(mf.magic,AS_MANIFEST_MAGIC,8) || mf.version!=2){
-            char line[PATH_MAX+96]; snprintf(line,sizeof line,"capture_core: spill manifest %s is unreadable: its segments are kept",mn);
-            rv_log_(log,ctx,line); close(mfd); st.kept++; continue; }
+            /* with no segment of its own it holds nothing: it goes; otherwise its segments are kept and said so */
+            size_t pl=strlen(names[i])-strlen(".manifest"); int segs=0; DIR *sd=opendir(dir); struct dirent *se;
+            if(sd){ while((se=readdir(sd))) if(!strncmp(se->d_name,names[i],pl) && !strncmp(se->d_name+pl,".spill",6)) segs++; closedir(sd); }
+            char line[PATH_MAX+128];
+            if(!segs){ unlink(mn); snprintf(line,sizeof line,"capture_core: removed spill manifest %s: unreadable or of an older format, and nothing spilled with it",mn); }
+            else { snprintf(line,sizeof line,"capture_core: spill manifest %s is unreadable: its %d segments are kept",mn,segs); st.kept++; }
+            rv_log_(log,ctx,line); close(mfd); continue; }
         mf.dest[sizeof mf.dest-1]=0;
         int r=rv_one_(dir,names[i],mfd,&mf,log,ctx,stop,progress,&st);
         close(mfd);
@@ -2036,6 +2056,7 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
         else if(!S_ISDIR(ds.st_mode)) k->spill_state=-ENOTDIR;   /* a symlink too: the spill is never redirected */
         else if(ds.st_uid!=getuid() || (ds.st_mode&077)) k->spill_state=-EPERM;   /* private: nobody else may swap segments */
         else if(fstat(k->fd,&fs)!=0) k->spill_state=-errno;
+        else if(!S_ISREG(fs.st_mode)) k->spill_state=0;   /* a device (/dev/null) or pipe: nothing a spill could be recovered into */
         else if(fs.st_dev==ds.st_dev && !cc_async_sink_test_spill_any_volume) k->spill_state=0;   /* the destination is that disk already: a spill would only add a copy */
         else {
             const char *b=strrchr(path,'/');
