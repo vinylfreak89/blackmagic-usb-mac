@@ -34,7 +34,7 @@ static void on_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind
 static void on_end(void *ctx, enum cc_end r){ (void)ctx; (void)r; pthread_mutex_lock(&m); ended++; pthread_cond_broadcast(&c); pthread_mutex_unlock(&m); }
 static void diag(void *ctx, const char *line){ (void)ctx;
     if(strstr(line,"NOT balance")) balance_warned++;
-    if(strstr(line,"past due")) stop_from_queue=cc_stop(g_s);   /* on the completion queue: must be refused */
+    if(strstr(line,"failed as too old")) stop_from_queue=cc_stop(g_s);   /* on the completion queue: must be refused */
 }
 static int wait_data(int n){
     struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=20;

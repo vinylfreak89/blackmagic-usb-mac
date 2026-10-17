@@ -7,13 +7,18 @@
 #include <mach/mach_time.h>
 #include "capture_core.h"
 #include "capture_iousbhost.h"
+#ifdef IH_FAKE
+#include "ih_fake_iokit.h"   /* the backend test's fake device (ih_fake_iousbhost.m); the framework is not linked */
+#endif
 
 #define IH_VID 0x1EDB
 #define IH_PID 0xBD3B
 #define IH_LEAD 8                      /* frames ahead of the bus a (re)scheduled read starts: 8 ms */
 #define IH_MAXX 64
 #define IH_PER_FRAME 8                 /* packets per 1 ms frame: bInterval 1 at high speed and above */
-#define IH_BACKSTOP_S 5.0
+#ifndef IH_BACKSTOP_S
+#define IH_BACKSTOP_S 5.0                /* the fake-IOUSBHost test shortens it */
+#endif
 
 @interface IHXfer : NSObject {
 @public
@@ -23,11 +28,16 @@
 @property (nonatomic) uint32_t seq;
 @property (nonatomic) uint64_t gap;    /* frames left unread before this transfer, reported with its data */
 @property (nonatomic) uint64_t fail_since_ms;   /* first refused enqueue of the current attempt (0: none) */
+@property (nonatomic) uint64_t past_due;        /* frames already passed when it was queued (predicted kIOReturnIsoTooOld) */
 @property (nonatomic, strong) NSMutableData *buf;
 @property (nonatomic) IOUSBHostIsochronousTransaction *tl;
 @end
 @implementation IHXfer
-- (void)dealloc { free(_tl); if(freed) atomic_fetch_add(freed,1); }
+- (void)dealloc { free(_tl); if(freed) atomic_fetch_add(freed,1);
+#ifdef IH_FAKE
+    atomic_fetch_add(&ih_fake_xfer_deallocs,1);
+#endif
+}
 @end
 
 /* Everything below runs on q, except ih_open/ih_close, ih_start's caller around its dispatch_sync, and ih_stop.
@@ -39,6 +49,7 @@
     ih_callbacks cb; int npk[2], pkt[2]; int deadline_ms;
     uint64_t next[2]; uint32_t seqc[2];
     _Atomic int stopping, detached, quiesced;
+    _Atomic int gone;                  /* a termination notice arrived (set on IOUSBHost's queue, read at ih_stop) */
     BOOL fatal_sent, gone_sent;
     BOOL running;                      /* ih_go has run: completions are handed over; refusals are retried */
     BOOL suspended;                    /* q is suspended (ih_start .. ih_go); touched by the caller's thread only */
@@ -82,7 +93,19 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochron
     uint32_t old=0;
     for(int i=0;i<d->npk[ep];i++) if(tl[i].status==kIOReturnIsoTooOld) old++;
     d->st.too_old[ep]+=old; d->st.unread_delivered[ep]+=x.gap;
+    /* predicted against observed past-due packets: anything else failing as too old shows as a mismatch. The frame
+     * being read when it was queued may go either way, so one frame of disagreement is allowed. */
+    int64_t pd=(int64_t)(x.past_due*IH_PER_FRAME), od=(int64_t)old-pd;
+    if(od>IH_PER_FRAME || od<-IH_PER_FRAME){
+        d->st.too_old_mismatch[ep]++;
+        if(d->cb.on_diag){ char line[200];
+            snprintf(line,sizeof line,"capture_iousbhost: %s transfer seq %u: %u packets failed as too old, %llu predicted from the frame it was queued at",
+                     ep?"audio":"video",x.seq,old,(unsigned long long)(x.past_due*IH_PER_FRAME));
+            d->cb.on_diag(d->cb.ctx,line); }
+    }
     if(d->cb.on_transfer) d->cb.on_transfer(d->cb.ctx,ep,x.seq,(int)status,x.gap,old);
+    /* a callback can stall past ih_stop's backstop: once cut off, nothing more reaches the caller */
+    if(ih_off_(d)){ dispatch_group_leave(d->inflight); return; }
     /* bus check (ih_stats.step_dev_ms): the last packet's completion time against the previous transfer's */
     uint64_t ts=tl[d->npk[ep]-1].timeStamp;
     if(ts && d->last_ts[ep] && status==kIOReturnSuccess && !old){
@@ -99,17 +122,17 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochron
     d->last_ts[ep]=status==kIOReturnSuccess && !old?ts:0;
     x.gap=0;
     const uint8_t *base=(const uint8_t*)x.buf.bytes;
-    for(int i=0;i<d->npk[ep];i++){
+    for(int i=0;i<d->npk[ep] && !ih_off_(d);i++){
         IOUSBHostIsochronousTransaction *t=&tl[i];
         int ok=t->status==kIOReturnSuccess || t->status==kIOReturnUnderrun;
         d->cb.on_packet(d->cb.ctx,ep,x.seq,i,ok,(uint32_t)t->status,t->requestCount,ok?t->completeCount:0,base+t->offset);
     }
-    if(!atomic_load(&d->stopping)) ih_enqueue_(d,x);
+    if(!atomic_load(&d->stopping) && !ih_off_(d)) ih_enqueue_(d,x);
     dispatch_group_leave(d->inflight);
 }
-/* Queue x at its endpoint's next frame. If macOS refuses because that frame has passed (or is being read now), queue
- * it IH_LEAD frames ahead of the bus instead: the frames between are never read, and that exact count goes out with
- * x's data. x takes its seq only once queued, so seqs follow frame order whatever was retried. Any other refusal is
+/* Queue x at its endpoint's next frame. macOS refuses a transfer lying wholly in the past (measured: 16 frames late
+ * refused, 15 accepted with those packets failed as kIOReturnIsoTooOld). Refused, it is queued IH_LEAD frames ahead
+ * of the bus instead: the frames between are never read, and that exact count goes out with x's data. x takes its seq only once queued, so seqs follow frame order whatever was retried. Any other refusal is
  * retried every millisecond until the deadline (each one reported), then ends the session; during ih_start it
  * ends the start at once. */
 static void ih_enqueue_(IHDev *d, IHXfer *x){
@@ -131,6 +154,8 @@ static void ih_enqueue_(IHDev *d, IHXfer *x){
         }
     }
     if(ok){
+        uint64_t now_f=[d->ifc frameNumberWithTime:nil];
+        x.past_due=now_f>=f?(now_f-f+1<(uint64_t)(n/IH_PER_FRAME)?now_f-f+1:(uint64_t)(n/IH_PER_FRAME)):0;
         if(g){ x.gap+=g; d->st.late_resubmits[ep]++; d->st.unread_frames[ep]+=g; }
         if(x.fail_since_ms){ d->st.resubmit_recovered[ep]++; x.fail_since_ms=0; }
         x.seq=d->seqc[ep]++;
@@ -142,10 +167,12 @@ static void ih_enqueue_(IHDev *d, IHXfer *x){
     int io=e?(int)e.code:0;
     if(!d->running){ ih_fatal_(d,2,io,ep,d->seqc[ep]); return; }
     uint64_t now=ih_ms_();
-    if(!x.fail_since_ms) x.fail_since_ms=now?now:1;
     d->st.submit_failures[ep]++;
-    if(d->cb.on_submit_failed) d->cb.on_submit_failed(d->cb.ctx,ep,d->seqc[ep],io);
-    if(now-x.fail_since_ms>=(uint64_t)d->deadline_ms){ ih_fatal_(d,2,io,ep,d->seqc[ep]); return; }
+    if(!x.fail_since_ms){                 /* the first refusal of this requeue is reported; the retries are counted */
+        x.fail_since_ms=now?now:1;
+        if(d->cb.on_submit_failed) d->cb.on_submit_failed(d->cb.ctx,ep,x.seq,io);
+    }
+    if(now-x.fail_since_ms>=(uint64_t)d->deadline_ms){ ih_fatal_(d,2,io,ep,x.seq); return; }
     dispatch_group_enter(d->inflight);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_MSEC),d->q,^{
         IHDev *sd=wd; if(!sd) return;
@@ -175,6 +202,7 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
     d->dev=[[IOUSBHostDevice alloc] initWithIOService:ds options:IOUSBHostObjectInitOptionsNone queue:d->q error:&e
                                       interestHandler:^(IOUSBHostObject *o, uint32_t type, void *arg){ (void)o; (void)arg;
         IHDev *sd=wd; if(!sd || type!=kIOMessageServiceIsTerminated) return;
+        atomic_store(&sd->gone,1);
         dispatch_async(sd->q,^{ ih_fatal_(sd,1,0,0,0); }); }];
     IOObjectRelease(ds);
     if(!d->dev){ ih_err(err,errn,"open the Shuttle (IOUSBHostDevice)",e); return CC_ERR_USB; }
@@ -281,9 +309,12 @@ void ih_stop(ih_dev *dv, ih_stats *st){ @autoreleasepool {
     if(left || !ih_sync_(d->q,^{ atomic_store(&d->quiesced,1); },IH_BACKSTOP_S)){
         atomic_store(&d->detached,1); atomic_store(&d->quiesced,1); d->st.incomplete=1;
     }
-    if(d->st.incomplete) fprintf(stderr,"capture_iousbhost: the completion queue did not drain within %.0f s of the abort; its callbacks are cut off\n",IH_BACKSTOP_S);
+    if(d->st.incomplete) fprintf(stderr,"capture_iousbhost: the completion queue did not drain within %.1f s of the abort; its callbacks are cut off\n",IH_BACKSTOP_S);
     [d->ifc selectAlternateSetting:0 error:nil];
-    if(!d->st.incomplete){ [d->all removeAllObjects]; d->st.transfers_freed=atomic_load(&d->freed); }
+    /* ours are dropped here; each is deallocated when IOUSBHost lets go of its completion block too (the fake-device
+     * test waits for every one) */
+    if(!d->st.incomplete){ d->st.transfers_freed=(int)d->all.count; [d->all removeAllObjects]; }
+    d->st.device_gone=atomic_load(&d->gone);
     if(st) *st=d->st;
 }}
 

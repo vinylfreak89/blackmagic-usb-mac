@@ -1,10 +1,10 @@
 /* capture_iousbhost: the Shuttle through Apple's IOUSBHost framework instead of libusb, with every isochronous read
  * scheduled at an explicit bus frame number. libusb's Darwin backend picks the frame itself and moves a late
  * resubmission past frames it never reads, so those frames could only be inferred (capture_core's unread-slot model).
- * Here each endpoint's reads are queued at consecutive frames. A read whose first frame has already passed is
- * refused by macOS (measured 2026-10-17); it is queued a few frames ahead, and the frames between are an exact
- * count, handed over with the transfer they precede. A read only partly in the past is accepted and its past packets
- * fail with kIOReturnIsoTooOld; those are counted per transfer. Internal to capture_core (built with
+ * Here each endpoint's reads are queued at consecutive frames. A read lying wholly in the past is refused by macOS
+ * (measured 2026-10-17); it is queued a few frames ahead, and the frames between are an exact count, handed over with
+ * the transfer they precede. A read only partly in the past is accepted and its past packets fail with
+ * kIOReturnIsoTooOld; those are counted per transfer, against a prediction from the frame it was queued at. Internal to capture_core (built with
  * -DCC_WITH_IOUSBHOST); plain C interface. */
 #ifndef CAPTURE_IOUSBHOST_H
 #define CAPTURE_IOUSBHOST_H
@@ -15,8 +15,8 @@ typedef struct {
     void *ctx;
     /* Completions, ticks and fatal reports run on one serial dispatch queue (QOS_CLASS_USER_INTERACTIVE), so they
      * are one producer; the queue's thread can change between calls. Device-termination notices arrive on
-     * IOUSBHost's own queue and are moved onto this one. The only exception: a fatal report or submit failure
-     * during ih_start runs on ih_start's caller, inside the queue (dispatch_sync). Nothing is called before
+     * IOUSBHost's own queue and are moved onto this one. The only exception: a fatal report during ih_start runs
+     * on ih_start's caller, inside the queue (dispatch_sync). Nothing is called before
      * ih_start, after ih_go only data flows, and nothing after ih_stop returns. */
     /* Before a transfer's packets: its IOReturn, the frames left unread just before it (exact; 0 normally), and its
      * packets that macOS failed as past due when it was queued (kIOReturnIsoTooOld; they follow as DATA records
@@ -26,8 +26,8 @@ typedef struct {
     void (*on_packet)(void *ctx, int ep_index, uint32_t seq, int pkt_index, int ok, uint32_t status,
                       uint32_t req, uint32_t actual, const uint8_t *data);
     void (*on_tick)(void *ctx);     /* once a second */
-    /* A transfer could not be queued for a reason other than lateness; it is retried every millisecond until the
-     * deadline. seq: the one it will get. */
+    /* A completed transfer could not be requeued for a reason other than lateness; it is retried every millisecond
+     * until the deadline. Called once per requeue (the first refusal), seq: that transfer's last one. */
     void (*on_submit_failed)(void *ctx, int ep_index, uint32_t seq, int ioreturn);
     /* The session cannot go on: the device left (reason 1, ioreturn 0) or a transfer could not be queued within
      * the deadline (reason 2, with the IOReturn, endpoint and seq). Each reason at most once (a reason 1 after a
@@ -41,11 +41,13 @@ typedef struct {
     uint64_t unread_delivered[2];   /* of unread_frames, handed over with on_transfer; the rest were on transfers */
     uint64_t unread_at_stop[2];     /*   aborted at the stop (past the stream's end): delivered + at_stop == unread */
     uint64_t too_old[2];            /* packets failed as past due when queued (also DATA records with that status) */
-    uint64_t submit_failures[2], resubmit_recovered[2];
+    uint64_t too_old_mismatch[2];   /* transfers whose too-old count differed from the prediction (see on_diag) */
+    uint64_t submit_failures[2], resubmit_recovered[2];   /* refused attempts (each retry), requeues that recovered */
     uint64_t completions[2], aborted[2];
     int fleet[2];                   /* transfers in flight per endpoint when the stop began */
-    int transfers, transfers_freed; /* allocated (both endpoints) / released at ih_stop */
+    int transfers, transfers_freed; /* allocated (both endpoints) / released by us at ih_stop (none if incomplete) */
     int incomplete;                 /* the queue did not drain within 5 s of the abort: callbacks were cut off */
+    int device_gone;                /* a termination notice arrived at any time before ih_stop returned */
     /* Bus check: the kernel's completion time of each transfer's last packet steps by the transfer's frames from one
      * transfer to the next, plus any unread gap. Largest departure from that over gap-free steps, in ms, and the
      * largest across a gap (the gap's own reading, see on_diag); steps measured. */
