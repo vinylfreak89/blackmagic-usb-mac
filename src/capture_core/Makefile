@@ -6,12 +6,18 @@ TESTFLAGS=-DCAPTURE_CORE_TEST_HOOKS
 LIBS=$(shell pkg-config --libs libusb-1.0) -lpthread -framework CoreFoundation
 CAPTURE?=
 
-shuttle-capture: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
-	$(CC) $(CFLAGS) -o $@ capture_core.c capture_cli.c $(LIBS)
+# IOUSBHost backend (cfg.usb_backend / --iousbhost): the Objective-C side and its frameworks.
+IH_SRC=capture_iousbhost.m
+IH_FLAGS=-DCC_WITH_IOUSBHOST -fobjc-arc
+IH_LIBS=-framework Foundation -framework IOKit -framework IOUSBHost
 
-# Measurement build only: CC_DEBUG_HOLD_AT/MS hold the USB event thread once (unread-slot census). Never installed.
-shuttle-capture-hold: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
-	$(CC) $(CFLAGS) -DCC_DEBUG_HOLD -o $@ capture_core.c capture_cli.c $(LIBS)
+shuttle-capture: capture_core.c capture_cli.c capture_core.h capture_iousbhost.h $(IH_SRC) ../tool_deadline.h
+	$(CC) $(CFLAGS) $(IH_FLAGS) -o $@ capture_core.c $(IH_SRC) capture_cli.c $(LIBS) $(IH_LIBS)
+
+# Measurement build only: CC_DEBUG_HOLD_AT/MS hold the USB event thread (libusb) or completion queue (IOUSBHost)
+# once (unread-slot census). Never installed.
+shuttle-capture-hold: capture_core.c capture_cli.c capture_core.h capture_iousbhost.h $(IH_SRC) ../tool_deadline.h
+	$(CC) $(CFLAGS) $(IH_FLAGS) -DCC_DEBUG_HOLD -o $@ capture_core.c $(IH_SRC) capture_cli.c $(LIBS) $(IH_LIBS)
 
 check: shuttle-capture
 	@test -n "$(CAPTURE)" || { echo 'usage: make check CAPTURE=<capture.tpc>'; exit 2; }

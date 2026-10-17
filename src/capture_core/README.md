@@ -33,6 +33,36 @@ The CLI's leading `SESSION` note records the selected input, exact mode word, ri
 configured transfer fleet (or identifies replay and its source path). It is provenance text, not
 a parser contract.
 
+## USB stacks
+
+`cc_config.usb_backend` picks the device's USB stack; the CLI takes a trailing `--iousbhost`.
+
+- **libusb** (the default). libusb's Darwin backend chooses each read's bus frame. A late
+  resubmission is moved past frames it never reads, and nothing records them. capture_core infers
+  them from completion timing (the unread-slot model) and writes `CC_PI_UNSCHEDULED` /
+  `CC_PI_UNSCHEDULED_LATE` HostLoss with an estimated count.
+- **IOUSBHost** (`capture_iousbhost.m`, only in builds with `-DCC_WITH_IOUSBHOST`; the CLI has it).
+  Each endpoint's reads are queued at consecutive explicit frame numbers, from one serial
+  user-interactive dispatch queue with no real-time policy. When a read's frame has passed, it is
+  queued 8 frames ahead and the exact number of frames between goes out as `CC_PI_UNSCHEDULED`
+  just before its data. It never produces `_LATE` records. Opens as a normal user with no
+  entitlement, and refuses endpoints whose bInterval is not 1.
+
+Measured on hardware, 2026-10-17 (M3, bars):
+
+- macOS refuses a read whose first frame has passed. A read only partly in the past is accepted,
+  and its past packets fail with `kIOReturnIsoTooOld`. Those are DATA records with that status,
+  which the parser flags. Each endpoint's first frame is therefore taken just before its own
+  initial queue: a shared start was 6 frames past for audio after video's 32 enqueues.
+- With the completion queue held for 0.8, 1.5 and 3 s, every gap was reported once per endpoint
+  at the transfer it precedes (324/315, 1,023/1,020, 2,526/2,522 frames, video/audio), with seq
+  gaps 0. The kernel's completion time of each transfer's last packet put the same frame counts
+  in the gaps to within 0.03 frames, and gap-free transfers stepped within 0.034 ms of schedule.
+  The session reports both (`IOUSBHost bus check`).
+- The stream content does not resolve a gap to the frame. Audio samples missing around those
+  gaps came to −0.17, +0.20 and +1.15 frames off the count, and video bytes to about −1.5. The
+  device's own buffering sits between the bus and the data.
+
 ## Lifecycle and statistics
 
 The lifecycle is `open -> start -> stop -> close`. A successful start means the complete device

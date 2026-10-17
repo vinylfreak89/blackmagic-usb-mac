@@ -443,6 +443,12 @@ int main(int argc, char **argv){
     CHECK(lt2.end_count==1,"close-without-stop on_end count %d",lt2.end_count);
     cc_config badin={0}; badin.input=(enum cc_input)77;
     CHECK(cc_open(&s2,&badin,&cb)==CC_ERR_ARGS,"invalid input enum was accepted (would silently select S-video)");
+    cc_config badbe={0}; badbe.usb_backend=(enum cc_usb_backend)9;
+    CHECK(cc_open(&s2,&badbe,&cb)==CC_ERR_ARGS,"invalid USB backend enum was accepted (would silently select libusb)");
+#ifndef CC_WITH_IOUSBHOST
+    cc_config ihbe={0}; ihbe.usb_backend=CC_USB_IOUSBHOST;
+    CHECK(cc_open(&s2,&ihbe,&cb)==CC_ERR_ARGS,"a build without IOUSBHost accepted the IOUSBHost backend (would capture through libusb)");
+#endif
 
     // Force the consumer to hold a stale empty snapshot while the producer publishes the
     // complete fixture and backend_done.  The acquire reload must still drain every record.

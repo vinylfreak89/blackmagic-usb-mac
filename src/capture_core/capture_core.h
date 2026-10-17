@@ -23,6 +23,11 @@ extern "C" {
 typedef struct cc_session cc_session;
 
 enum cc_input  { CC_INPUT_SVIDEO = 0, CC_INPUT_COMPOSITE = 1, CC_INPUT_COMPONENT = 2 };
+/* Device USB stack. LIBUSB (the default): libusb picks each read's bus frame; reads it skips past are inferred by the
+ * unread-slot model. IOUSBHOST: Apple's IOUSBHost framework with every read at an explicit bus frame; skipped frames
+ * are an exact count (CC_PI_UNSCHEDULED records, never _LATE). Only in builds with -DCC_WITH_IOUSBHOST (cc_open
+ * refuses it otherwise, CC_ERR_ARGS). */
+enum cc_usb_backend { CC_USB_LIBUSB = 0, CC_USB_IOUSBHOST = 1 };
 enum cc_end    { CC_END_STOPPED = 0, CC_END_DEVICE_GONE = 1, CC_END_REPLAY_EOF = 2,
                  CC_END_WRITE_FAILED = 3, CC_END_TRANSFER_FAILED = 4,
                  CC_END_INTERNAL_ERROR = 5 };
@@ -38,8 +43,9 @@ enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
 
 #define CC_DEFAULT_READAHEAD_MB 256  /* replay read-ahead when replay_readahead_mb is 0: ~11 s of stream */
 /* HostLoss records whose pkt_index is CC_PI_UNSCHEDULED report USB slots that were never read: macOS moved a late
- * resubmission past them, so no transfer, error or sequence gap records the loss. req_len = packets, from libusb's
- * own scheduling rule mirrored at submit (an estimate: the host clock stands in for the bus frame), actual_len = 0
+ * resubmission past them, so no transfer, error or sequence gap records the loss. req_len = packets: with libusb from its
+ * own scheduling rule mirrored at submit (an estimate: the host clock stands in for the bus frame), with IOUSBHost the
+ * exact count of frames between the reads (8 packets each); actual_len = 0
  * (bytes unknown), submit_seq = the transfer the gap precedes; the record comes just before that transfer's data. */
 #define CC_PI_UNSCHEDULED 0xFFFDu
 /* The same loss found only after the data it precedes was delivered: after a failed submit, whether libusb advanced
@@ -125,6 +131,7 @@ typedef struct {
     // WAITS for the consumer instead of recording host loss, so an offline render whose consumer is slow (a busy CPU, a
     // network volume) runs slower and never loses data. A real device cannot wait: there the ring overflow stays HostLoss.
     int replay_block_when_full;
+    enum cc_usb_backend usb_backend;   // device: which USB stack (above); 0 = libusb
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
