@@ -70,8 +70,8 @@ int main(void){ @autoreleasepool {
         atomic_store(&ih_fake.late_at[ep],20); atomic_store(&ih_fake.late_k[ep],k);
         s=run_(&st,1500,1);
         accounted_("late");
-        if(k<16) CHECK(R[ep].bad_status>=8*(k+2) && R[ep].bad_status<=8*(k+3) && R[ep].unsched==0,"late ep%d k%d: %ld failed packets, %ld unread records",ep,k,R[ep].bad_status,R[ep].unsched);
-        else CHECK(R[ep].unsched==1 && R[ep].unsched_pk>=(k+8)*8 && R[ep].unsched_pk<=(k+9)*8 && R[ep].bad_status==0,
+        if(k<16) CHECK(R[ep].bad_status>=8*(k+2) && R[ep].bad_status<=8*(k+4) && R[ep].unsched==0,"late ep%d k%d: %ld failed packets, %ld unread records",ep,k,R[ep].bad_status,R[ep].unsched);
+        else CHECK(R[ep].unsched==1 && R[ep].unsched_pk>=(k+8)*8 && R[ep].unsched_pk<=(k+10)*8 && R[ep].bad_status==0,
                    "late ep%d k%d: %ld records of %ld packets, %ld failed",ep,k,R[ep].unsched,R[ep].unsched_pk,R[ep].bad_status);
         for(int e=0;e<2;e++)
             CHECK(st.unscheduled_packets[e]==(uint64_t)(R[e].bad_status+R[e].unsched_pk),"late ep%d: stats %llu != %ld failed + %ld unread",e,

@@ -1113,6 +1113,7 @@ static int rr_finish_(replay_reader *r){   /* stops and joins the reader; return
  * capture_core's "backend=iousbhost"): read separately, since a replay that starts mid-file never reaches them.
  * Only the HOST LOSS wording depends on it. */
 static void replay_peek_session_(cc_session *s, const char *path){
+    struct stat sb; if(stat(path,&sb)!=0 || !S_ISREG(sb.st_mode)) return;   /* a FIFO's bytes belong to the stream */
     int fd=open(path,O_RDONLY); if(fd<0) return;
     uint8_t b[8192]; ssize_t n=pread(fd,b,sizeof b,0); close(fd);
     for(size_t off=0,i=0; n>0 && i<4 && off+sizeof(rec_hdr)<=(size_t)n; i++){
