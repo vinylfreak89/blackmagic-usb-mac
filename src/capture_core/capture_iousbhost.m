@@ -1,7 +1,9 @@
 /* capture_iousbhost.m -- see capture_iousbhost.h. Built with -fobjc-arc. */
 #import <Foundation/Foundation.h>
 #import <IOUSBHost/IOUSBHost.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <time.h>
 #include <mach/mach_time.h>
 #include "capture_core.h"
 #include "capture_iousbhost.h"
@@ -11,28 +13,39 @@
 #define IH_LEAD 8                      /* frames ahead of the bus a (re)scheduled read starts: 8 ms */
 #define IH_MAXX 64
 #define IH_PER_FRAME 8                 /* packets per 1 ms frame: bInterval 1 at high speed and above */
+#define IH_BACKSTOP_S 5.0
 
-@interface IHXfer : NSObject
+@interface IHXfer : NSObject {
+@public
+    _Atomic int *freed;                /* the device's release count (ih_stats.transfers_freed) */
+}
 @property (nonatomic) int ep;          /* 0 video, 1 audio */
 @property (nonatomic) uint32_t seq;
 @property (nonatomic) uint64_t gap;    /* frames left unread before this transfer, reported with its data */
+@property (nonatomic) uint64_t fail_since_ms;   /* first refused enqueue of the current attempt (0: none) */
 @property (nonatomic, strong) NSMutableData *buf;
 @property (nonatomic) IOUSBHostIsochronousTransaction *tl;
 @end
 @implementation IHXfer
-- (void)dealloc { free(_tl); }
+- (void)dealloc { free(_tl); if(freed) atomic_fetch_add(freed,1); }
 @end
 
-/* Everything below runs on q except ih_open/ih_close and the parts of ih_start/ih_stop outside dispatch_sync. */
+/* Everything below runs on q, except ih_open/ih_close, ih_start's caller around its dispatch_sync, and ih_stop.
+ * stopping/detached/quiesced are atomics because ih_stop sets them from outside q when q does not answer. */
 @interface IHDev : NSObject {
 @public
     IOUSBHostDevice *dev; IOUSBHostInterface *ifc; IOUSBHostPipe *pipe[2];
     dispatch_queue_t q; dispatch_source_t tick; dispatch_group_t inflight;
-    ih_callbacks cb; int npk[2], pkt[2];
+    ih_callbacks cb; int npk[2], pkt[2]; int deadline_ms;
     uint64_t next[2]; uint32_t seqc[2];
-    BOOL stopping, fatal_sent, detached;
+    _Atomic int stopping, detached, quiesced;
+    BOOL fatal_sent, gone_sent;
+    BOOL running;                      /* ih_go has run: completions are handed over; refusals are retried */
+    BOOL suspended;                    /* q is suspended (ih_start .. ih_go); touched by the caller's thread only */
+    BOOL discard;                      /* stopped without ih_go: completions are dropped, never handed over */
     ih_stats st; int live[2];
     uint64_t last_ts[2]; double abs_ns;
+    _Atomic int freed;
     NSMutableArray<IHXfer*> *all;
 }
 @end
@@ -40,25 +53,39 @@
 @end
 
 static IHDev *D(ih_dev *d){ return (__bridge IHDev*)(void*)d; }
+static uint64_t ih_ms_(void){ return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000000; }
 static void ih_err(char *err, size_t n, const char *what, NSError *e){
     if(err && n) snprintf(err,n,"%s: %s",what,e?e.localizedDescription.UTF8String:"failed");
 }
+static BOOL ih_off_(IHDev *d){ return atomic_load(&d->detached) || atomic_load(&d->quiesced) || d->discard; }
+/* dispatch_sync with a backstop: NO if q did not run b within s seconds (it still runs b later) */
+static BOOL ih_sync_(dispatch_queue_t q, dispatch_block_t b, double s){
+    dispatch_semaphore_t sem=dispatch_semaphore_create(0);
+    dispatch_async(q,^{ b(); dispatch_semaphore_signal(sem); });
+    return dispatch_semaphore_wait(sem,dispatch_time(DISPATCH_TIME_NOW,(int64_t)(s*NSEC_PER_SEC)))==0;
+}
 static void ih_fatal_(IHDev *d, int reason, int io, int ep, uint32_t seq){
-    if(d->fatal_sent) return;
-    d->fatal_sent=YES; d->stopping=YES;
-    if(d->cb.on_fatal && !d->detached) d->cb.on_fatal(d->cb.ctx,reason,io,ep,seq);
+    if(ih_off_(d)) return;
+    if(reason==1){ if(d->gone_sent) return; d->gone_sent=YES; } else { if(d->fatal_sent) return; d->fatal_sent=YES; }
+    atomic_store(&d->stopping,1);
+    if(d->cb.on_fatal) d->cb.on_fatal(d->cb.ctx,reason,io,ep,seq);
 }
 static void ih_enqueue_(IHDev *d, IHXfer *x);
-static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status){
+static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochronousTransaction *l){
     int ep=x.ep;
     d->live[ep]--;
-    if(d->detached){ dispatch_group_leave(d->inflight); return; }
+    if(ih_off_(d)){ d->st.unread_at_stop[ep]+=x.gap; dispatch_group_leave(d->inflight); return; }
     d->st.completions[ep]++;
-    if(status==kIOReturnAborted && d->stopping){ d->st.aborted[ep]++; dispatch_group_leave(d->inflight); return; }
-    if(d->cb.on_transfer) d->cb.on_transfer(d->cb.ctx,ep,x.seq,(int)status,x.gap);
+    if(status==kIOReturnAborted && atomic_load(&d->stopping)){
+        d->st.aborted[ep]++; d->st.unread_at_stop[ep]+=x.gap; dispatch_group_leave(d->inflight); return; }
+    IOUSBHostIsochronousTransaction *tl=l?l:x.tl;
+    uint32_t old=0;
+    for(int i=0;i<d->npk[ep];i++) if(tl[i].status==kIOReturnIsoTooOld) old++;
+    d->st.too_old[ep]+=old; d->st.unread_delivered[ep]+=x.gap;
+    if(d->cb.on_transfer) d->cb.on_transfer(d->cb.ctx,ep,x.seq,(int)status,x.gap,old);
     /* bus check (ih_stats.step_dev_ms): the last packet's completion time against the previous transfer's */
-    uint64_t ts=x.tl[d->npk[ep]-1].timeStamp;
-    if(ts && d->last_ts[ep] && status==kIOReturnSuccess){
+    uint64_t ts=tl[d->npk[ep]-1].timeStamp;
+    if(ts && d->last_ts[ep] && status==kIOReturnSuccess && !old){
         double ms=(double)(ts-d->last_ts[ep])*d->abs_ns/1e6, frames=(double)(d->npk[ep]/IH_PER_FRAME);
         double dev=ms-frames-(double)x.gap, adev=dev<0?-dev:dev;
         if(x.gap){
@@ -69,45 +96,69 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status){
                 d->cb.on_diag(d->cb.ctx,line); }
         } else { if(adev>d->st.step_dev_ms[ep]) d->st.step_dev_ms[ep]=adev; d->st.steps[ep]++; }
     }
-    d->last_ts[ep]=status==kIOReturnSuccess?ts:0;
+    d->last_ts[ep]=status==kIOReturnSuccess && !old?ts:0;
     x.gap=0;
     const uint8_t *base=(const uint8_t*)x.buf.bytes;
     for(int i=0;i<d->npk[ep];i++){
-        IOUSBHostIsochronousTransaction *t=&x.tl[i];
+        IOUSBHostIsochronousTransaction *t=&tl[i];
         int ok=t->status==kIOReturnSuccess || t->status==kIOReturnUnderrun;
         d->cb.on_packet(d->cb.ctx,ep,x.seq,i,ok,(uint32_t)t->status,t->requestCount,ok?t->completeCount:0,base+t->offset);
     }
-    if(!d->stopping){ x.seq=d->seqc[ep]++; ih_enqueue_(d,x); }
+    if(!atomic_load(&d->stopping)) ih_enqueue_(d,x);
     dispatch_group_leave(d->inflight);
 }
 /* Queue x at its endpoint's next frame. If macOS refuses because that frame has passed (or is being read now), queue
  * it IH_LEAD frames ahead of the bus instead: the frames between are never read, and that exact count goes out with
- * x's data. Any other refusal ends the session. */
+ * x's data. x takes its seq only once queued, so seqs follow frame order whatever was retried. Any other refusal is
+ * retried every millisecond until the deadline (each one reported), then ends the session; during ih_start it
+ * ends the start at once. */
 static void ih_enqueue_(IHDev *d, IHXfer *x){
     int ep=x.ep, n=d->npk[ep];
     for(int i=0;i<n;i++) x.tl[i]=(IOUSBHostIsochronousTransaction){.status=kIOReturnInvalid,.requestCount=(uint32_t)d->pkt[ep],.offset=(uint32_t)(i*d->pkt[ep])};
-    uint64_t f=d->next[ep]; NSError *e=nil;
+    uint64_t f=d->next[ep], g=0; NSError *e=nil;
     __weak IHDev *wd=d;
-    void (^done)(IOReturn,IOUSBHostIsochronousTransaction*)=^(IOReturn st, IOUSBHostIsochronousTransaction *l){ (void)l;
-        IHDev *sd=wd; if(sd) ih_complete_(sd,x,st); };
+    void (^done)(IOReturn,IOUSBHostIsochronousTransaction*)=^(IOReturn st, IOUSBHostIsochronousTransaction *l){
+        IHDev *sd=wd; if(sd) ih_complete_(sd,x,st,l); };
     dispatch_group_enter(d->inflight);
     BOOL ok=[d->pipe[ep] enqueueIORequestWithData:x.buf transactionList:x.tl transactionListCount:(NSUInteger)n
                                 firstFrameNumber:f options:IOUSBHostIsochronousTransferOptionsNone error:&e completionHandler:done];
     if(!ok){
         uint64_t cur=[d->ifc frameNumberWithTime:nil];
         if(cur+1>=f){
-            uint64_t start=cur+IH_LEAD;
-            x.gap+=start-f; d->st.late_resubmits[ep]++; d->st.unread_frames[ep]+=start-f;
-            f=start; e=nil;
+            uint64_t start=cur+IH_LEAD; g=start-f; f=start; e=nil;
             ok=[d->pipe[ep] enqueueIORequestWithData:x.buf transactionList:x.tl transactionListCount:(NSUInteger)n
                                      firstFrameNumber:f options:IOUSBHostIsochronousTransferOptionsNone error:&e completionHandler:done];
         }
     }
-    if(!ok){ dispatch_group_leave(d->inflight); ih_fatal_(d,2,e?(int)e.code:0,ep,x.seq); return; }
-    d->st.submits[ep]++; d->live[ep]++;
-    d->next[ep]=f+(uint64_t)(n/IH_PER_FRAME);
+    if(ok){
+        if(g){ x.gap+=g; d->st.late_resubmits[ep]++; d->st.unread_frames[ep]+=g; }
+        if(x.fail_since_ms){ d->st.resubmit_recovered[ep]++; x.fail_since_ms=0; }
+        x.seq=d->seqc[ep]++;
+        d->st.submits[ep]++; d->live[ep]++;
+        d->next[ep]=f+(uint64_t)(n/IH_PER_FRAME);
+        return;
+    }
+    dispatch_group_leave(d->inflight);
+    int io=e?(int)e.code:0;
+    if(!d->running){ ih_fatal_(d,2,io,ep,d->seqc[ep]); return; }
+    uint64_t now=ih_ms_();
+    if(!x.fail_since_ms) x.fail_since_ms=now?now:1;
+    d->st.submit_failures[ep]++;
+    if(d->cb.on_submit_failed) d->cb.on_submit_failed(d->cb.ctx,ep,d->seqc[ep],io);
+    if(now-x.fail_since_ms>=(uint64_t)d->deadline_ms){ ih_fatal_(d,2,io,ep,d->seqc[ep]); return; }
+    dispatch_group_enter(d->inflight);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_MSEC),d->q,^{
+        IHDev *sd=wd; if(!sd) return;
+        if(!atomic_load(&sd->stopping) && !ih_off_(sd)) ih_enqueue_(sd,x);
+        dispatch_group_leave(sd->inflight);
+    });
 }
 
+static void ih_teardown_(IHDev *d, BOOL alt0){
+    if(alt0) [d->ifc selectAlternateSetting:0 error:nil];
+    atomic_store(&d->quiesced,1);
+    [d->ifc destroy]; [d->dev destroy];
+}
 int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char *err, size_t errn){ @autoreleasepool {
     NSMutableDictionary *m=(__bridge_transfer NSMutableDictionary*)IOServiceMatching(kIOUSBHostDeviceClassName);
     m[@kUSBHostMatchingPropertyVendorID]=@(IH_VID); m[@kUSBHostMatchingPropertyProductID]=@(IH_PID);
@@ -119,13 +170,16 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
     { mach_timebase_info_data_t tb; mach_timebase_info(&tb); d->abs_ns=tb.denom?(double)tb.numer/(double)tb.denom:1.0; }
     NSError *e=nil;
     __weak IHDev *wd=d;
+    /* IOUSBHost delivers interest notices on its own internal queue, not q (IOUSBHostObject.h): move them onto q,
+     * where the session state lives; once quiesced (ih_stop / ih_close) they do nothing */
     d->dev=[[IOUSBHostDevice alloc] initWithIOService:ds options:IOUSBHostObjectInitOptionsNone queue:d->q error:&e
                                       interestHandler:^(IOUSBHostObject *o, uint32_t type, void *arg){ (void)o; (void)arg;
-        IHDev *sd=wd; if(sd && type==kIOMessageServiceIsTerminated) ih_fatal_(sd,1,0,0,0); }];
+        IHDev *sd=wd; if(!sd || type!=kIOMessageServiceIsTerminated) return;
+        dispatch_async(sd->q,^{ ih_fatal_(sd,1,0,0,0); }); }];
     IOObjectRelease(ds);
     if(!d->dev){ ih_err(err,errn,"open the Shuttle (IOUSBHostDevice)",e); return CC_ERR_USB; }
     if(!d->dev.configurationDescriptor && ![d->dev configureWithValue:1 matchInterfaces:NO error:&e]){
-        ih_err(err,errn,"configure",e); [d->dev destroy]; return CC_ERR_USB; }
+        ih_err(err,errn,"configure",e); atomic_store(&d->quiesced,1); [d->dev destroy]; return CC_ERR_USB; }
     io_service_t is=0, c; io_iterator_t it;   /* interface 0: the device's IOUSBHostInterface child */
     if(IORegistryEntryGetChildIterator(d->dev.ioService,kIOServicePlane,&it)==KERN_SUCCESS){
         while(!is && (c=IOIteratorNext(it))){
@@ -137,10 +191,10 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
         }
         IOObjectRelease(it);
     }
-    if(!is){ if(err&&errn) snprintf(err,errn,"the Shuttle has no interface 0"); [d->dev destroy]; return CC_ERR_USB; }
+    if(!is){ if(err&&errn) snprintf(err,errn,"the Shuttle has no interface 0"); atomic_store(&d->quiesced,1); [d->dev destroy]; return CC_ERR_USB; }
     d->ifc=[[IOUSBHostInterface alloc] initWithIOService:is options:IOUSBHostObjectInitOptionsNone queue:d->q error:&e interestHandler:nil];
     IOObjectRelease(is);
-    if(!d->ifc){ ih_err(err,errn,"open interface 0",e); [d->dev destroy]; return CC_ERR_USB; }
+    if(!d->ifc){ ih_err(err,errn,"open interface 0",e); atomic_store(&d->quiesced,1); [d->dev destroy]; return CC_ERR_USB; }
     IOUSBHostDevice *hd=d->dev;           /* the block is local and synchronous: a strong capture makes no cycle */
     BOOL (^vout)(uint16_t,uint32_t)=^BOOL(uint16_t idx,uint32_t be){
         IOUSBDeviceRequest r={.bmRequestType=0x40,.bRequest=215,.wValue=0,.wIndex=idx,.wLength=4};
@@ -153,69 +207,91 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
         && vout(0,mode_word) && vout(0,mode_word) && vout(4,r4) && vout(4,r4) && vout(24,latch) && vout(24,latch)
         && [d->ifc selectAlternateSetting:1 error:&e] && [d->ifc selectAlternateSetting:2 error:&e]
         && vout(0,mode_word) && vout(24,latch);
-    if(!ok){ ih_err(err,errn,"start sequence (alt settings / mode word)",e); [d->ifc destroy]; [d->dev destroy]; return CC_ERR_USB; }
+    if(!ok){ ih_err(err,errn,"start sequence (alt settings / mode word)",e); ih_teardown_(d,YES); return CC_ERR_USB; }
     d->pipe[0]=[d->ifc copyPipeWithAddress:CC_EP_VIDEO error:&e];
     d->pipe[1]=[d->ifc copyPipeWithAddress:CC_EP_AUDIO error:&e];
-    if(!d->pipe[0] || !d->pipe[1]){ ih_err(err,errn,"isochronous pipes",e); [d->ifc destroy]; [d->dev destroy]; return CC_ERR_USB; }
+    if(!d->pipe[0] || !d->pipe[1]){ ih_err(err,errn,"isochronous pipes",e); ih_teardown_(d,YES); return CC_ERR_USB; }
     for(int ep=0;ep<2;ep++){
         const IOUSBHostIOSourceDescriptors *pd=d->pipe[ep].descriptors;
         if(!pd || pd->descriptor.bInterval!=1){
             if(err&&errn) snprintf(err,errn,"endpoint 0x%02x has bInterval %d, not 1: frame accounting would be wrong",
                                    ep?CC_EP_AUDIO:CC_EP_VIDEO,pd?pd->descriptor.bInterval:-1);
-            [d->ifc selectAlternateSetting:0 error:nil]; [d->ifc destroy]; [d->dev destroy]; return CC_ERR_USB;
+            ih_teardown_(d,YES); return CC_ERR_USB;
         }
     }
     *out=(ih_dev*)(__bridge_retained void*)d;
     return CC_OK;
 }}
 
-int ih_start(ih_dev *dv, const ih_callbacks *cb, int xfers, int v_npk, int v_pkt, int a_npk, int a_pkt, char *err, size_t errn){ @autoreleasepool {
+int ih_start(ih_dev *dv, const ih_callbacks *cb, int xfers, int v_npk, int v_pkt, int a_npk, int a_pkt,
+             int deadline_ms, char *err, size_t errn){ @autoreleasepool {
     IHDev *d=D(dv);
     if(xfers<1 || xfers>IH_MAXX || v_npk%IH_PER_FRAME || a_npk%IH_PER_FRAME || !cb->on_packet){
         if(err&&errn) snprintf(err,errn,"bad transfer geometry"); return CC_ERR_ARGS; }
     __block int rc=CC_OK;
     dispatch_sync(d->q,^{
-        d->cb=*cb; d->npk[0]=v_npk; d->npk[1]=a_npk; d->pkt[0]=v_pkt; d->pkt[1]=a_pkt;
+        d->cb=*cb; d->deadline_ms=deadline_ms>0?deadline_ms:2000;
+        d->npk[0]=v_npk; d->npk[1]=a_npk; d->pkt[0]=v_pkt; d->pkt[1]=a_pkt;
         for(int ep=0;ep<2 && rc==CC_OK;ep++) for(int k=0;k<xfers && rc==CC_OK;k++){
             /* each endpoint starts IH_LEAD frames after its own first enqueue: one shared start was already
              * 6 frames past for audio after video's 32 enqueues (macOS took the transfer and failed those packets
              * with kIOReturnIsoTooOld, measured 2026-10-17) */
             if(!k) d->next[ep]=[d->ifc frameNumberWithTime:nil]+IH_LEAD;
-            NSError *e=nil; IHXfer *x=[IHXfer new]; x.ep=ep; x.seq=d->seqc[ep]++;
+            NSError *e=nil; IHXfer *x=[IHXfer new]; x.ep=ep; x->freed=&d->freed;
             x.buf=[d->ifc ioDataWithCapacity:(NSUInteger)(d->npk[ep]*d->pkt[ep]) error:&e];
             x.tl=calloc((size_t)d->npk[ep],sizeof(IOUSBHostIsochronousTransaction));
-            if(!x.buf || !x.tl){ ih_err(err,errn,"I/O buffers",e); rc=CC_ERR_NOMEM; break; }
+            if(!x.buf || !x.tl){ ih_err(err,errn,"I/O buffers",e); rc=CC_ERR_NOMEM; [d->all addObject:x]; d->st.transfers++; break; }
             [d->all addObject:x]; d->st.transfers++;
             ih_enqueue_(d,x);
             if(d->fatal_sent){ if(err&&errn) snprintf(err,errn,"the first transfers could not be queued"); rc=CC_ERR_USB; }
         }
-        if(rc==CC_OK){
-            d->tick=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,d->q);
-            dispatch_source_set_timer(d->tick,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),NSEC_PER_SEC,10*NSEC_PER_MSEC);
-            __weak IHDev *wd=d;
-            dispatch_source_set_event_handler(d->tick,^{ IHDev *sd=wd;
-                if(sd && !sd->stopping && !sd->detached && sd->cb.on_tick) sd->cb.on_tick(sd->cb.ctx); });
-            dispatch_resume(d->tick);
-        }
+        d->tick=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,d->q);
+        dispatch_source_set_timer(d->tick,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),NSEC_PER_SEC,10*NSEC_PER_MSEC);
+        __weak IHDev *wd=d;
+        dispatch_source_set_event_handler(d->tick,^{ IHDev *sd=wd;
+            if(sd && !atomic_load(&sd->stopping) && !ih_off_(sd) && sd->cb.on_tick) sd->cb.on_tick(sd->cb.ctx); });
+        dispatch_resume(d->tick);
+        /* held until ih_go: completions queue up behind this, none is handed over before the caller says so */
+        dispatch_suspend(d->q);
     });
+    d->suspended=YES;
     return rc;
 }}
 
+void ih_go(ih_dev *dv){
+    IHDev *d=D(dv);
+    if(!d->suspended) return;
+    d->running=YES;                       /* q runs nothing while suspended; the resume publishes this */
+    d->suspended=NO; dispatch_resume(d->q);
+}
+
 void ih_stop(ih_dev *dv, ih_stats *st){ @autoreleasepool {
     IHDev *d=D(dv);
-    dispatch_sync(d->q,^{ d->stopping=YES; d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1]; if(d->tick) dispatch_source_cancel(d->tick); });
+    atomic_store(&d->stopping,1);
+    if(d->suspended){                     /* never went: q has run nothing since ih_start, so this thread may write */
+        d->discard=YES; d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1];
+        if(d->tick) dispatch_source_cancel(d->tick);
+        d->suspended=NO; dispatch_resume(d->q);
+    } else if(!ih_sync_(d->q,^{ d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1]; if(d->tick) dispatch_source_cancel(d->tick); },IH_BACKSTOP_S)){
+        atomic_store(&d->detached,1); d->st.incomplete=1;
+    }
     for(int ep=0;ep<2;ep++) if(d->pipe[ep]) [d->pipe[ep] abortWithOption:IOUSBHostAbortOptionAsynchronous error:nil];
-    long left=dispatch_group_wait(d->inflight,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC));
-    /* after this, no callback of ours is running, and none will call the caller again */
-    dispatch_sync(d->q,^{ if(left){ d->detached=YES; d->st.incomplete=1; } });
-    if(left) fprintf(stderr,"capture_iousbhost: transfers still in flight 5 s after the abort; their callbacks are cut off\n");
+    long left=d->st.incomplete?1:dispatch_group_wait(d->inflight,dispatch_time(DISPATCH_TIME_NOW,(int64_t)(IH_BACKSTOP_S*NSEC_PER_SEC)));
+    /* after this nothing of ours runs on q, and nothing will call the caller again */
+    if(left || !ih_sync_(d->q,^{ atomic_store(&d->quiesced,1); },IH_BACKSTOP_S)){
+        atomic_store(&d->detached,1); atomic_store(&d->quiesced,1); d->st.incomplete=1;
+    }
+    if(d->st.incomplete) fprintf(stderr,"capture_iousbhost: the completion queue did not drain within %.0f s of the abort; its callbacks are cut off\n",IH_BACKSTOP_S);
     [d->ifc selectAlternateSetting:0 error:nil];
+    if(!d->st.incomplete){ [d->all removeAllObjects]; d->st.transfers_freed=atomic_load(&d->freed); }
     if(st) *st=d->st;
 }}
 
 void ih_close(ih_dev *dv){ @autoreleasepool {
     if(!dv) return;
     IHDev *d=(__bridge_transfer IHDev*)(void*)dv;
-    [d->ifc destroy]; [d->dev destroy];
+    if(d->suspended){ d->discard=YES; d->suspended=NO; dispatch_resume(d->q); }   /* opened and started, never stopped */
+    ih_teardown_(d,YES);
+    dispatch_sync(d->q,^{});               /* a termination notice moved onto q before the destroy has now run */
     d=nil;
 }}

@@ -43,25 +43,35 @@ a parser contract.
   `CC_PI_UNSCHEDULED_LATE` HostLoss with an estimated count.
 - **IOUSBHost** (`capture_iousbhost.m`, only in builds with `-DCC_WITH_IOUSBHOST`; the CLI has it).
   Each endpoint's reads are queued at consecutive explicit frame numbers, from one serial
-  user-interactive dispatch queue with no real-time policy. When a read's frame has passed, it is
-  queued 8 frames ahead and the exact number of frames between goes out as `CC_PI_UNSCHEDULED`
-  just before its data. It never produces `_LATE` records. Opens as a normal user with no
-  entitlement, and refuses endpoints whose bInterval is not 1.
+  user-interactive dispatch queue with no real-time policy. A read lying wholly in the past is
+  refused by macOS; it is queued 8 frames ahead and the exact number of frames between goes out as
+  `CC_PI_UNSCHEDULED` just before its data. A read only partly in the past is accepted, and its
+  past packets fail with `kIOReturnIsoTooOld`. They stay DATA records with that status, which the
+  parser flags, and they are counted in the unread-slot statistics with a HOST LOSS line. No
+  `_LATE` records. Completions are held back until `cc_start` succeeds, so a failed start hands
+  nothing over. Another refusal is retried every millisecond until `resubmit_deadline_ms`. Each
+  attempt goes out as a `0xffff` TransferError, then the session ends, as with libusb. Device
+  removal notices come on IOUSBHost's own queue and are moved onto the completion queue. Opens as
+  a normal user with no entitlement, and refuses endpoints whose bInterval is not 1. Packet
+  statuses are IOReturn values here, libusb ones there; the SESSION note names the backend.
+  `make test-iousbhost` checks capture_core's side against a scripted mock (`capture_iousbhost_mock.c`)
+  under TSan; the backend itself is checked on hardware.
 
-Measured on hardware, 2026-10-17 (M3, bars):
+Measured on hardware, 2026-10-17 (M3, bars), by holding the completion queue (`shuttle-capture-hold`):
 
-- macOS refuses a read whose first frame has passed. A read only partly in the past is accepted,
-  and its past packets fail with `kIOReturnIsoTooOld`. Those are DATA records with that status,
-  which the parser flags. Each endpoint's first frame is therefore taken just before its own
-  initial queue: a shared start was 6 frames past for audio after video's 32 enqueues.
-- With the completion queue held for 0.8, 1.5 and 3 s, every gap was reported once per endpoint
-  at the transfer it precedes (324/315, 1,023/1,020, 2,526/2,522 frames, video/audio), with seq
-  gaps 0. The kernel's completion time of each transfer's last packet put the same frame counts
-  in the gaps to within 0.03 frames, and gap-free transfers stepped within 0.034 ms of schedule.
-  The session reports both (`IOUSBHost bus check`).
+- Held 490 to 505 ms, the next read started 1 to 15 frames in the past and was accepted with
+  8 to 120 video packets past due. Held 510 ms and longer, it lay wholly in the past and was
+  refused. A shared start frame once left audio's first read 6 frames late at start-up, so each
+  endpoint now takes its own.
+- Held 0.51, 0.52, 0.53, 0.8, 1.5 and 3 s, every gap was reported once per endpoint at the
+  transfer it precedes (26 to 2,526 frames), with seq gaps 0. The kernel's completion time of each
+  transfer's last packet put the same frame counts in the gaps to within 0.03 frames. Gap-free
+  transfers stepped within 0.035 ms of schedule, over 3 minutes too. The session reports both
+  (`IOUSBHost bus check`).
 - The stream content does not resolve a gap to the frame. Audio samples missing around those
   gaps came to −0.17, +0.20 and +1.15 frames off the count, and video bytes to about −1.5. The
   device's own buffering sits between the bus and the data.
+- Not exercised on hardware: an unplug during capture, and a refusal other than lateness.
 
 ## Lifecycle and statistics
 

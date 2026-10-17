@@ -80,5 +80,10 @@ $(SCHED_FIXTURE): gen_packet_capture.py
 test-shim: test_shim $(FIXTURE) $(SCHED_FIXTURE)
 	./test_shim $(FIXTURE) $(SCHED_FIXTURE)
 
+# capture_core's IOUSBHost glue against a scripted mock of the ih_* interface (no device), under TSan.
+test-iousbhost: capture_core.c capture_core_ih_test.c capture_iousbhost_mock.c capture_iousbhost_mock.h capture_iousbhost.h capture_core.h
+	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -DCC_WITH_IOUSBHOST -o test_ih capture_core.c capture_iousbhost_mock.c capture_core_ih_test.c $(LIBS)
+	./test_ih
+
 clean:
-	rm -f shuttle-capture shuttle-capture-hold capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect
+	rm -f shuttle-capture shuttle-capture-hold test_ih capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect

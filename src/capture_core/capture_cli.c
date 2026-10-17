@@ -227,7 +227,7 @@ int main(int argc,char**argv){
            (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_late,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
            (unsigned long long)st.schedule_shifts,(unsigned long long)st.schedule_shift_frames);
     if(!cfg.replay_path && cfg.usb_backend==CC_USB_IOUSBHOST)
-        printf("IOUSBHost: reads at explicit USB frames on a user-interactive queue (no real-time policy); its thread's priority lowest %d\n",st.rt_priority_min);
+        printf("IOUSBHost: reads at explicit USB frames on a user-interactive queue (no real-time policy); lowest priority seen at a tick %d\n",st.rt_priority_min);
     else if(!cfg.replay_path)
         printf("real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up)%s, libusb %d\n",
                st.rt_event_thread?"yes":"NO",st.rt_priority_min,st.rt_priority_at_stop,

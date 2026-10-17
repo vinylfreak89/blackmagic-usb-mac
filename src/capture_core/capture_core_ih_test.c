@@ -1,0 +1,109 @@
+/* capture_core's IOUSBHost glue (ih_main, ihc_*) against capture_iousbhost_mock.c, under TSan (make test-iousbhost).
+ * The real backend's own behaviour is measured on hardware (README "USB stacks"); this decides the capture_core side:
+ * unread-frame records land just before the transfer they precede, past-due packets are counted, a refused start
+ * hands nothing over, a callback that calls cc_stop from the queue is refused, and the ring has one producer. */
+#include "capture_core.h"
+#include "capture_iousbhost_mock.h"
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+static int fails;
+#define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
+
+enum { EV_DATA, EV_LOSS };
+typedef struct { int kind; uint8_t ep; uint32_t seq, pkt, packets; int loss_kind; int pay_ep; uint32_t pay_seq, pay_pkt; } ev;
+#define MAXEV 40000
+static ev evs[MAXEV]; static int nev;
+static pthread_mutex_t m=PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t c=PTHREAD_COND_INITIALIZER;
+static int ended, data_n, balance_warned, stop_from_queue=99;
+static cc_session *g_s;
+
+static void on_packet(void *ctx, const cc_packet *p){ (void)ctx;
+    if(nev<MAXEV){ ev e={EV_DATA,p->endpoint,p->submit_seq,p->pkt_index,0,0,-1,0,0};
+        if(p->actual_len>=12){ memcpy(&e.pay_ep,p->data,4); memcpy(&e.pay_seq,p->data+4,4); memcpy(&e.pay_pkt,p->data+8,4); }
+        evs[nev++]=e; }
+    pthread_mutex_lock(&m); data_n++; pthread_cond_broadcast(&c); pthread_mutex_unlock(&m);
+}
+static void on_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){ (void)ctx; (void)by;
+    if(nev<MAXEV) evs[nev++]=(ev){EV_LOSS,ep,seq,0,pk,kind,-1,0,0};
+}
+static void on_end(void *ctx, enum cc_end r){ (void)ctx; (void)r; pthread_mutex_lock(&m); ended++; pthread_cond_broadcast(&c); pthread_mutex_unlock(&m); }
+static void diag(void *ctx, const char *line){ (void)ctx;
+    if(strstr(line,"NOT balance")) balance_warned++;
+    if(strstr(line,"past due")) stop_from_queue=cc_stop(g_s);   /* on the completion queue: must be refused */
+}
+static int wait_data(int n){
+    struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=20;
+    pthread_mutex_lock(&m); int rc=0;
+    while(data_n<n && rc==0) rc=pthread_cond_timedwait(&c,&m,&ts);
+    int got=data_n; pthread_mutex_unlock(&m); return got>=n;
+}
+static cc_config cfg_(void){ cc_config cfg; memset(&cfg,0,sizeof cfg); cfg.usb_backend=CC_USB_IOUSBHOST; cfg.ring_mb=64; cfg.diag_log=diag; return cfg; }
+
+int main(void){
+    cc_callbacks cb; memset(&cb,0,sizeof cb); cb.on_packet=on_packet; cb.on_loss_ex=on_loss_ex; cb.on_end=on_end;
+    const int T=40, NPK=128;
+
+    /* 1. a normal session with two gaps and one past-due run */
+    ih_mock=(ih_mock_config){.transfers=T,.gap_at_video=10,.gap_at_audio=20,.gap_frames=25,.too_old_at_video=30,.too_old=16};
+    cc_config cfg=cfg_();
+    CHECK(cc_open(&g_s,&cfg,&cb)==CC_OK,"open");
+    CHECK(cc_start(g_s)==CC_OK,"start");
+    CHECK(wait_data(2*T*NPK),"only %d of %d packets delivered",data_n,2*T*NPK);
+    CHECK(cc_stop(g_s)==CC_OK,"stop");
+    cc_stats st; cc_get_stats(g_s,&st);
+    CHECK(ih_mock.went,"ih_go never called");
+    CHECK(stop_from_queue==CC_ERR_STATE,"cc_stop from the completion queue returned %d, not refused",stop_from_queue);
+    CHECK(st.unscheduled_packets[0]==25*8+16 && st.unscheduled_packets[1]==25*8,"unscheduled packets %llu / %llu",
+          (unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1]);
+    CHECK(st.unscheduled_events==3 && st.unscheduled_late==0,"unscheduled events %llu late %llu",(unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_late);
+    CHECK(st.iso_errors==16,"iso errors %ld",st.iso_errors);
+    CHECK(st.transfers_allocated==st.transfers_freed && st.transfers_allocated==2*CC_XFERS_PER_ENDPOINT,"transfers %ld/%ld",st.transfers_allocated,st.transfers_freed);
+    CHECK(!balance_warned,"unread-frame accounting warned");
+    /* order and placement, per endpoint: data in (seq, pkt) order; each loss directly before its transfer's first packet */
+    for(int ep=0;ep<2;ep++){
+        uint8_t E=ep?CC_EP_AUDIO:CC_EP_VIDEO; uint32_t want_seq=0, want_pkt=0; int losses=0, pending=-1;
+        for(int i=0;i<nev;i++){
+            if(evs[i].ep!=E) continue;
+            if(evs[i].kind==EV_LOSS){
+                losses++; pending=(int)evs[i].seq;
+                CHECK(evs[i].loss_kind==CC_LOSS_UNSCHEDULED && evs[i].packets==25*8,"ep %02x loss kind %d packets %u",E,evs[i].loss_kind,evs[i].packets);
+                CHECK(evs[i].seq==(uint32_t)(ep?20:10),"ep %02x loss names seq %u",E,evs[i].seq);
+                CHECK(want_pkt==0,"ep %02x loss inside transfer %u",E,want_seq);
+                continue;
+            }
+            CHECK(evs[i].seq==want_seq && evs[i].pkt==want_pkt,"ep %02x packet (%u,%u), expected (%u,%u)",E,evs[i].seq,evs[i].pkt,want_seq,want_pkt);
+            if(pending>=0){ CHECK((uint32_t)pending==evs[i].seq && evs[i].pkt==0,"ep %02x loss for seq %d not followed by its data",E,pending); pending=-1; }
+            if(evs[i].pay_ep>=0) CHECK(evs[i].pay_ep==ep && evs[i].pay_seq==evs[i].seq && evs[i].pay_pkt==evs[i].pkt,"ep %02x payload names (%d,%u,%u)",E,evs[i].pay_ep,evs[i].pay_seq,evs[i].pay_pkt);
+            if(++want_pkt==(uint32_t)NPK){ want_pkt=0; want_seq++; }
+        }
+        CHECK(losses==1 && want_seq==(uint32_t)T,"ep %02x: %d losses, %u transfers",E,losses,want_seq);
+    }
+    cc_close(g_s); g_s=NULL;
+    CHECK(ended==1,"on_end fired %d times",ended);
+    printf("  IOUSBHost glue: %d records in order, unread frames placed before their transfers, past-due packets counted, callback stop refused\n",nev);
+
+    /* 2. a refused start: no data, no on_end, cc_start fails, ih_go never called */
+    nev=0; data_n=0; ended=0;
+    ih_mock=(ih_mock_config){.transfers=T,.gap_at_video=-1,.gap_at_audio=-1,.too_old_at_video=-1,.fail_start=(int)0xE00002C0};
+    cfg=cfg_();
+    CHECK(cc_open(&g_s,&cfg,&cb)==CC_OK,"open (refused start)");
+    CHECK(cc_start(g_s)!=CC_OK,"a refused first enqueue still started");
+    CHECK(!ih_mock.went,"ih_go called after a refused start");
+    CHECK(data_n==0,"%d packets handed over from a failed start",data_n);
+    cc_close(g_s); g_s=NULL;
+    CHECK(ended==0,"on_end fired for a session that never started");
+    printf("  refused start: nothing handed over, no on_end\n");
+
+    /* 3. no device: cc_open fails without a session */
+    ih_mock=(ih_mock_config){.fail_open=1};
+    cfg=cfg_(); cc_session *x=NULL;
+    CHECK(cc_open(&x,&cfg,&cb)==CC_ERR_NODEVICE && !x,"open without a device");
+
+    if(fails){ printf("FAILURES: %d\n",fails); return 1; }
+    printf("ALL TESTS PASSED\n"); return 0;
+}

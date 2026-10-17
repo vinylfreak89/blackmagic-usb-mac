@@ -343,6 +343,7 @@ static void* delivery_main(void *arg){
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     size_t cap=DELIVERY_BUFFER_BYTES; uint8_t *buf=s->delivery_buffer;
     s->delivery_buffer=NULL; /* Ownership handed to this thread's local buffer. */
+    int unsched_exact=0;      /* the stream came through IOUSBHost (its SESSION note): unread-slot counts are exact */
     for(;;){
         size_t t=atomic_load_explicit(&s->r_tail,memory_order_relaxed);
         size_t h=atomic_load_explicit(&s->r_head,memory_order_acquire);
@@ -390,10 +391,13 @@ static void* delivery_main(void *arg){
             break; }
         case REC_HOSTLOSS:
             if(rh.pkt_index==CC_PI_UNSCHEDULED || rh.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* loud: this loss leaves no other trace anywhere */
-                /* "~": libusb's count is the model's estimate; IOUSBHost's is exact */
+                /* libusb's count is the unread-slot model's estimate ("~"); IOUSBHost's is exact (its SESSION note) */
                 char line[240];
-                snprintf(line,sizeof line,"capture_core: HOST LOSS: %s%u USB %s slots never read (macOS skipped past them after a late resubmission), %s transfer seq %u",
-                         s->ih?"":"~",rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio",rh.pkt_index==CC_PI_UNSCHEDULED?"from":"found late, before",rh.submit_seq);
+                if(unsched_exact)
+                    snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s slots never read (macOS refused the late read; it was queued %s), %s transfer seq %u",
+                             rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio","8 frames ahead",rh.pkt_index==CC_PI_UNSCHEDULED?"before":"found late, before",rh.submit_seq);
+                else snprintf(line,sizeof line,"capture_core: HOST LOSS: ~%u USB %s slots never read (macOS skipped past them after a late resubmission), %s transfer seq %u",
+                         rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio",rh.pkt_index==CC_PI_UNSCHEDULED?"from":"found late, before",rh.submit_seq);
                 if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
             }
             if(s->cb.on_loss_ex) s->cb.on_loss_ex(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len,
@@ -409,7 +413,10 @@ static void* delivery_main(void *arg){
         case REC_TICK:
             if(s->cb.on_tick) s->cb.on_tick(s->cb.ctx,rh.status);
             break;
-        default: break; // SESSION etc: internal
+        case REC_SESSION:
+            if(memmem(buf,plen,"backend=iousbhost",17)) unsched_exact=1;
+            break;
+        default: break;
         }
     }
     free(buf);
@@ -830,13 +837,28 @@ startup_failed:
 
 #ifdef CC_WITH_IOUSBHOST
 /* ---------------- IOUSBHost device backend (cfg.usb_backend). Its callbacks run on one serial dispatch queue, the
- * ring's single producer while streaming; this thread writes the SESSION record before the first read is queued and
- * the final loss records after ih_stop has quiesced the queue, so the two never write at once. No real-time policy:
- * the queue's threads belong to the system's pool, and a late read costs exactly counted frames, not a guess. */
-static void ihc_transfer_(void *ctx, int e, uint32_t seq, int io, uint64_t unread){
-    cc_session *s=ctx; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO;
-    s->seq_ctr[e]=seq+1;                              /* ring-loss records name the newest transfer, as with libusb */
+ * ring's single producer while streaming; this thread writes the SESSION record before ih_start and the final loss
+ * records after ih_stop has quiesced the queue, and ih_start holds the callbacks back until ih_go, so the two never
+ * write at once. No real-time policy: the queue's threads belong to the system's pool, and a late read costs
+ * exactly counted frames, not a guess. Each callback marks its thread as this session's for its duration, so a
+ * diag_log callback that calls cc_stop/cc_close from it is refused, as on the other backends' threads. */
+#define IHC_ENTER(s) cc_session *ihc_prev_=internal_session; internal_session=(s)
+#define IHC_LEAVE() internal_session=ihc_prev_
+static void ihc_diag_(void *ctx, const char *line){
+    cc_session *s=ctx; IHC_ENTER(s);
+    if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+    IHC_LEAVE();
+}
+static void ihc_transfer_(void *ctx, int e, uint32_t seq, int io, uint64_t unread, uint32_t too_old){
+    cc_session *s=ctx; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO; IHC_ENTER(s);
+    s->seq_ctr[e]=seq;                                /* ring-loss records name the transfer being delivered */
     if(unread){ sched_count_(s,e,unread); sched_place_(s,ep,seq,unread,(uint16_t)CC_PI_UNSCHEDULED); }
+    if(too_old){                                      /* never read either; they follow as DATA records with that status */
+        atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],too_old);
+        char line[200]; snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s packets were past due when transfer seq %u was queued (macOS failed them as too old)",
+                                 too_old,e?"audio":"video",seq);
+        ihc_diag_(s,line);
+    }
     if(io!=kIOReturnSuccess && io!=kIOReturnUnderrun){   /* reported, and its packets still go out with their status */
         s->xfer_err++; put_meta_(s,REC_XFERERR,ep,0,seq,(uint32_t)io,NULL,0);
     }
@@ -844,28 +866,37 @@ static void ihc_transfer_(void *ctx, int e, uint32_t seq, int io, uint64_t unrea
     if(e==0 && s->dbg_hold_at>0 && ++s->dbg_video_done==s->dbg_hold_at)
         usleep((useconds_t)s->dbg_hold_ms*1000);      /* CC_DEBUG_HOLD_*: the queue held, on purpose */
 #endif
+    IHC_LEAVE();
 }
 static void ihc_packet_(void *ctx, int e, uint32_t seq, int pi, int ok, uint32_t st, uint32_t req, uint32_t al, const uint8_t *d){
-    cc_session *s=ctx;
+    cc_session *s=ctx; IHC_ENTER(s);
     if(!ok) s->iso_err++;
     if(al==0) s->zero_pkts++; else if(al<req) s->short_pkts++;
     put_pkt_(s,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)pi,seq,ok?0:st,req,d,al);
     s->bytes[e]+=al;
+    IHC_LEAVE();
 }
 static void ihc_tick_(void *ctx){
-    cc_session *s=ctx;
+    cc_session *s=ctx; IHC_ENTER(s);
     put_meta_(s,REC_TICK,0,0,0,(uint32_t)(monotonic_ms_()-s->ih_t0_ms),NULL,0); rt_sample_(s);
+    IHC_LEAVE();
+}
+static void ihc_submit_failed_(void *ctx, int e, uint32_t seq, int io){
+    cc_session *s=ctx; IHC_ENTER(s);
+    s->xfer_err++; s->resub_fail++;
+    put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0);
+    IHC_LEAVE();
 }
 static void ihc_fatal_(void *ctx, int reason, int io, int e, uint32_t seq){
-    cc_session *s=ctx;
+    cc_session *s=ctx; IHC_ENTER(s);
     int gone=reason==1 || io==kIOReturnNoDevice || io==kIOReturnNotAttached || io==kIOReturnOffline;
     if(reason==2){ s->xfer_err++; s->resub_fail++; put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0); }
-    atomic_store(&s->end_reason,gone?CC_END_DEVICE_GONE:CC_END_TRANSFER_FAILED);
+    /* an unplug can fail a requeue before its notice arrives: the notice still names the end */
+    if(gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);
+    else if(atomic_load(&s->end_reason)!=CC_END_DEVICE_GONE) atomic_store(&s->end_reason,CC_END_TRANSFER_FAILED);
     atomic_store(&s->stop_req,1);
     pthread_mutex_lock(&s->space_m); pthread_cond_broadcast(&s->space_c); pthread_mutex_unlock(&s->space_m);
-}
-static void ihc_diag_(void *ctx, const char *line){
-    cc_session *s=ctx; if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+    IHC_LEAVE();
 }
 static void* ih_main(void *arg){
     cc_session *s=arg;
@@ -878,24 +909,27 @@ static void* ih_main(void *arg){
 #endif
     { char line[200];
       snprintf(line,sizeof line,"capture_core: IOUSBHost backend: reads at explicit USB frames, unread frames counted exactly; %d transfers queued per endpoint",XFERS);
-      if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line); }
+      ihc_diag_(s,line); }
     char note[320];
     snprintf(note,sizeof note,"capture_core v1 backend=iousbhost input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s rt=queue:user-interactive",
              s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on");
     put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
-    ih_callbacks cb={ .ctx=s, .on_transfer=ihc_transfer_, .on_packet=ihc_packet_, .on_tick=ihc_tick_, .on_fatal=ihc_fatal_, .on_diag=ihc_diag_ };
+    ih_callbacks cb={ .ctx=s, .on_transfer=ihc_transfer_, .on_packet=ihc_packet_, .on_tick=ihc_tick_,
+                      .on_submit_failed=ihc_submit_failed_, .on_fatal=ihc_fatal_, .on_diag=ihc_diag_ };
     s->ih_t0_ms=monotonic_ms_();
     char err[256]="";
-    int rc=ih_start(s->ih,&cb,XFERS,V_NPK,V_PKT,A_NPK,A_PKT,err,sizeof err);
+    int deadline=s->cfg.resubmit_deadline_ms>0?s->cfg.resubmit_deadline_ms:2000;
+    int rc=ih_start(s->ih,&cb,XFERS,V_NPK,V_PKT,A_NPK,A_PKT,deadline,err,sizeof err);
     if(rc!=CC_OK){
         char line[300]; snprintf(line,sizeof line,"capture_core: IOUSBHost start failed: %s",err);
-        if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+        ihc_diag_(s,line);
         if(atomic_load(&s->end_reason)==CC_END_STOPPED) atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR);
         atomic_store(&s->stop_req,1); startup_report_(s,rc);
         pthread_mutex_lock(&s->life_m); while(!s->start_gate) pthread_cond_wait(&s->life_c,&s->life_m); pthread_mutex_unlock(&s->life_m);
     } else {
         startup_report_(s,CC_OK);
         if(await_start_gate_(s)){
+            ih_go(s->ih);                             /* only now do completions reach the ring */
             /* cc_stop and ihc_fatal_ broadcast space_c after setting stop_req; the timeout is a liveness backstop */
             pthread_mutex_lock(&s->space_m);
             while(!atomic_load(&s->stop_req)){
@@ -907,14 +941,20 @@ static void* ih_main(void *arg){
     }
     ih_stats st; ih_stop(s->ih,&st);                 /* the queue is quiet from here: this thread is the producer */
     s->fleet[0]=st.fleet[0]; s->fleet[1]=st.fleet[1];
-    s->xfers_alloc=st.transfers; s->xfers_freed=st.incomplete?0:st.transfers;   /* buffers go with ih_close */
+    s->xfers_alloc=st.transfers; s->xfers_freed=st.transfers_freed;
+    s->resub_rec=(long)(st.resubmit_recovered[0]+st.resubmit_recovered[1]);
     s->teardown_incomplete=st.incomplete;
     { char line[240];
       snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps)%s",
                st.step_dev_ms[0],st.step_dev_ms[1],(unsigned long long)st.steps[0],(unsigned long long)st.steps[1],
                st.gap_dev_ms[0]>0||st.gap_dev_ms[1]>0?"; across unread gaps see the lines above":"");
       ihc_diag_(s,line); }
-    if(s->rt_pri_min==INT_MAX) s->rt_pri_min=-1;     /* priority of the queue's thread at each tick; none sampled at stop */
+    for(int e=0;e<2;e++) if(st.unread_frames[e]!=st.unread_delivered[e]+st.unread_at_stop[e]){
+        char line[240]; snprintf(line,sizeof line,"capture_core: IOUSBHost %s unread-frame accounting does NOT balance: %llu counted, %llu reported, %llu on transfers ended at the stop",
+                                 e?"audio":"video",(unsigned long long)st.unread_frames[e],(unsigned long long)st.unread_delivered[e],(unsigned long long)st.unread_at_stop[e]);
+        ihc_diag_(s,line);
+    }
+    if(s->rt_pri_min==INT_MAX) s->rt_pri_min=-1;     /* priority of whichever pool thread ran each tick; none at stop */
     s->rt_pri_stop=-1;
     cc_test_input_done();
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
