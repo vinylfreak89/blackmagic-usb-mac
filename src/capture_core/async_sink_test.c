@@ -69,7 +69,8 @@ static int same_file(const char *a,const char *b){
     do{ ca=fgetc(x); cb2=fgetc(y); }while(ca==cb2 && ca!=EOF);
     fclose(x); fclose(y); return ca==cb2;
 }
-/* the same feed at about 80 MB/s, twice the device rate: a producer the spiller can keep up with */
+/* the same feed at about 80 MB/s, twice the device rate: for cases whose outcome does not depend on the spiller
+ * keeping up (a ring that holds the whole feed, or a floor that loses on purpose); the others use feed_spilled */
 static void feed_paced(cc_callbacks *cb,int n){
     for(int i=0;i<n;i++){
         uint8_t ep=i%3?CC_EP_VIDEO:CC_EP_AUDIO; uint32_t len=ep==CC_EP_VIDEO?15360:192;
@@ -81,6 +82,63 @@ static void feed_paced(cc_callbacks *cb,int n){
         if(i%500==0) cb->on_tick(cb->ctx,(uint32_t)i);
         if(i%8==7){ struct timespec d={0,1000000}; nanosleep(&d,NULL); }
     }
+}
+/* The same feed, paced by the spill instead of a clock, for a destination stalled through the whole feed: a record
+ * goes in only while what has been fed and not yet spilled stays a margin under the ring, so the ring cannot overflow
+ * however slowly the spiller runs. A clock pace (80 MB/s) lost packets about 1 run in 10 (2026-10-17): the spiller's
+ * free-space query, once per segment and 1 MiB segments here, took 7 ms mean on passing runs and 15-33 ms mean (up to
+ * 174 ms) on failing ones, and an 8 MiB ring holds 100 ms of that feed. These cases therefore no longer claim the
+ * spill sustains a rate (production buffers ~47 s at device rate with 128 MiB segments); they prove it moves a
+ * stalled destination's backlog out of memory and back in order. The spill-write hook counts what left memory and
+ * signals; the feeder waits on that event. With the destination stalled the spill is the only way out of memory (a
+ * draining writer frees memory the hook never sees: not for such cases), so a feed that ends proves the spill
+ * drained it. Returns the longest single callback, in ms: the producer never waits inside the sink. */
+static pthread_mutex_t sp_m=PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t sp_cv=PTHREAD_COND_INITIALIZER;
+static uint64_t sp_moved, sp_fed;                 /* under sp_m: record bytes the spill wrote out of memory; fed so far */
+static ssize_t counting_spill(int fd,const void *b,size_t n,off_t off){
+    ssize_t w=pwrite(fd,b,n,off);
+    if(w>0){ pthread_mutex_lock(&sp_m); sp_moved+=(uint64_t)w; pthread_cond_broadcast(&sp_cv); pthread_mutex_unlock(&sp_m); }
+    return w;
+}
+static void spill_counting(void){ pthread_mutex_lock(&sp_m); sp_moved=sp_fed=0; pthread_mutex_unlock(&sp_m); cc_async_sink_test_spill_write=counting_spill; }
+/* Under sp_m: wait until fed-and-not-spilled is at most `limit`; 20 s without spill progress fails loudly. */
+static void spill_wait_(uint64_t limit){
+    struct timespec dl; clock_gettime(CLOCK_REALTIME,&dl); dl.tv_sec+=20; uint64_t was=sp_moved;
+    while(sp_fed-sp_moved>limit){
+        if(pthread_cond_timedwait(&sp_cv,&sp_m,&dl)==ETIMEDOUT && sp_fed-sp_moved>limit){
+            if(sp_moved==was){ fprintf(stderr,"feed_spilled: no spill progress in 20 s (fed %llu, spilled %llu, want <= %llu unspilled)\n",
+                                       (unsigned long long)sp_fed,(unsigned long long)sp_moved,(unsigned long long)limit); assert(0); }
+            clock_gettime(CLOCK_REALTIME,&dl); dl.tv_sec+=20; was=sp_moved;   /* progress: a fresh window */
+        }
+    }
+}
+static double feed_spilled(cc_callbacks *cb,int n,size_t ring,const char *note){
+    /* what the feeder cannot see: a granule of unpublished tail (the sink's: ring/64, at most 1 MiB, page-aligned), a
+     * spill chunk counted before its memory is handed back (at most 1 MiB), and the record about to go in */
+    size_t g=ring/64<((size_t)1<<20)?ring/64:((size_t)1<<20);
+    const uint64_t margin=g+((uint64_t)1<<20)+24+sizeof payload; assert(ring>margin+((size_t)1<<20));
+    const uint64_t limit=ring-margin; double max_ms=0;
+    pthread_mutex_lock(&sp_m); sp_fed=24+strlen(note); pthread_mutex_unlock(&sp_m);
+    #define PUT(bytes,call) do{ \
+        pthread_mutex_lock(&sp_m); sp_fed+=(bytes); spill_wait_(limit); pthread_mutex_unlock(&sp_m); \
+        struct timespec a_,b_; clock_gettime(CLOCK_MONOTONIC,&a_); call; clock_gettime(CLOCK_MONOTONIC,&b_); \
+        double d_=(b_.tv_sec-a_.tv_sec)*1e3+(b_.tv_nsec-a_.tv_nsec)/1e6; if(d_>max_ms) max_ms=d_; }while(0)
+    for(int i=0;i<n;i++){
+        uint8_t ep=i%3?CC_EP_VIDEO:CC_EP_AUDIO; uint32_t len=ep==CC_EP_VIDEO?15360:192;
+        if(i%50==7) len=0;
+        cc_packet p={ep,(uint16_t)(i%128),(uint32_t)(i/128),0,ep==CC_EP_VIDEO?15360:192,len,payload};
+        payload[0]=(uint8_t)i; PUT(24+len,cb->on_packet(cb->ctx,&p));
+        if(i==100) PUT(24,cb->on_loss(cb->ctx,CC_EP_VIDEO,3,46080));
+        if(i==200) PUT(24,cb->on_error(cb->ctx,CC_EP_AUDIO,9,-1,CC_ERROR_TRANSFER));
+        if(i%500==0) PUT(24,cb->on_tick(cb->ctx,(uint32_t)i));
+    }
+    #undef PUT
+    return max_ms;
+}
+/* After a feed_spilled feed: wait until the spiller has gone idle for good (the memory backlog under its threshold
+ * `after`, so it never spills again), so whatever the writer does next it does from the spill, then from memory. */
+static void spill_settle(size_t after,const char *note){
+    pthread_mutex_lock(&sp_m); spill_wait_(after+24+strlen(note)-1); pthread_mutex_unlock(&sp_m);
 }
 static _Atomic int free_calls, free_allow;
 static uint64_t limited_free(const char *dir){ (void)dir; return atomic_fetch_add(&free_calls,1)<atomic_load(&free_allow)?(uint64_t)1<<40:0; }
@@ -205,11 +263,14 @@ static int crash_child(const char *dest, const char *sdir, int sfail){
     cc_async_sink_spill sp={sdir,1,1u<<20,1u<<20}; cc_async_sink *cs; cc_callbacks cc;
     for(size_t i=0;i<sizeof payload;i++) payload[i]=(uint8_t)(i*7);
     cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
-    if(sfail) cc_async_sink_test_spill_write=half_failing_spill;
+    if(sfail) cc_async_sink_test_spill_write=half_failing_spill; else spill_counting();
     if(cc_async_sink_open_spill(&cs,dest,"spill",sfail?64u<<20:8u<<20,65536,&sp)!=CC_OK) return 2;
     cc_async_sink_callbacks(cs,&cc);
     for(int i=0;!atomic_load(&in_gate);i++){ if(i>5000) return 3; struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-    feed_paced(&cc,3000);
+    if(sfail) feed_paced(&cc,3000);                    /* a 64 MiB ring holds the whole feed: the pace cannot lose */
+    else {   /* the crash then cuts the writer's delivery of the spill, never a memory chunk with spilled records after it
+              * (that is the confessed hole of case 16e, which a byte-prefix comparison would reject) */
+        feed_spilled(&cc,3000,8u<<20,"spill"); spill_settle(sp.after,"spill"); }
     atomic_store(&gate_open,1); struct timespec dd={0,30000000}; nanosleep(&dd,NULL);   /* some delivery, in 3000-byte writes */
     _exit(0);                                          /* no close: the crash */
 }
@@ -316,16 +377,17 @@ int main(int argc, char **argv){
     { cc_tagged_sink *t7; cc_callbacks c7; assert(cc_tagged_sink_open(&t7,r7,"spill")==CC_OK); cc_tagged_sink_callbacks(t7,&c7);
       feed(&c7,3000,0); assert(cc_tagged_sink_close(t7)==CC_OK); }
     cc_async_sink_test_spill_any_volume=1;
-    cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+    cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0); spill_counting();
     assert(cc_async_sink_open_spill(&as,s7,"spill",8u<<20,65536,&sp)==CC_OK && cc_async_sink_spill_state(as)==1);
     cc_async_sink_callbacks(as,&ca);
     for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-    clock_gettime(CLOCK_MONOTONIC,&t0); feed_paced(&ca,3000); clock_gettime(CLOCK_MONOTONIC,&t1);
-    ms=(t1.tv_sec-t0.tv_sec)*1e3+(t1.tv_nsec-t0.tv_nsec)/1e6; assert(ms<5000);
+    clock_gettime(CLOCK_MONOTONIC,&t0); ms=feed_spilled(&ca,3000,8u<<20,"spill"); clock_gettime(CLOCK_MONOTONIC,&t1);
+    assert(ms<1000);                                  /* no callback waited: a stalled destination would hold one forever */
+    double feed_s=(t1.tv_sec-t0.tv_sec)+(t1.tv_nsec-t0.tv_nsec)/1e9;
     int on_disk=spill_files(sdir); atomic_store(&gate_open,1);
-    assert(cc_async_sink_close(as,&st)==CC_OK);
-    printf("  spill: %.1f MB through the local disk (peak %.1f MB on disk, %d segment files during the stall, %llu created), ring peak %.1f MB of 8.4\n",
-           st.spill_bytes/1e6,st.spill_peak/1e6,on_disk,(unsigned long long)st.spill_segments,st.high_water/1e6);
+    assert(cc_async_sink_close(as,&st)==CC_OK); cc_async_sink_test_spill_write=NULL;
+    printf("  spill: %.1f MB through the local disk at %.0f MB/s (peak %.1f MB on disk, %d segment files during the stall, %llu created), ring peak %.1f MB of 8.4, longest callback %.2f ms\n",
+           st.spill_bytes/1e6,st.spill_bytes/1e6/feed_s,st.spill_peak/1e6,on_disk,(unsigned long long)st.spill_segments,st.high_water/1e6,ms);
     assert(!st.lost_packets[0] && !st.lost_packets[1] && !st.control_dropped && !st.io_error && !st.spill_error);
     assert(st.spill_state==1 && st.spill_peak>(16u<<20) && st.spill_segments>16 && on_disk>16);
     assert(same_file(r7,s7) && spill_files(sdir)==0);
@@ -385,10 +447,10 @@ int main(int argc, char **argv){
     /* 12. a backlog drained at close: close reports progress while it drains (the CLI's guard re-arms on it), and
      * every segment is gone afterwards. The destination is stalled through the feed, then slow (2 ms per write). */
     { char s12[256]; snprintf(s12,sizeof s12,"%s/drain12.tpc",dir); cc_async_sink_test_spill_any_volume=1;
-      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0); spill_counting();
       assert(cc_async_sink_open_spill(&as,s12,"drain",8u<<20,65536,&sp)==CC_OK); cc_async_sink_callbacks(as,&ca);
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-      feed_paced(&ca,1500);
+      feed_spilled(&ca,1500,8u<<20,"drain");
       assert(spill_files(sdir)>4);
       cc_async_sink_test_write=slow_write; atomic_store(&gate_open,1);   /* the stuck call returns; the rest go slowly */
       struct prog pr={as,0,0}; pthread_t w; assert(pthread_create(&w,NULL,watch_progress,&pr)==0);
@@ -396,7 +458,7 @@ int main(int argc, char **argv){
       assert(cc_async_sink_close(as,&st)==CC_OK);
       printf("  drain at close: %.1f MB from the spill, progress seen to advance %d times while closing\n",st.spill_bytes/1e6,pr.advances);
       assert(pr.advances>10 && !st.lost_packets[0] && !st.lost_packets[1] && spill_files(sdir)==0);
-      unlink(s12); cc_async_sink_test_write=NULL; cc_async_sink_test_spill_any_volume=0; }
+      unlink(s12); cc_async_sink_test_write=NULL; cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0; }
     /* 13. the spill directory must be this user's private directory, never a symlink; segments of a writer that is
      * gone are reported at open and left in place (they hold undelivered capture bytes) */
     { char s13[256], pd[300], ln[300], stale[400]; snprintf(s13,sizeof s13,"%s/priv13.tpc",dir);
@@ -420,10 +482,10 @@ int main(int argc, char **argv){
      * is in the file or confessed, per endpoint. */
     { char s14[256]; snprintf(s14,sizeof s14,"%s/sread14.tpc",dir); cc_async_sink_test_spill_any_volume=1;
       cc_async_sink_test_spill_read=failing_spill_read; atomic_store(&sread_calls,0); atomic_store(&sread_fail_at,7);
-      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0); spill_counting();
       assert(cc_async_sink_open_spill(&as,s14,"sread",8u<<20,65536,&sp)==CC_OK); cc_async_sink_callbacks(as,&ca);
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-      feed_paced(&ca,3000); atomic_store(&gate_open,1);
+      feed_spilled(&ca,3000,8u<<20,"sread"); atomic_store(&gate_open,1);
       assert(cc_async_sink_close(as,&st)==CC_OK && !st.io_error);
       assert(st.spill_read_errors==1 && st.spill_read_lost_packets[0]>0 && !st.lost_packets[0] && !st.lost_packets[1]);
       FILE *g=fopen(s14,"rb"); uint64_t dt[2]={0},lo[2]={0},sl[2]={0}; struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } hh;
@@ -437,7 +499,7 @@ int main(int argc, char **argv){
       /* fed 2000 video / 1000 audio plus the forwarded loss of 3 video packets: all in the file or confessed */
       assert(dt[0]+lo[0]==2003 && dt[1]+lo[1]==1000);
       assert(spill_files(sdir)==0);
-      unlink(s14); cc_async_sink_test_spill_read=NULL; cc_async_sink_test_write=NULL; cc_async_sink_test_spill_any_volume=0; }
+      unlink(s14); cc_async_sink_test_spill_read=NULL; cc_async_sink_test_spill_write=NULL; cc_async_sink_test_write=NULL; cc_async_sink_test_spill_any_volume=0; }
     /* 15. a writer that dies without closing: its undelivered spill is put where it belongs at the next start. The
      * child spills with its destination stalled, lets the writer cut a record mid-write, and exits without close.
      * cc_spill_recover then leaves a destination that parses record by record, is a prefix of the full stream
