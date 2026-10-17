@@ -1164,6 +1164,7 @@ static pthread_t spill_recover_thr; static int spill_recover_started; static _At
 static void spill_recover_log(void *ctx, const char *line){ (void)ctx; blog(strstr(line, "recovered") ? LOG_WARNING : LOG_ERROR, "[shuttle-source] %s", line); }
 static void *spill_recover_main(void *arg){
     (void)arg; char dir[64]; snprintf(dir, sizeof dir, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
+    if (getenv("SHUTTLE_SOURCE_NO_SPILL_RECOVERY")) return NULL;   /* tests: never touch this user's real leftovers */
     cc_spill_recover_stats rs; int rc = cc_spill_recover(dir, spill_recover_log, NULL, &spill_recover_stop, NULL, &rs);
     if (rc != 0) blog(LOG_ERROR, "[shuttle-source] spill recovery: %s is not a private directory of this user; nothing recovered", dir);
     return NULL;

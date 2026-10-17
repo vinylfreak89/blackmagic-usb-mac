@@ -31,6 +31,7 @@ static const char *const L_NOFILE = "replay file cannot be opened";
 int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s fixture_plain.tpc\n", argv[0]); return 9; }
     stub_verbose = getenv("VERBOSE") != NULL;
+    setenv("SHUTTLE_SOURCE_NO_SPILL_RECOVERY", "1", 1);   /* the load starts spill recovery: not on this user's scratch */
     obs_module_load();
     const struct obs_source_info *I = stub_info;
     CHECK(I && (I->output_flags & OBS_SOURCE_CONTROLLABLE_MEDIA), "source registered with media controls");
@@ -221,6 +222,7 @@ int main(int argc, char **argv){
 #endif
     CHECK(now() - t0 < destroy_bound, "destroy took %.2f s", now() - t0);
     CHECK(stub_frame_errors == 0, "%llu frames handed to OBS were not I210 4c with the expected planes", (unsigned long long)stub_frame_errors);
+    obs_module_unload();                                   /* joins what the load started */
     printf(fails ? "MEDIA CONTROLS: %d FAILURES\n" : "MEDIA CONTROLS PASS\n", fails);
     return fails ? 1 : 0;
 }
