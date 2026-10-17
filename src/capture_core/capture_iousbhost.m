@@ -16,24 +16,35 @@
 #define IH_LEAD 8                      /* frames ahead of the bus a (re)scheduled read starts: 8 ms */
 #define IH_MAXX 64
 #define IH_PER_FRAME 8                 /* packets per 1 ms frame: bInterval 1 at high speed and above */
+/* macOS fails as too old the frame after the one the bus is in as well (measured 2026-10-17: with the bus at a read's
+ * first frame f, f and f+1 failed) */
+#define IH_KERNEL_LEAD 1
 #ifndef IH_BACKSTOP_S
 #define IH_BACKSTOP_S 5.0                /* the fake-IOUSBHost test shortens it */
 #endif
 
-@interface IHXfer : NSObject {
+@interface IHCounter : NSObject {
 @public
-    _Atomic int *freed;                /* the device's release count (ih_stats.transfers_freed) */
+    _Atomic int n;
 }
+@end
+@implementation IHCounter
+@end
+
+@interface IHXfer : NSObject
+@property (nonatomic, strong) IHCounter *freed;   /* deallocations, shared with the device: a transfer can outlive it
+                                                   * while IOUSBHost still holds its completion block */
 @property (nonatomic) int ep;          /* 0 video, 1 audio */
 @property (nonatomic) uint32_t seq;
 @property (nonatomic) uint64_t gap;    /* frames left unread before this transfer, reported with its data */
 @property (nonatomic) uint64_t fail_since_ms;   /* first refused enqueue of the current attempt (0: none) */
-@property (nonatomic) uint64_t past_due;        /* frames already passed when it was queued (predicted kIOReturnIsoTooOld) */
+@property (nonatomic) uint64_t past_lo, past_hi; /* frames already passed when it was queued: the bus frame before and
+                                                   * after the enqueue bracket the count failing as kIOReturnIsoTooOld */
 @property (nonatomic, strong) NSMutableData *buf;
 @property (nonatomic) IOUSBHostIsochronousTransaction *tl;
 @end
 @implementation IHXfer
-- (void)dealloc { free(_tl); if(freed) atomic_fetch_add(freed,1);
+- (void)dealloc { free(_tl); if(_freed) atomic_fetch_add(&_freed->n,1);
 #ifdef IH_FAKE
     atomic_fetch_add(&ih_fake_xfer_deallocs,1);
 #endif
@@ -56,7 +67,7 @@
     BOOL discard;                      /* stopped without ih_go: completions are dropped, never handed over */
     ih_stats st; int live[2];
     uint64_t last_ts[2]; double abs_ns;
-    _Atomic int freed;
+    IHCounter *freed;
     NSMutableArray<IHXfer*> *all;
 }
 @end
@@ -93,15 +104,15 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochron
     uint32_t old=0;
     for(int i=0;i<d->npk[ep];i++) if(tl[i].status==kIOReturnIsoTooOld) old++;
     d->st.too_old[ep]+=old; d->st.unread_delivered[ep]+=x.gap;
-    /* predicted against observed past-due packets: anything else failing as too old shows as a mismatch. The frame
-     * being read when it was queued may go either way, so one frame of disagreement is allowed. */
-    int64_t pd=(int64_t)(x.past_due*IH_PER_FRAME), od=(int64_t)old-pd;
-    if(od>IH_PER_FRAME || od<-IH_PER_FRAME){
+    /* observed past-due packets against the bracket from the bus frame before and after the enqueue: anything else
+     * failing as too old shows as a mismatch */
+    if(old<x.past_lo*IH_PER_FRAME || old>x.past_hi*IH_PER_FRAME){
         d->st.too_old_mismatch[ep]++;
         if(d->cb.on_diag){ char line[200];
-            snprintf(line,sizeof line,"capture_iousbhost: %s transfer seq %u: %u packets failed as too old, %llu predicted from the frame it was queued at",
-                     ep?"audio":"video",x.seq,old,(unsigned long long)(x.past_due*IH_PER_FRAME));
+            snprintf(line,sizeof line,"capture_iousbhost: %s transfer seq %u: %u packets failed as too old, outside the %llu..%llu its queueing frames allow",
+                     ep?"audio":"video",x.seq,old,(unsigned long long)(x.past_lo*IH_PER_FRAME),(unsigned long long)(x.past_hi*IH_PER_FRAME));
             d->cb.on_diag(d->cb.ctx,line); }
+        if(ih_off_(d)){ dispatch_group_leave(d->inflight); return; }   /* the log may have stalled past the stop */
     }
     if(d->cb.on_transfer) d->cb.on_transfer(d->cb.ctx,ep,x.seq,(int)status,x.gap,old);
     /* a callback can stall past ih_stop's backstop: once cut off, nothing more reaches the caller */
@@ -138,7 +149,7 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochron
 static void ih_enqueue_(IHDev *d, IHXfer *x){
     int ep=x.ep, n=d->npk[ep];
     for(int i=0;i<n;i++) x.tl[i]=(IOUSBHostIsochronousTransaction){.status=kIOReturnInvalid,.requestCount=(uint32_t)d->pkt[ep],.offset=(uint32_t)(i*d->pkt[ep])};
-    uint64_t f=d->next[ep], g=0; NSError *e=nil;
+    uint64_t f=d->next[ep], g=0, pre=[d->ifc frameNumberWithTime:nil]; NSError *e=nil;
     __weak IHDev *wd=d;
     void (^done)(IOReturn,IOUSBHostIsochronousTransaction*)=^(IOReturn st, IOUSBHostIsochronousTransaction *l){
         IHDev *sd=wd; if(sd) ih_complete_(sd,x,st,l); };
@@ -154,8 +165,11 @@ static void ih_enqueue_(IHDev *d, IHXfer *x){
         }
     }
     if(ok){
-        uint64_t now_f=[d->ifc frameNumberWithTime:nil];
-        x.past_due=now_f>=f?(now_f-f+1<(uint64_t)(n/IH_PER_FRAME)?now_f-f+1:(uint64_t)(n/IH_PER_FRAME)):0;
+        uint64_t post=[d->ifc frameNumberWithTime:nil], nf=(uint64_t)(n/IH_PER_FRAME);
+        if(g) pre=f;                          /* requeued ahead: its first frame was in the future when the bus read pre */
+        x.past_lo=pre>f?(pre-f<nf?pre-f:nf):0;           /* frames certainly past (the one being read may go either way) */
+        uint64_t edge=post+1+IH_KERNEL_LEAD;  /* frames before this one may have been failed */
+        x.past_hi=edge>f?(edge-f<nf?edge-f:nf):0;
         if(g){ x.gap+=g; d->st.late_resubmits[ep]++; d->st.unread_frames[ep]+=g; }
         if(x.fail_since_ms){ d->st.resubmit_recovered[ep]++; x.fail_since_ms=0; }
         x.seq=d->seqc[ep]++;
@@ -194,6 +208,7 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
     IHDev *d=[IHDev new];
     d->q=dispatch_queue_create("capture_core.iousbhost",dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_USER_INTERACTIVE,0));
     d->inflight=dispatch_group_create(); d->all=[NSMutableArray new];
+    d->freed=[IHCounter new];
     { mach_timebase_info_data_t tb; mach_timebase_info(&tb); d->abs_ns=tb.denom?(double)tb.numer/(double)tb.denom:1.0; }
     NSError *e=nil;
     __weak IHDev *wd=d;
@@ -265,7 +280,7 @@ int ih_start(ih_dev *dv, const ih_callbacks *cb, int xfers, int v_npk, int v_pkt
              * 6 frames past for audio after video's 32 enqueues (macOS took the transfer and failed those packets
              * with kIOReturnIsoTooOld, measured 2026-10-17) */
             if(!k) d->next[ep]=[d->ifc frameNumberWithTime:nil]+IH_LEAD;
-            NSError *e=nil; IHXfer *x=[IHXfer new]; x.ep=ep; x->freed=&d->freed;
+            NSError *e=nil; IHXfer *x=[IHXfer new]; x.ep=ep; x.freed=d->freed;
             x.buf=[d->ifc ioDataWithCapacity:(NSUInteger)(d->npk[ep]*d->pkt[ep]) error:&e];
             x.tl=calloc((size_t)d->npk[ep],sizeof(IOUSBHostIsochronousTransaction));
             if(!x.buf || !x.tl){ ih_err(err,errn,"I/O buffers",e); rc=CC_ERR_NOMEM; [d->all addObject:x]; d->st.transfers++; break; }
@@ -324,5 +339,10 @@ void ih_close(ih_dev *dv){ @autoreleasepool {
     if(d->suspended){ d->discard=YES; d->suspended=NO; dispatch_resume(d->q); }   /* opened and started, never stopped */
     ih_teardown_(d,YES);
     dispatch_sync(d->q,^{});               /* a termination notice moved onto q before the destroy has now run */
+    /* every transfer should now be deallocated, once IOUSBHost lets go of its completion blocks: a bounded look,
+     * reported (the real framework's retention is measured here; the fake-device test asserts it) */
+    int want=d->st.transfers, got=0;
+    for(int i=0;i<100 && (got=atomic_load(&d->freed->n))<want;i++) usleep(10000);
+    if(got<want) fprintf(stderr,"capture_iousbhost: %d of %d transfers still allocated 1 s after close (held by IOUSBHost?)\n",want-got,want);
     d=nil;
 }}

@@ -24,6 +24,7 @@ static IOUSBHostInterestHandler g_interest; static IOUSBHostObject *g_dev_obj;
 static dispatch_queue_t interest_q_(void){ static dispatch_queue_t q; static dispatch_once_t o;
     dispatch_once(&o,^{ q=dispatch_queue_create("ih_fake.interest",DISPATCH_QUEUE_SERIAL); }); return q; }
 void ih_fake_terminate(void){
+    atomic_store(&ih_fake.gone,1);                  /* as an unplug: requeues now fail, the notice follows */
     IOUSBHostInterestHandler h=g_interest; IOUSBHostObject *o=g_dev_obj;
     if(h) dispatch_async(interest_q_(),^{ h(o,kIOMessageServiceIsTerminated,NULL); });
 }
@@ -95,6 +96,10 @@ static NSError *io_err_(IOReturn r){ return [NSError errorWithDomain:@"IOKit" co
                            error:(NSError**)error completionHandler:(IOUSBHostIsochronousTransactionCompletionHandler)h {
     (void)o;
     atomic_fetch_add(&ih_fake.enqueues[_ep],1);
+    [_lock lock];
+    for(IHFakePending *q in _pending) if(q.tl==tl){ fprintf(stderr,"ih_fake: a transaction list queued twice\n"); abort(); }
+    [_lock unlock];
+    if(atomic_load(&ih_fake.gone)){ if(error) *error=io_err_(kIOReturnNoDevice); return NO; }
     if(atomic_load(&ih_fake.refuse_all[_ep]) || (atomic_load(&ih_fake.refuse[_ep])>0 && atomic_fetch_sub(&ih_fake.refuse[_ep],1)>0)){
         atomic_fetch_add(&ih_fake.refusals[_ep],1); if(error) *error=io_err_(kIOReturnNoResources); return NO; }
     uint64_t cur=ih_fake_frame_now(), frames=n/8;
@@ -102,12 +107,13 @@ static NSError *io_err_(IOReturn r){ return [NSError errorWithDomain:@"IOKit" co
     uint8_t *b=data.mutableBytes;
     for(NSUInteger i=0;i<n;i++){
         uint64_t uf=(f+i/8)*8+i%8;
-        if(f+i/8<cur){ tl[i].status=kIOReturnIsoTooOld; tl[i].completeCount=0; atomic_fetch_add(&ih_fake.too_old_packets[_ep],1); }
+        if(f+i/8<=cur+1){ tl[i].status=kIOReturnIsoTooOld;   /* as measured: the current frame and the next */ tl[i].completeCount=0; atomic_fetch_add(&ih_fake.too_old_packets[_ep],1); }
         else { tl[i].status=kIOReturnSuccess; tl[i].completeCount=tl[i].requestCount<32?tl[i].requestCount:32;
                memcpy(b+tl[i].offset,&uf,8); }
         tl[i].timeStamp=abs_at_frame_(f+i/8+1);
     }
     IHFakePending *p=[IHFakePending new]; p.h=h; p.tl=tl;
+    atomic_store(&ih_fake.queue_end[_ep],f+frames);
     [_lock lock]; [_pending addObject:p]; [_lock unlock];
     uint64_t due=abs_at_frame_(f+frames)+100000/abs_ns, now=mach_absolute_time();
     int64_t wait_ns=due>now?(int64_t)((due-now)*abs_ns):0;
@@ -115,6 +121,11 @@ static NSError *io_err_(IOReturn r){ return [NSError errorWithDomain:@"IOKit" co
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,wait_ns),_q,^{
         if(atomic_exchange(&p->done,1)) return;
         IOUSBHostPipe *sp=wp; if(sp){ [sp->_lock lock]; [sp->_pending removeObject:p]; [sp->_lock unlock]; }
+        int ep=sp?sp->_ep:0;
+        if(atomic_fetch_add(&ih_fake.completions[ep],1)+1==atomic_load(&ih_fake.late_at[ep])){
+            uint64_t target=atomic_load(&ih_fake.queue_end[ep])+(uint64_t)atomic_load(&ih_fake.late_k[ep]);
+            while(ih_fake_frame_now()<target) usleep(100);
+        }
         p.h(kIOReturnSuccess,p.tl);
     });
     return YES;

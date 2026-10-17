@@ -850,14 +850,14 @@ static void ihc_transfer_(void *ctx, int e, uint32_t seq, int io, uint64_t unrea
     cc_session *s=ctx; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO; IHC_ENTER(s);
     s->seq_ctr[e]=seq;                                /* ring-loss records name the transfer being delivered */
     if(unread){ sched_count_(s,e,unread); sched_place_(s,ep,seq,unread,(uint16_t)CC_PI_UNSCHEDULED); }
-    if(too_old){                                      /* never read either; they follow as DATA records with that status */
-        atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],too_old);
+    if(too_old){ atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],too_old); }
+    if(io!=kIOReturnSuccess && io!=kIOReturnUnderrun){   /* reported, and its packets still go out with their status */
+        s->xfer_err++; put_meta_(s,REC_XFERERR,ep,0,seq,(uint32_t)io,NULL,0);
+    }
+    if(too_old){   /* never read either; they follow as DATA records with that status. Last: the log may stall */
         char line[200]; snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s packets of transfer seq %u failed as too old (its first frames had passed when it was queued)",
                                  too_old,e?"audio":"video",seq);
         ihc_diag_(s,line);
-    }
-    if(io!=kIOReturnSuccess && io!=kIOReturnUnderrun){   /* reported, and its packets still go out with their status */
-        s->xfer_err++; put_meta_(s,REC_XFERERR,ep,0,seq,(uint32_t)io,NULL,0);
     }
 #ifdef CC_DEBUG_HOLD
     if(e==0 && s->dbg_hold_at>0 && ++s->dbg_video_done==s->dbg_hold_at)
@@ -1109,12 +1109,28 @@ static int rr_finish_(replay_reader *r){   /* stops and joins the reader; return
     pthread_mutex_destroy(&r->m); pthread_cond_destroy(&r->cv); free(r->ring); close(r->fd);
     return e;
 }
+/* The USB stack that made a capture, from the SESSION notes at the head of its file (the CLI's "usb=iousbhost",
+ * capture_core's "backend=iousbhost"): read separately, since a replay that starts mid-file never reaches them.
+ * Only the HOST LOSS wording depends on it. */
+static void replay_peek_session_(cc_session *s, const char *path){
+    int fd=open(path,O_RDONLY); if(fd<0) return;
+    uint8_t b[8192]; ssize_t n=pread(fd,b,sizeof b,0); close(fd);
+    for(size_t off=0,i=0; n>0 && i<4 && off+sizeof(rec_hdr)<=(size_t)n; i++){
+        rec_hdr h; memcpy(&h,b+off,sizeof h);
+        if(h.magic!=REC_MAGIC) break;
+        size_t pl=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
+        if(h.type==REC_SESSION && off+sizeof h+pl<=(size_t)n &&
+           (memmem(b+off+sizeof h,pl,"usb=iousbhost",13) || memmem(b+off+sizeof h,pl,"backend=iousbhost",17))) atomic_store(&s->unsched_exact,1);
+        off+=sizeof h+pl;
+    }
+}
 static void* replay_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     replay_reader rd, *f=&rd;
     rd_list empty_waits={0}, oversleeps={0}; uint64_t min_fill=UINT64_MAX;
+    replay_peek_session_(s,s->cfg.replay_path);
     int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20,s->cfg.replay_start_offset);
     if(rr!=CC_OK){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,rr); goto failed_start; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;

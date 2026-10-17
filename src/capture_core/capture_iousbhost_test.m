@@ -23,7 +23,7 @@ typedef struct {
 static struct {
     ep_rec r[2];
     _Atomic int after_stop, late_calls, calls;
-    int stall_at, stall_ms, refuse_at, refuse_n, refuse_all_at, terminate_at;
+    int stall_at, stall_ms, refuse_at, refuse_n, refuse_all_at, terminate_at, late_at, late_k;
     dispatch_semaphore_t stalled, unstalled;
     long submit_failed[2], fatal[3]; int fatal_reason_last;
 } T;
@@ -37,6 +37,10 @@ static void on_transfer(void *ctx, int ep, uint32_t seq, int io, uint64_t unread
     if(ep==0 && r->xfers==T.refuse_at) atomic_store(&ih_fake.refuse[0],T.refuse_n);
     if(ep==0 && r->xfers==T.refuse_all_at) atomic_store(&ih_fake.refuse_all[0],1);
     if(ep==0 && r->xfers==T.terminate_at) ih_fake_terminate();
+    /* hold until the bus is exactly late_k frames past the end of what is queued: this transfer's requeue (right
+     * after this callback) then lands that late, and the backlog behind it catches up in a burst, as on hardware */
+    if(ep==0 && r->xfers==T.late_at){ uint64_t target=atomic_load(&ih_fake.queue_end[0])+(uint64_t)T.late_k;
+        while(ih_fake_frame_now()<target) usleep(100); }
     if(ep==0 && r->xfers==T.stall_at){ if(T.stalled) dispatch_semaphore_signal(T.stalled); usleep((useconds_t)T.stall_ms*1000); if(T.unstalled) dispatch_semaphore_signal(T.unstalled); }
 }
 static void on_packet(void *ctx, int ep, uint32_t seq, int pi, int ok, uint32_t st, uint32_t req, uint32_t actual, const uint8_t *d){
@@ -63,7 +67,7 @@ static const ih_callbacks CB={ .on_transfer=on_transfer, .on_packet=on_packet, .
 
 static void reset_(void){
     memset(&T.r,0,sizeof T.r); atomic_store(&T.after_stop,0); atomic_store(&T.late_calls,0); atomic_store(&T.calls,0);
-    T.stall_at=T.refuse_at=T.refuse_all_at=T.terminate_at=-1; T.stall_ms=0; T.refuse_n=0; T.stalled=nil; T.unstalled=nil;
+    T.stall_at=T.refuse_at=T.refuse_all_at=T.terminate_at=T.late_at=-1; T.late_k=0; T.stall_ms=0; T.refuse_n=0; T.stalled=nil; T.unstalled=nil;
     memset(T.submit_failed,0,sizeof T.submit_failed); memset(T.fatal,0,sizeof T.fatal); T.fatal_reason_last=0;
     memset(&ih_fake,0,sizeof ih_fake);
 }
@@ -124,6 +128,21 @@ int main(void){ @autoreleasepool {
         close_(d);
     }
 
+    /* 2b. a requeue landing exactly k frames late: under a whole transfer (16 frames) it is accepted with those
+     *     packets failed as too old (the frame being crossed may go either way); past it, refused and requeued
+     *     ahead with an exact gap */
+    int lates[]={1,8,14,20};
+    for(int i=0;i<4;i++){
+        int k=lates[i]; reset_(); T.late_at=20; T.late_k=k;
+        d=open_start_(2000,&rc); ih_go(d); usleep(1500000); finish_(d,&st);
+        check_accounting_("late",&st);
+        /* the bus is at f+k when it is queued: frames f..f+k+1 fail (the kernel's lead, as measured) */
+        if(k<16) CHECK(T.r[0].gaps==0 && T.r[0].too_old>=8*(k+2) && T.r[0].too_old<=8*(k+3),"late %d: gaps %ld, too old %ld (want %d..%d)",k,T.r[0].gaps,T.r[0].too_old,8*(k+2),8*(k+3));
+        else CHECK(T.r[0].gaps==1 && T.r[0].too_old==0 && T.r[0].gap_frames>=k+8 && T.r[0].gap_frames<=k+9,"late %d: %ld gaps of %ld frames, too old %ld",k,T.r[0].gaps,T.r[0].gap_frames,T.r[0].too_old);
+        printf("  requeue %d frames late: %ld past-due packets, %ld unread frames in %ld gaps; prediction held\n",k,T.r[0].too_old,T.r[0].gap_frames,T.r[0].gaps);
+        close_(d);
+    }
+
     /* 3. a requeue refused 5 times (not late), then accepted: reported once, recovered, nothing lost */
     reset_(); T.refuse_at=10; T.refuse_n=5;
     d=open_start_(2000,&rc); ih_go(d); usleep(800000); finish_(d,&st);
@@ -148,7 +167,7 @@ int main(void){ @autoreleasepool {
     /* 5. removal while streaming: one reason-1 fatal, device_gone at stop; a notice after the stop calls nothing */
     reset_(); T.terminate_at=15;
     d=open_start_(2000,&rc); ih_go(d); usleep(600000); finish_(d,&st);
-    CHECK(T.fatal[1]==1 && st.device_gone,"removal: fatal %ld, device_gone %d",T.fatal[1],st.device_gone);
+    CHECK(T.fatal[1]==1 && T.fatal[2]<=1 && st.device_gone,"removal: fatal %ld/%ld, device_gone %d",T.fatal[1],T.fatal[2],st.device_gone);
     check_accounting_("removal",&st);
     close_(d);
     reset_(); d=open_start_(2000,&rc); ih_go(d); usleep(300000); finish_(d,&st);

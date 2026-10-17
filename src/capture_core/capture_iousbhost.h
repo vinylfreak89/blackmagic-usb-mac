@@ -27,7 +27,8 @@ typedef struct {
                       uint32_t req, uint32_t actual, const uint8_t *data);
     void (*on_tick)(void *ctx);     /* once a second */
     /* A completed transfer could not be requeued for a reason other than lateness; it is retried every millisecond
-     * until the deadline. Called once per requeue (the first refusal), seq: that transfer's last one. */
+     * until the deadline. Called once per requeue (the first refusal). seq: that transfer's previous one, whose data
+     * was delivered (libusb names the new, empty seq instead); the requeued transfer takes the next free seq. */
     void (*on_submit_failed)(void *ctx, int ep_index, uint32_t seq, int ioreturn);
     /* The session cannot go on: the device left (reason 1, ioreturn 0) or a transfer could not be queued within
      * the deadline (reason 2, with the IOReturn, endpoint and seq). Each reason at most once (a reason 1 after a

@@ -29,6 +29,12 @@ typedef struct {
     _Atomic int refuse_all[2];      /* every enqueue is refused that way */
     _Atomic long enqueues[2], refusals[2], too_old_packets[2];
     _Atomic int abort_delay_ms;     /* aborted transfers complete this late */
+    _Atomic int gone;               /* set by ih_fake_terminate: every enqueue fails with kIOReturnNoDevice */
+    _Atomic uint64_t queue_end[2];  /* out: the frame after the last accepted transfer per endpoint */
+    _Atomic long completions[2];
+    /* the late_at-th completion (1-based) is held on the completion queue until the bus is late_k frames past the
+     * end of what is queued, so that transfer's requeue lands exactly that late (the backlog then catches up) */
+    _Atomic long late_at[2]; _Atomic int late_k[2];
 } ih_fake_controls;
 extern ih_fake_controls ih_fake;
 void ih_fake_terminate(void);       /* deliver kIOMessageServiceIsTerminated on an internal queue */

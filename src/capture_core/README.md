@@ -54,11 +54,15 @@ a parser contract.
   removal notices come on IOUSBHost's own queue and are moved onto the completion queue. Opens as
   a normal user with no entitlement, and refuses endpoints whose bInterval is not 1. Packet
   statuses are IOReturn values here, libusb ones there; the SESSION note names the backend.
-  `make test-iousbhost` runs, under TSan, the unmodified backend against a fake IOUSBHost
-  (`ih_fake_iousbhost.m`: real-time bus clock, every packet carrying its microframe number),
-  checking that each microframe is accounted for exactly once through stalls, refusals, removal
-  notices, the start gate and a stop during a stalled callback; then capture_core's side against a
-  scripted mock of the `ih_*` interface (`capture_iousbhost_mock.c`).
+  `make test-iousbhost` runs three tests under TSan. The unmodified backend against a fake
+  IOUSBHost (`ih_fake_iousbhost.m`: a real-time bus clock, the refusal and too-old rules measured
+  here, every packet carrying its microframe number), checking that each microframe is accounted
+  for exactly once through stalls, requeues landing exactly 1, 8, 14 and 20 frames late,
+  refusals, an unplug, the start gate and a stop during a stalled callback. The same, end to
+  end through capture_core (the delivered packet stream and its HostLoss records). And
+  capture_core's side against a scripted mock of the `ih_*` interface
+  (`capture_iousbhost_mock.c`). The fake does not model interrupt coalescing, packet errors
+  other than too old, short packets, or how a real unplug fails the transfers in flight.
 
 Measured on hardware, 2026-10-17 (M3, bars), by holding the completion queue (`shuttle-capture-hold`):
 
@@ -74,8 +78,11 @@ Measured on hardware, 2026-10-17 (M3, bars), by holding the completion queue (`s
 - The stream content does not resolve a gap to the frame. Audio samples missing around those
   gaps came to −0.17, +0.20 and +1.15 frames off the count, and video bytes to about −1.5. The
   device's own buffering sits between the bus and the data.
-- Each past-due run agreed with the prediction from the frame the read was queued at (no
-  mismatch line); the session names any transfer whose count does not.
+- macOS fails as too old the frame after the one the bus is in, as well: with the bus at a
+  read's first frame, its first two frames failed. Each past-due count is checked against the
+  bus frames read before and after the enqueue, allowing for that, and holds of 490 to 505 ms
+  (24 to 120 packets) all fell inside. The session names any transfer whose count does not.
+- Every transfer was deallocated by the time the device closed; close reports any that are not.
 - Not exercised on hardware: an unplug during capture, and a refusal other than lateness (both
   are in the fake-device test).
 

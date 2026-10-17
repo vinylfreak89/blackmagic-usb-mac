@@ -83,11 +83,14 @@ test-shim: test_shim $(FIXTURE) $(SCHED_FIXTURE)
 # The IOUSBHost backend, no device needed, under TSan: capture_iousbhost.m itself against a fake IOUSBHost
 # (ih_fake_iousbhost.m; the backstop shortened to 0.3 s), then capture_core's glue against a scripted mock of ih_*.
 test-iousbhost: capture_core.c capture_core_ih_test.c capture_iousbhost_mock.c capture_iousbhost_mock.h capture_iousbhost.h capture_core.h \
-                capture_iousbhost.m capture_iousbhost_test.m ih_fake_iousbhost.m ih_fake_iokit.h
+                capture_iousbhost.m capture_iousbhost_test.m capture_core_ih_e2e_test.m ih_fake_iousbhost.m ih_fake_iokit.h
 	$(CC) -O1 -g -fsanitize=thread -fobjc-arc -Wall -DIH_FAKE -DIH_BACKSTOP_S=0.3 -o test_ih_backend capture_iousbhost.m ih_fake_iousbhost.m capture_iousbhost_test.m -framework Foundation -framework IOKit
 	./test_ih_backend
+	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -DCC_WITH_IOUSBHOST -c -o test_ih_e2e_core.o capture_core.c
+	$(CC) -O1 -g -fsanitize=thread -fobjc-arc -Wall -DIH_FAKE -DIH_BACKSTOP_S=0.3 -o test_ih_e2e test_ih_e2e_core.o capture_iousbhost.m ih_fake_iousbhost.m capture_core_ih_e2e_test.m $(LIBS) -framework Foundation -framework IOKit
+	./test_ih_e2e
 	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -DCC_WITH_IOUSBHOST -o test_ih capture_core.c capture_iousbhost_mock.c capture_core_ih_test.c $(LIBS)
 	./test_ih
 
 clean:
-	rm -f shuttle-capture shuttle-capture-hold test_ih test_ih_backend capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect
+	rm -f shuttle-capture shuttle-capture-hold test_ih test_ih_backend test_ih_e2e capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect
