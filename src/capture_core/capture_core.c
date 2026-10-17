@@ -1304,6 +1304,11 @@ int cc_replay_pause(cc_session *s, int paused){
     pthread_mutex_unlock(&s->pause_m);
     return CC_OK;
 }
+size_t cc_ring_pending(const cc_session *s){
+    if(!s) return 0;
+    size_t t=atomic_load_explicit(&s->r_tail,memory_order_acquire), h=atomic_load_explicit(&s->r_head,memory_order_acquire);
+    return h>t?h-t:0;
+}
 uint64_t cc_packets_delivered(const cc_session *s){
     return atomic_load_explicit(&s->packets_delivered,memory_order_relaxed);
 }

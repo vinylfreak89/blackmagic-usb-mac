@@ -141,6 +141,9 @@ void cc_close(cc_session *s);
 // One race-free atomic load during streaming; unlike cc_get_stats. Updated by the
 // delivery thread only, after the callback returns, never in the libusb hot path.
 uint64_t cc_packets_delivered(const cc_session *s);
+// Bytes of tagged records waiting in the delivery ring now (one race-free pair of atomic loads; diagnostic): data the
+// backend has handed over that the delivery thread has not yet passed to the callbacks.
+size_t cc_ring_pending(const cc_session *s);
 // Replay only: hold delivery (paused != 0) or resume it. The pacer stops at the next video-transfer
 // boundary, after that transfer is delivered, and waits for resume or stop; on resume its deadlines
 // restart from the resume time, so no burst follows. The read-ahead keeps filling while paused.

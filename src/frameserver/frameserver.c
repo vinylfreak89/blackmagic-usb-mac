@@ -48,6 +48,7 @@ typedef struct {
     int audio_evidence_known;
     ap_correlation audio_evidence;
     uint64_t t_enqueue;                    // parser handoff (CLOCK_UPTIME_RAW ns), for handoff timing
+    uint64_t up_gap_ns, up_cpu_ns, up_ring_bytes;   // see fs_handoff_timing: the delivery thread's view at enqueue
 } fs_item;
 
 struct frameserver {
@@ -61,7 +62,8 @@ struct frameserver {
     hrt_workspace *retime_work;
     hrt_result retime_result;
     fs_item geometry_item;
-    fs_handoff_timing ht; uint64_t ht_since, idle_since;   // worker-only handoff accounting
+    fs_handoff_timing ht; uint64_t ht_since, idle_since, ht_cpu0;   // worker-only handoff accounting
+    uint64_t dlv_prev_enq, dlv_prev_cpu;                  // delivery thread only: the previous video unit's enqueue
     int geometry_pending, geometry_reset;
     uint64_t geometry_epoch;
     int geometry_have_epoch;
@@ -241,6 +243,11 @@ static void on_video(void *ctx, const unit_video_observation *u){
         }
     }
     it.t_enqueue = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    { uint64_t cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
+      it.up_gap_ns=f->dlv_prev_enq&&it.t_enqueue>f->dlv_prev_enq?it.t_enqueue-f->dlv_prev_enq:0;
+      it.up_cpu_ns=f->dlv_prev_enq&&cpu>f->dlv_prev_cpu?cpu-f->dlv_prev_cpu:0;
+      it.up_ring_bytes=f->cap?cc_ring_pending(f->cap):0;
+      f->dlv_prev_enq=it.t_enqueue; f->dlv_prev_cpu=cpu; }
     push(f, &it);
 }
 static void on_audio(void *ctx, const unit_audio_observation *a){
@@ -566,7 +573,7 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
     int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
-    if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }   /* accounting restarts at each handoff */
+    if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); f->ht_cpu0=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID); }   /* accounting restarts at each handoff */
     uint64_t tl=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
@@ -736,7 +743,8 @@ static void *worker_main(void *arg){
         bp_notify(f);
         { uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
           if(f->idle_since){ f->ht.idle_ns+=now-f->idle_since; f->idle_since=0; }
-          f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++; }
+          f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++;
+          f->ht.up_gap_ns=it.up_gap_ns; f->ht.up_cpu_ns=it.up_cpu_ns; f->ht.up_ring_bytes=it.up_ring_bytes; }
         process_item(f, &it);
         fs_test_after_item(f);
     }
@@ -967,6 +975,8 @@ void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *o){
     o->since_prev_ns=f->ht_since&&now>f->ht_since?now-f->ht_since:0;
     uint64_t known=o->idle_ns+o->classify_ns+o->geometry_ns+o->hretime_ns+o->log_ns;
     o->other_ns=o->since_prev_ns>known?o->since_prev_ns-known:0;
+    uint64_t cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);   /* the caller is the worker (inside the frame sink) */
+    o->cpu_ns=f->ht_since&&cpu>f->ht_cpu0?cpu-f->ht_cpu0:0;
 }
 int fs_device_start_info(const frameserver *f, uint32_t *mode_word){
     return f && f->cap ? cc_start_info(f->cap, mode_word) : -1;

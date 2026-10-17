@@ -180,9 +180,12 @@ static _Atomic int g_instances;
 static void report_late(void *ctx, const tr_event *e){
     (void)ctx; const fs_handoff_timing *h = &e->h;
     blog(LOG_WARNING, "[shuttle-source] delivery timing: counter %llu handed to OBS %.1f ms after the previous frame (%.1f unit periods); output call blocked %.1f ms"
-         " | worker since previous handoff %.1f ms: idle %.1f, classify %.1f, registration %.1f, h-retiming %.1f, sidecar write %.1f, other %.1f; %u items; this unit queued %.1f ms",
+         " | worker since previous handoff %.1f ms: idle %.1f, classify %.1f, registration %.1f, h-retiming %.1f, sidecar write %.1f, other %.1f; %u items; this unit queued %.1f ms"
+         " | worker CPU %.1f ms of %.1f ms not idle | upstream: this unit queued %.1f ms after the previous one, delivery thread CPU %.1f ms meanwhile, %.0f KB waiting in the capture ring",
          (unsigned long long)e->counter, e->gap_ns / 1e6, e->gap_ns / (1e9 * 1001 / 30000), e->call_ns / 1e6,
-         h->since_prev_ns / 1e6, h->idle_ns / 1e6, h->classify_ns / 1e6, h->geometry_ns / 1e6, h->hretime_ns / 1e6, h->log_ns / 1e6, h->other_ns / 1e6, h->items, h->queue_wait_ns / 1e6);
+         h->since_prev_ns / 1e6, h->idle_ns / 1e6, h->classify_ns / 1e6, h->geometry_ns / 1e6, h->hretime_ns / 1e6, h->log_ns / 1e6, h->other_ns / 1e6, h->items, h->queue_wait_ns / 1e6,
+         h->cpu_ns / 1e6, (h->since_prev_ns > h->idle_ns ? h->since_prev_ns - h->idle_ns : 0) / 1e6,
+         h->up_gap_ns / 1e6, h->up_cpu_ns / 1e6, h->up_ring_bytes / 1024.0);
 }
 
 /* While a session runs, ask macOS not to throttle this process: NSActivityUserInitiated (no App Nap,

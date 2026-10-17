@@ -180,6 +180,14 @@ typedef struct {
     uint64_t queue_wait_ns;   // this unit: parser enqueue -> worker pickup
     uint64_t classify_ns, geometry_ns, hretime_ns, log_ns, other_ns;
     uint32_t items;           // input items processed since the previous handoff
+    // Whether a slow stage was slow or the worker was not running: its own CPU time over the same span
+    // (CLOCK_THREAD_CPUTIME_ID). Busy wall time (since_prev - idle) far above it means it was descheduled.
+    uint64_t cpu_ns;
+    // Upstream of this unit, measured on the capture delivery thread (the parser's) when it queued the unit: the
+    // time since it queued the previous video unit, its own CPU time in that span, and the bytes waiting in the
+    // capture ring then. A long gap with much in the ring: the delivery thread was behind; with little: the data
+    // reached the host late.
+    uint64_t up_gap_ns, up_cpu_ns, up_ring_bytes;
 } fs_handoff_timing;
 void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *out);
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and

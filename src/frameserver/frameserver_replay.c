@@ -49,8 +49,10 @@ static void handoff_check(const fp_frame *fr){
 }
 static void handoff_report(void){
     for(size_t i=0;i<g_late_n;i++){ const late_event *e=&g_late_ev[i]; const fs_handoff_timing *h=&e->h;
-        fprintf(stderr,"LATE counter %llu gap %.1f ms | since prev %.1f: idle %.1f classify %.1f registration %.1f h-retiming %.1f sidecar %.1f other %.1f; %u items; queued %.1f\n",
-                (unsigned long long)e->counter,e->gap/1e6,h->since_prev_ns/1e6,h->idle_ns/1e6,h->classify_ns/1e6,h->geometry_ns/1e6,h->hretime_ns/1e6,h->log_ns/1e6,h->other_ns/1e6,h->items,h->queue_wait_ns/1e6); }
+        fprintf(stderr,"LATE counter %llu gap %.1f ms | since prev %.1f: idle %.1f classify %.1f registration %.1f h-retiming %.1f sidecar %.1f other %.1f; %u items; queued %.1f"
+                " | worker CPU %.1f of %.1f not idle | upstream gap %.1f, delivery CPU %.1f, ring %.0f KB\n",
+                (unsigned long long)e->counter,e->gap/1e6,h->since_prev_ns/1e6,h->idle_ns/1e6,h->classify_ns/1e6,h->geometry_ns/1e6,h->hretime_ns/1e6,h->log_ns/1e6,h->other_ns/1e6,h->items,h->queue_wait_ns/1e6,
+                h->cpu_ns/1e6,(h->since_prev_ns>h->idle_ns?h->since_prev_ns-h->idle_ns:0)/1e6,h->up_gap_ns/1e6,h->up_cpu_ns/1e6,h->up_ring_bytes/1024.0); }
     if(g_late>g_late_n) fprintf(stderr,"LATE: %llu more not recorded (first %d kept)\n",(unsigned long long)(g_late-g_late_n),LATE_MAX);
 }
 static void dump_frame(void *c, const fp_frame *fr){
