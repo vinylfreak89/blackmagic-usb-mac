@@ -324,7 +324,9 @@ void ih_stop(ih_dev *dv, ih_stats *st){ @autoreleasepool {
     if(left || !ih_sync_(d->q,^{ atomic_store(&d->quiesced,1); },IH_BACKSTOP_S)){
         atomic_store(&d->detached,1); atomic_store(&d->quiesced,1); d->st.incomplete=1;
     }
-    if(d->st.incomplete) fprintf(stderr,"capture_iousbhost: the completion queue did not drain within %.1f s of the abort; its callbacks are cut off\n",IH_BACKSTOP_S);
+    if(d->st.incomplete){ char line[200];   /* the caller's log (OBS's, the CLI's stderr), callable from this thread */
+        snprintf(line,sizeof line,"capture_iousbhost: the completion queue did not drain within %.1f s of the abort; its callbacks are cut off (session leaked, by design)",IH_BACKSTOP_S);
+        if(d->cb.on_diag) d->cb.on_diag(d->cb.ctx,line); else fprintf(stderr,"%s\n",line); }
     [d->ifc selectAlternateSetting:0 error:nil];
     /* ours are dropped here; each is deallocated when IOUSBHost lets go of its completion block too (the fake-device
      * test waits for every one) */
@@ -343,6 +345,7 @@ void ih_close(ih_dev *dv){ @autoreleasepool {
      * reported (the real framework's retention is measured here; the fake-device test asserts it) */
     int want=d->st.transfers, got=0;
     for(int i=0;i<100 && (got=atomic_load(&d->freed->n))<want;i++) usleep(10000);
-    if(got<want) fprintf(stderr,"capture_iousbhost: %d of %d transfers still allocated 1 s after close (held by IOUSBHost?)\n",want-got,want);
+    if(got<want){ char line[160]; snprintf(line,sizeof line,"capture_iousbhost: %d of %d transfers still allocated 1 s after close (held by IOUSBHost?)",want-got,want);
+        if(d->cb.on_diag) d->cb.on_diag(d->cb.ctx,line); else fprintf(stderr,"%s\n",line); }   /* the caller's session is still alive here */
     d=nil;
 }}

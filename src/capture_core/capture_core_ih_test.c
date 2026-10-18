@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 static int fails;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -19,7 +20,7 @@ typedef struct { int kind; uint8_t ep; uint32_t seq, pkt, packets; int loss_kind
 #define MAXEV 40000
 static ev evs[MAXEV]; static int nev;
 static pthread_mutex_t m=PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t c=PTHREAD_COND_INITIALIZER;
-static int ended, data_n, balance_warned, stop_from_queue=99;
+static int ended, data_n, balance_warned, stop_from_queue=99, exact_lines, approx_lines;
 static cc_session *g_s;
 
 static void on_packet(void *ctx, const cc_packet *p){ (void)ctx;
@@ -34,6 +35,7 @@ static void on_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind
 static void on_end(void *ctx, enum cc_end r){ (void)ctx; (void)r; pthread_mutex_lock(&m); ended++; pthread_cond_broadcast(&c); pthread_mutex_unlock(&m); }
 static void diag(void *ctx, const char *line){ (void)ctx;
     if(strstr(line,"NOT balance")) balance_warned++;
+    if(strstr(line,"HOST LOSS: ~")) approx_lines++; else if(strstr(line,"HOST LOSS:")) exact_lines++;
     if(strstr(line,"failed as too old")) stop_from_queue=cc_stop(g_s);   /* on the completion queue: must be refused */
 }
 static int wait_data(int n){
@@ -98,6 +100,28 @@ int main(void){
     cc_close(g_s); g_s=NULL;
     CHECK(ended==0,"on_end fired for a session that never started");
     printf("  refused start: nothing handed over, no on_end\n");
+
+    /* 4. replay wording: a file's SESSION note says which USB stack made it, so HOST LOSS is worded exact or "~";
+     *    the stack field is read where it stands, never from the recording's name (the user's text) */
+    { struct { const char *note; int exact; } nc[]={
+        {"shuttle-source tee v1 usb=iousbhost input=svideo setup=on mode=0x3c000000 part=1 recording=a.mov",1},
+        {"shuttle-source tee v1 usb=libusb input=svideo setup=on mode=0x3c000000 part=1 recording=a.mov",0},
+        {"shuttle-source tee v1 usb=libusb input=svideo setup=on mode=0x3c000000 part=1 recording=x usb=iousbhost y.mov",0},
+        {"shuttle-capture v1 input=svideo mode_word=0x3c000000 ring_mb=256 fleet=32+32 control_loss=continue usb=iousbhost",1}};
+      for(unsigned i=0;i<sizeof nc/sizeof nc[0];i++){
+        char path[]="/tmp/cc_ih_note_XXXXXX"; int fd=mkstemp(path); CHECK(fd>=0,"temp file");
+        struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } h={0x31504143u,3,0,0,0,0,0,(uint32_t)strlen(nc[i].note)};
+        CHECK(write(fd,&h,sizeof h)==(ssize_t)sizeof h && write(fd,nc[i].note,h.al)==(ssize_t)h.al,"write note");
+        struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } l={0x31504143u,1,CC_EP_VIDEO,CC_PI_UNSCHEDULED,7,0,64,0};
+        CHECK(write(fd,&l,sizeof l)==(ssize_t)sizeof l,"write loss"); close(fd);
+        exact_lines=approx_lines=0; pthread_mutex_lock(&m); ended=0; pthread_mutex_unlock(&m);
+        cc_config rc; memset(&rc,0,sizeof rc); rc.replay_path=path; rc.ring_mb=16; rc.diag_log=diag;
+        cc_session *r=NULL; CHECK(cc_open(&r,&rc,&cb)==CC_OK && cc_start(r)==CC_OK,"replay start");
+        for(int k=0;k<200;k++){ pthread_mutex_lock(&m); int e=ended; pthread_mutex_unlock(&m); if(e) break; usleep(10000); }
+        cc_stop(r); cc_close(r); unlink(path);
+        CHECK(nc[i].exact?(exact_lines==1&&approx_lines==0):(exact_lines==0&&approx_lines==1),"note %u: %d exact / %d approximate HOST LOSS lines",i,exact_lines,approx_lines);
+      }
+      printf("  replay wording: the USB stack is read from the note's own field, not the recording's name\n"); }
 
     /* 3. no device: cc_open fails without a session */
     ih_mock=(ih_mock_config){.fail_open=1};

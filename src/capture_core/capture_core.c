@@ -1112,6 +1112,14 @@ static int rr_finish_(replay_reader *r){   /* stops and joins the reader; return
 /* The USB stack that made a capture, from the SESSION notes at the head of its file (the CLI's "usb=iousbhost",
  * capture_core's "backend=iousbhost"): read separately, since a replay that starts mid-file never reaches them.
  * Only the HOST LOSS wording depends on it. */
+/* A SESSION note saying the capture came through IOUSBHost. The OBS plugin's tee note puts usb= first, before the
+ * recording's name (the user's text); the CLI's note has no user text; capture_core's own note never reaches a file. */
+static int note_says_iousbhost_(const uint8_t *p, size_t n){
+    static const char tee[]="shuttle-source tee v1 usb=iousbhost ", cli[]="shuttle-capture v1 ";
+    if(n>=sizeof tee-1 && !memcmp(p,tee,sizeof tee-1)) return 1;
+    if(n>=sizeof cli-1 && !memcmp(p,cli,sizeof cli-1)) return memmem(p,n," usb=iousbhost",14)!=NULL;
+    return memmem(p,n,"backend=iousbhost",17)!=NULL && n>=17 && !memcmp(p,"capture_core v1 ",16);
+}
 static void replay_peek_session_(cc_session *s, const char *path){
     struct stat sb; if(stat(path,&sb)!=0 || !S_ISREG(sb.st_mode)) return;   /* a FIFO's bytes belong to the stream */
     int fd=open(path,O_RDONLY); if(fd<0) return;
@@ -1121,7 +1129,7 @@ static void replay_peek_session_(cc_session *s, const char *path){
         if(h.magic!=REC_MAGIC) break;
         size_t pl=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
         if(h.type==REC_SESSION && off+sizeof h+pl<=(size_t)n &&
-           (memmem(b+off+sizeof h,pl,"usb=iousbhost",13) || memmem(b+off+sizeof h,pl,"backend=iousbhost",17))) atomic_store(&s->unsched_exact,1);
+           note_says_iousbhost_(b+off+sizeof h,pl)) atomic_store(&s->unsched_exact,1);
         off+=sizeof h+pl;
     }
 }
@@ -1267,7 +1275,7 @@ static void* replay_main(void *arg){
             flush_loss_(s,h.endpoint);
             break; }
         case REC_SESSION:   /* not forwarded; read for the USB stack that made the file (exact unread-slot counts) */
-            if(memmem(pay,plen,"usb=iousbhost",13) || memmem(pay,plen,"backend=iousbhost",17)) atomic_store(&s->unsched_exact,1);
+            if(note_says_iousbhost_(pay,plen)) atomic_store(&s->unsched_exact,1);
             break;
         default: break;
         }
@@ -1309,7 +1317,8 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     if(cfg->usb_backend!=CC_USB_LIBUSB && cfg->usb_backend!=CC_USB_IOUSBHOST) return CC_ERR_ARGS;
 #ifndef CC_WITH_IOUSBHOST
     if(!cfg->replay_path && cfg->usb_backend==CC_USB_IOUSBHOST){
-        fprintf(stderr,"capture_core: this build has no IOUSBHost backend (CC_WITH_IOUSBHOST)\n"); return CC_ERR_ARGS; }
+        const char *line="capture_core: the IOUSBHost USB stack was selected but this build has no IOUSBHost backend (CC_WITH_IOUSBHOST)";
+        if(cfg->diag_log) cfg->diag_log(cfg->diag_ctx,line); else fprintf(stderr,"%s\n",line); return CC_ERR_ARGS; }
 #endif
     cc_session *s=calloc(1,sizeof *s);
     if(!s) return CC_ERR_NOMEM;

@@ -77,6 +77,9 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_USB         "usb_backend"      /* live capture USB stack: "libusb" (default) or "iousbhost" (opt-in; see capture_core README) */
 #define S_SETUP       "setup_7_5_ire"    /* the Shuttle's only input level setting: applied at start-up (a change restarts the session) */
 
+#if !defined(CC_WITH_IOUSBHOST) && !defined(SHUTTLE_TEST_HOOKS)
+#error "the plugin offers the IOUSBHost USB stack: build it (and capture_core.c with it) with -DCC_WITH_IOUSBHOST"
+#endif
 #ifdef SHUTTLE_TEST_HOOKS
 int shuttle_test_usb_backend = -1;   /* the last start's cc_config.usb_backend (tests: the setting reaches capture_core's config) */
 #endif
@@ -536,12 +539,13 @@ static void tpc_attach(shuttle_src *s){
     uint32_t mw = 0;
     int have = fs_device_start_info(s->fs, &mw) == 0;
     /* usb= names the stack, so a replay of this file words its unread-slot counts as exact or estimated (capture_core) */
-    if (have) dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=0x%08x usb=%s",
-                          s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off", mw,
-                          s->usb_iousbhost ? "iousbhost" : "libusb");
-    else dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=not reported usb=%s",
-                     s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off",
-                     s->usb_iousbhost ? "iousbhost" : "libusb");
+    /* usb= comes before the recording's name, which is the user's text and could contain anything */
+    if (have) dstr_printf(&note, "shuttle-source tee v1 usb=%s input=%s setup=%s mode=0x%08x part=%u recording=%s",
+                          s->usb_iousbhost ? "iousbhost" : "libusb", s->input_name ? s->input_name : "?", s->applied_setup ? "on" : "off", mw,
+                          s->tpc_part, basename_r(b, base) ? base : "?");
+    else dstr_printf(&note, "shuttle-source tee v1 usb=%s input=%s setup=%s mode=not reported part=%u recording=%s",
+                     s->usb_iousbhost ? "iousbhost" : "libusb", s->input_name ? s->input_name : "?", s->applied_setup ? "on" : "off",
+                     s->tpc_part, basename_r(b, base) ? base : "?");
     bfree(b);
     /* The backlog goes to local scratch when the destination (a network volume) falls behind; see cc_async_sink_open_spill. */
     char spill[64]; snprintf(spill, sizeof spill, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
@@ -889,7 +893,7 @@ static void shuttle_stop(shuttle_src *s){
          (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
     if (!s->replaying && s->usb_iousbhost)
         blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO,
-             "[shuttle-source] USB (IOUSBHost): %llu unread-frame events, exact (%llu video / %llu audio packets never read)",
+             "[shuttle-source] USB (IOUSBHost): %llu unread-slot events, exact (gaps and too-old runs; %llu video / %llu audio packets never read)",
              (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1]);
     else if (!s->replaying)
         blog(st.unscheduled_events || st.schedule_shifts || !st.rt_event_thread || st.rt_priority_min < 97 ? LOG_ERROR : LOG_INFO,
@@ -897,6 +901,8 @@ static void shuttle_stop(shuttle_src *s){
              (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_late, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
              (unsigned long long)st.schedule_shifts, st.rt_event_thread ? "yes" : "NO", st.rt_priority_min, st.rt_priority_at_stop,
              !st.rt_event_thread || st.rt_priority_min < 97 ? ": REAL TIME LOST" : "", st.rt_libusb_threads);
+    if (!s->replaying && st.capture_teardown_incomplete)
+        blog(LOG_ERROR, "[shuttle-source] USB: the capture's stop could not confirm its USB callbacks finished; that session's memory is kept (leaked, by design) rather than freed under them");
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
@@ -916,6 +922,8 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     s->applied_setup = !cfg.capture.setup_off;
     const char *usb = obs_data_get_string(settings, S_USB);
     cfg.capture.usb_backend = usb && !strcmp(usb, "iousbhost") ? CC_USB_IOUSBHOST : CC_USB_LIBUSB;   /* ignored by a replay */
+    if (usb && *usb && strcmp(usb, "iousbhost") && strcmp(usb, "libusb"))
+        blog(LOG_WARNING, "[shuttle-source] USB stack setting \"%s\" not recognised: using libusb", usb);
     s->usb_iousbhost = cfg.capture.usb_backend == CC_USB_IOUSBHOST && !obs_data_get_bool(settings, S_USE_REPLAY);
 #ifdef SHUTTLE_TEST_HOOKS
     shuttle_test_usb_backend = (int)cfg.capture.usb_backend;

@@ -995,6 +995,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     if (f->cap){ cc_stats cs; cc_get_stats(f->cap, &cs); o->replay_space_waits = cs.replay_space_waits;
         o->unscheduled_events = cs.unscheduled_events; o->unscheduled_packets[0] = cs.unscheduled_packets[0]; o->unscheduled_packets[1] = cs.unscheduled_packets[1]; o->unscheduled_late = cs.unscheduled_late;
         o->rt_event_thread = cs.rt_event_thread; o->rt_libusb_threads = cs.rt_libusb_threads; o->rt_event_at_stop = cs.rt_event_at_stop;
+        o->capture_teardown_incomplete = cs.teardown_incomplete;
         o->rt_priority_at_stop = cs.rt_priority_at_stop; o->rt_priority_min = cs.rt_priority_min; o->schedule_shifts = cs.schedule_shifts; o->schedule_shift_frames = cs.schedule_shift_frames; }
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);

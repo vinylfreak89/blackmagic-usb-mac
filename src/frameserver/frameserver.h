@@ -103,6 +103,7 @@ typedef struct {
     uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
     uint64_t unscheduled_events, unscheduled_packets[2], unscheduled_late; // capture core: USB slots never read (explicit HostLoss); late: found after their data went by
     int rt_event_thread, rt_libusb_threads, rt_event_at_stop, rt_priority_at_stop, rt_priority_min; // capture core: real-time USB threads
+    int capture_teardown_incomplete;  // capture core: its stop could not prove its USB callbacks finished; the session is leaked by design
     uint64_t schedule_shifts, schedule_shift_frames; // capture core: completions persistently later than its model
     uint64_t eligible_ring_drops, ring_gap_rows;
     // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
