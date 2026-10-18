@@ -19,12 +19,13 @@ const struct obs_source_info *stub_info;
 _Atomic int stub_started_signals, stub_ended_signals;
 _Atomic uint64_t stub_video_frames;
 int stub_verbose;
-struct obs_data { _Atomic(const char *) path; _Atomic int use_replay, restart_on_record; };   /* OBS's obs_data is thread-safe; so is this */
+struct obs_data { _Atomic(const char *) path; _Atomic(const char *) usb; _Atomic int use_replay, restart_on_record; };   /* OBS's obs_data is thread-safe; so is this */
 void *stub_data; obs_source_t *stub_source;
 static obs_frontend_event_cb g_event_cb; static void *g_event_param;
 void stub_fire_event(enum obs_frontend_event ev){ if (g_event_cb) g_event_cb(ev, g_event_param); }
 static struct obs_data g_settings;
 void stub_restart_on_record(int on){ atomic_store(&g_settings.restart_on_record, on); }
+void stub_usb_backend(const char *v){ atomic_store(&g_settings.usb, v); }
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
 _Atomic int stub_late_reports;
@@ -70,7 +71,8 @@ bool obs_data_get_bool(obs_data_t *d, const char *name){
     if (!strcmp(name, "setup_7_5_ire")) return true;   /* the device default: setup bit on */
     return false;   /* hretime, raw_tpc, restart/stop-on-record, sidecar: off */
 }
-const char *obs_data_get_string(obs_data_t *d, const char *name){ return !strcmp(name, "replay_path") ? atomic_load(&d->path) : !strcmp(name, "input") ? "svideo" : ""; }
+const char *obs_data_get_string(obs_data_t *d, const char *name){ const char *u;
+    return !strcmp(name, "replay_path") ? atomic_load(&d->path) : !strcmp(name, "input") ? "svideo" : !strcmp(name, "usb_backend") ? ((u = atomic_load(&d->usb)) ? u : "") : ""; }
 void obs_data_release(obs_data_t *d){ (void)d; }
 void obs_data_set_default_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
 void obs_data_set_default_string(obs_data_t *d, const char *n, const char *v){ (void)d; (void)n; (void)v; }

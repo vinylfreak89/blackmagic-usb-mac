@@ -3,6 +3,7 @@
 // timeline is 118 units = 3,937 ms). libobs is replaced by tests_obs_stubs.c; the render thread is
 // this test thread (media callbacks and video_tick), the UI getters are called from it as well.
 #include "tests_obs_stubs.h"
+#include "capture_core.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -168,6 +169,14 @@ int main(int argc, char **argv){
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "live state after pause/seek: %d", I->media_get_state(d));
     { int o = stub_expect_end(L_OPEN), r = stub_expect_end(L_RESTART);   /* two live updates and a restart, no device */
       CHECK(o == 3 && r == 1, "live without a device: %d open failures (want 3), %d restart failures (want 1)", o, r); }
+    /* the USB stack drop-down reaches capture_core's config: unset and "libusb" select libusb, "iousbhost" IOUSBHost
+     * (each update is another refused live start, after the count above) */
+    CHECK(shuttle_test_usb_backend == CC_USB_LIBUSB, "unset USB stack selected %d, not libusb", shuttle_test_usb_backend);
+    stub_usb_backend("iousbhost"); I->update(d, st);
+    CHECK(shuttle_test_usb_backend == CC_USB_IOUSBHOST, "\"iousbhost\" selected %d, not IOUSBHost", shuttle_test_usb_backend);
+    stub_usb_backend("libusb"); I->update(d, st);
+    CHECK(shuttle_test_usb_backend == CC_USB_LIBUSB, "\"libusb\" selected %d, not libusb", shuttle_test_usb_backend);
+    stub_usb_backend(NULL);
 
     /* 6a. live, the device drops off USB (reported as the capture core does). There is no device here, so every
      * reconnect attempt fails: the picture is blanked at once, attempts repeat (RECONNECT_INTERVAL_NS is 20 ms in

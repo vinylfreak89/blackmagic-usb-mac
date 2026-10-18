@@ -74,8 +74,12 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_REPLAY_RESTART "replay_restart_on_record"
 #define S_REPLAY_STOP    "replay_stop_at_end"
 #define S_SIDECAR     "sidecar_with_recording"
+#define S_USB         "usb_backend"      /* live capture USB stack: "libusb" (default) or "iousbhost" (opt-in; see capture_core README) */
 #define S_SETUP       "setup_7_5_ire"    /* the Shuttle's only input level setting: applied at start-up (a change restarts the session) */
 
+#ifdef SHUTTLE_TEST_HOOKS
+int shuttle_test_usb_backend = -1;   /* the last start's cc_config.usb_backend (tests: the setting reaches capture_core's config) */
+#endif
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
 #include "discard_stream.h"
@@ -166,6 +170,7 @@ typedef struct {
     uint64_t next_start_unit, next_start_offset;  /* under s->m: consumed by the next shuttle_start (0 = the file's start) */
     int applied_setup;                            /* the running session's 7.5 IRE setup bit (recorded in the raw file's note) */
     const char *input_name;                       /* "svideo", "composite" or "component": the running session's input */
+    int usb_iousbhost;                            /* the running live session reads through IOUSBHost (cc_config.usb_backend) */
     uint64_t session_start_unit;                  /* the running session's first unit, estimated: on_frame resolves counters from it */
     _Atomic int live_regrey;                      /* live: put OBS's controls back in their greyed restart state on the next tick */
     _Atomic int handoff_reset;                    /* resumed from a pause: the next frame's gap is the pause, not a stall */
@@ -530,10 +535,13 @@ static void tpc_attach(shuttle_src *s){
     struct dstr note = {0}; char *b = bstrdup(s->sidecar_base); char base[PATH_MAX];
     uint32_t mw = 0;
     int have = fs_device_start_info(s->fs, &mw) == 0;
-    if (have) dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=0x%08x",
-                          s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off", mw);
-    else dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=not reported",
-                     s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off");
+    /* usb= names the stack, so a replay of this file words its unread-slot counts as exact or estimated (capture_core) */
+    if (have) dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=0x%08x usb=%s",
+                          s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off", mw,
+                          s->usb_iousbhost ? "iousbhost" : "libusb");
+    else dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=not reported usb=%s",
+                     s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off",
+                     s->usb_iousbhost ? "iousbhost" : "libusb");
     bfree(b);
     /* The backlog goes to local scratch when the destination (a network volume) falls behind; see cc_async_sink_open_spill. */
     char spill[64]; snprintf(spill, sizeof spill, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
@@ -879,7 +887,11 @@ static void shuttle_stop(shuttle_src *s){
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
          (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
-    if (!s->replaying)
+    if (!s->replaying && s->usb_iousbhost)
+        blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO,
+             "[shuttle-source] USB (IOUSBHost): %llu unread-frame events, exact (%llu video / %llu audio packets never read)",
+             (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1]);
+    else if (!s->replaying)
         blog(st.unscheduled_events || st.schedule_shifts || !st.rt_event_thread || st.rt_priority_min < 97 ? LOG_ERROR : LOG_INFO,
              "[shuttle-source] USB: %llu unread-slot events (%llu found late; %llu video / %llu audio packets never read), %llu unexplained schedule shifts; real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up%s), libusb %d",
              (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_late, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
@@ -902,8 +914,15 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     s->input_name = cfg.capture.input == CC_INPUT_COMPOSITE ? "composite" : cfg.capture.input == CC_INPUT_COMPONENT ? "component" : "svideo";
     cfg.capture.setup_off = !obs_data_get_bool(settings, S_SETUP);
     s->applied_setup = !cfg.capture.setup_off;
+    const char *usb = obs_data_get_string(settings, S_USB);
+    cfg.capture.usb_backend = usb && !strcmp(usb, "iousbhost") ? CC_USB_IOUSBHOST : CC_USB_LIBUSB;   /* ignored by a replay */
+    s->usb_iousbhost = cfg.capture.usb_backend == CC_USB_IOUSBHOST && !obs_data_get_bool(settings, S_USE_REPLAY);
+#ifdef SHUTTLE_TEST_HOOKS
+    shuttle_test_usb_backend = (int)cfg.capture.usb_backend;
+#endif
     if (!obs_data_get_bool(settings, S_USE_REPLAY))
-        blog(LOG_INFO, "[shuttle-source] input %s, 7.5 IRE setup %s", s->input_name, cfg.capture.setup_off ? "off (0 IRE black, NTSC-J)" : "on (NTSC-M)");
+        blog(LOG_INFO, "[shuttle-source] input %s, 7.5 IRE setup %s, USB stack %s", s->input_name, cfg.capture.setup_off ? "off (0 IRE black, NTSC-J)" : "on (NTSC-M)",
+             s->usb_iousbhost ? "IOUSBHost (opt-in)" : "libusb");
     uint64_t start_unit = s->next_start_unit, start_offset = s->next_start_offset;
     s->next_start_unit = s->next_start_offset = 0;   /* every other start begins the file */
     s->pending_seek_ms = -1; s->paused = 0;
@@ -1113,6 +1132,7 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_REPLAY_RESTART, false);
     obs_data_set_default_bool(settings, S_REPLAY_STOP, false);
     obs_data_set_default_bool(settings, S_SETUP, true);
+    obs_data_set_default_string(settings, S_USB, "libusb");
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -1122,6 +1142,9 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(in, "S-Video", "svideo");
     obs_property_list_add_string(in, "Composite", "composite");
     obs_property_list_add_string(in, "Component", "component");
+    obs_property_t *usb = obs_properties_add_list(p, S_USB, "USB stack (live capture)", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    obs_property_list_add_string(usb, "libusb (default)", "libusb");
+    obs_property_list_add_string(usb, "Apple IOUSBHost (opt-in, under test): skipped USB frames counted exactly", "iousbhost");
     obs_properties_add_bool(p, S_SETUP, "7.5 IRE setup: on = NTSC-M, US tapes (black at code 16); off = 0 IRE, NTSC-J (black lifted). Applied at start-up: a change restarts the capture");
     obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
