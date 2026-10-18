@@ -2,6 +2,7 @@
 //   shuttle-capture <input> <secs> <out.tpc> [ringMB] [scratchDir]      capture
 //   shuttle-capture --replay <in.tpc> <out.tpc|/dev/null> [paceUS] [scratchDir]
 // Optional trailing --stall-s N (default 120, at least ten pacing intervals).
+// Optional trailing --iousbhost: capture through Apple's IOUSBHost instead of libusb (unread USB frames counted exactly).
 // CC_LIFECYCLE_S overrides the 60 s startup/stop/finalization watchdog for tests.
 // Exit 3: sink write failure. Exit 6: stall or lifecycle/output deadline expired.
 #include "capture_core.h"
@@ -132,6 +133,8 @@ int main(int argc,char**argv){
     for (;;) {
         if(argc>1 && !strcmp(argv[argc-1],"--fail-stop-control-loss")){
             cfg.fail_stop_on_control_loss=1; argc--;
+        } else if(argc>1 && !strcmp(argv[argc-1],"--iousbhost")){
+            cfg.usb_backend=CC_USB_IOUSBHOST; argc--;
         } else if(argc>2 && !strcmp(argv[argc-2],"--stall-s")) {
             stall_s=tool_seconds(argv[argc-1],120); argc-=2;
         } else break;
@@ -146,7 +149,7 @@ int main(int argc,char**argv){
         secs=atoi(argv[2]); out=argv[3];
         if(argc>4) cfg.ring_mb=atoi(argv[4]);
         if(argc>5) scratch=argv[5];
-    } else { fprintf(stderr,"usage: %s <input> <secs> <out> [ringMB] [scratchDir] [--fail-stop-control-loss] | --replay <in> <out> [paceUS] [scratchDir] [--stall-s N] [--fail-stop-control-loss]\n",argv[0]); return 9; }
+    } else { fprintf(stderr,"usage: %s <input> <secs> <out> [ringMB] [scratchDir] [--fail-stop-control-loss] [--iousbhost] | --replay <in> <out> [paceUS] [scratchDir] [--stall-s N] [--fail-stop-control-loss]\n",argv[0]); return 9; }
     char staged[PATH_MAX]={0}; const char *sink_path=out;
     int publish=strcmp(out,"/dev/null")!=0;
     if(publish){
@@ -161,9 +164,9 @@ int main(int argc,char**argv){
                  ring_mb,cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     else
         snprintf(session_note,sizeof session_note,
-                 "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=%d+%d control_loss=%s",
+                 "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=%d+%d control_loss=%s usb=%s",
                  input_name(cfg.input),cc_mode_word(&cfg),ring_mb,CC_XFERS_PER_ENDPOINT,CC_XFERS_PER_ENDPOINT,
-                 cfg.fail_stop_on_control_loss?"fail-stop":"continue");
+                 cfg.fail_stop_on_control_loss?"fail-stop":"continue",cfg.usb_backend==CC_USB_IOUSBHOST?"iousbhost":"libusb");
     char spill_dir[64]; snprintf(spill_dir,sizeof spill_dir,CLI_SPILL_FMT,(unsigned)getuid());
     { cc_spill_recover_stats rs;                   /* a capture that crashed before: its spill goes home first */
       if(recover_guarded(spill_dir,&rs,lifecycle_s)==0 && (rs.recovered||rs.kept||rs.failed))
@@ -223,7 +226,9 @@ int main(int argc,char**argv){
     printf("unread USB slots (macOS skipped past them): %llu events (%llu found late), %llu video / %llu audio packets; unexplained schedule shifts %llu (%llu frames)\n",
            (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_late,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
            (unsigned long long)st.schedule_shifts,(unsigned long long)st.schedule_shift_frames);
-    if(!cfg.replay_path)
+    if(!cfg.replay_path && cfg.usb_backend==CC_USB_IOUSBHOST)
+        printf("IOUSBHost: reads at explicit USB frames on a user-interactive queue (no real-time policy); lowest priority seen at a tick %d\n",st.rt_priority_min);
+    else if(!cfg.replay_path)
         printf("real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up)%s, libusb %d\n",
                st.rt_event_thread?"yes":"NO",st.rt_priority_min,st.rt_priority_at_stop,
                !st.rt_event_thread||st.rt_priority_min<97?" — REAL TIME LOST: USB reads could be held off":"",st.rt_libusb_threads);

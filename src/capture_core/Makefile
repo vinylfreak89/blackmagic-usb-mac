@@ -6,12 +6,18 @@ TESTFLAGS=-DCAPTURE_CORE_TEST_HOOKS
 LIBS=$(shell pkg-config --libs libusb-1.0) -lpthread -framework CoreFoundation
 CAPTURE?=
 
-shuttle-capture: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
-	$(CC) $(CFLAGS) -o $@ capture_core.c capture_cli.c $(LIBS)
+# IOUSBHost backend (cfg.usb_backend / --iousbhost): the Objective-C side and its frameworks.
+IH_SRC=capture_iousbhost.m
+IH_FLAGS=-DCC_WITH_IOUSBHOST -fobjc-arc
+IH_LIBS=-framework Foundation -framework IOKit -framework IOUSBHost
 
-# Measurement build only: CC_DEBUG_HOLD_AT/MS hold the USB event thread once (unread-slot census). Never installed.
-shuttle-capture-hold: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
-	$(CC) $(CFLAGS) -DCC_DEBUG_HOLD -o $@ capture_core.c capture_cli.c $(LIBS)
+shuttle-capture: capture_core.c capture_cli.c capture_core.h capture_iousbhost.h $(IH_SRC) ../tool_deadline.h
+	$(CC) $(CFLAGS) $(IH_FLAGS) -o $@ capture_core.c $(IH_SRC) capture_cli.c $(LIBS) $(IH_LIBS)
+
+# Measurement build only: CC_DEBUG_HOLD_AT/MS hold the USB event thread (libusb) or completion queue (IOUSBHost)
+# once (unread-slot census). Never installed.
+shuttle-capture-hold: capture_core.c capture_cli.c capture_core.h capture_iousbhost.h $(IH_SRC) ../tool_deadline.h
+	$(CC) $(CFLAGS) $(IH_FLAGS) -DCC_DEBUG_HOLD -o $@ capture_core.c $(IH_SRC) capture_cli.c $(LIBS) $(IH_LIBS)
 
 check: shuttle-capture
 	@test -n "$(CAPTURE)" || { echo 'usage: make check CAPTURE=<capture.tpc>'; exit 2; }
@@ -74,5 +80,17 @@ $(SCHED_FIXTURE): gen_packet_capture.py
 test-shim: test_shim $(FIXTURE) $(SCHED_FIXTURE)
 	./test_shim $(FIXTURE) $(SCHED_FIXTURE)
 
+# The IOUSBHost backend, no device needed, under TSan: capture_iousbhost.m itself against a fake IOUSBHost
+# (ih_fake_iousbhost.m; the backstop shortened to 0.3 s), then capture_core's glue against a scripted mock of ih_*.
+test-iousbhost: capture_core.c capture_core_ih_test.c capture_iousbhost_mock.c capture_iousbhost_mock.h capture_iousbhost.h capture_core.h \
+                capture_iousbhost.m capture_iousbhost_test.m capture_core_ih_e2e_test.m ih_fake_iousbhost.m ih_fake_iokit.h
+	$(CC) -O1 -g -fsanitize=thread -fobjc-arc -Wall -DIH_FAKE -DIH_BACKSTOP_S=0.3 -o test_ih_backend capture_iousbhost.m ih_fake_iousbhost.m capture_iousbhost_test.m -framework Foundation -framework IOKit
+	./test_ih_backend
+	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -DCC_WITH_IOUSBHOST -c -o test_ih_e2e_core.o capture_core.c
+	$(CC) -O1 -g -fsanitize=thread -fobjc-arc -Wall -DIH_FAKE -DIH_BACKSTOP_S=0.3 -o test_ih_e2e test_ih_e2e_core.o capture_iousbhost.m ih_fake_iousbhost.m capture_core_ih_e2e_test.m $(LIBS) -framework Foundation -framework IOKit
+	./test_ih_e2e
+	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -DCC_WITH_IOUSBHOST -o test_ih capture_core.c capture_iousbhost_mock.c capture_core_ih_test.c $(LIBS)
+	./test_ih
+
 clean:
-	rm -f shuttle-capture shuttle-capture-hold capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect
+	rm -f shuttle-capture shuttle-capture-hold test_ih test_ih_backend test_ih_e2e capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect

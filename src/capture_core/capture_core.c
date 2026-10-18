@@ -27,9 +27,15 @@
 #include <signal.h>
 #include <sys/file.h>
 #include <CoreFoundation/CoreFoundation.h>
+#ifdef CC_WITH_IOUSBHOST
+#include <IOKit/IOReturn.h>
+#include "capture_iousbhost.h"
+#endif
 
 #define VID 0x1EDB
 #define PID 0xBD3B
+#define DEV_R4 0x80808000u      /* register 4 as the driver's settings commit writes it (see cc_open) */
+#define DEV_LATCH 0x73c60001u   /* the latch word, register 0x18 */
 #define V_PKT 15360
 #define V_NPK 128
 #define A_PKT 0xc0
@@ -128,6 +134,9 @@ struct cc_session {
     libusb_context *ctx; libusb_device_handle *h;
     xinfo xs[NXF];
     _Atomic long inflight;
+    struct ih_dev *ih;               // IOUSBHost backend (cfg.usb_backend); NULL for libusb and replay
+    _Atomic int unsched_exact;       // the stream came through IOUSBHost (live, or a replay whose SESSION note says so)
+    uint64_t ih_t0_ms;
 };
 
 static void destroy_sync_(cc_session *s){
@@ -382,8 +391,12 @@ static void* delivery_main(void *arg){
             break; }
         case REC_HOSTLOSS:
             if(rh.pkt_index==CC_PI_UNSCHEDULED || rh.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* loud: this loss leaves no other trace anywhere */
+                /* libusb's count is the unread-slot model's estimate ("~"); IOUSBHost's is exact (its SESSION note) */
                 char line[240];
-                snprintf(line,sizeof line,"capture_core: HOST LOSS: ~%u USB %s slots never read (macOS skipped past them after a late resubmission), %s transfer seq %u",
+                if(atomic_load(&s->unsched_exact))
+                    snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s slots never read (macOS refused the late read; it was queued %s), %s transfer seq %u",
+                             rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio","8 frames ahead",rh.pkt_index==CC_PI_UNSCHEDULED?"before":"found late, before",rh.submit_seq);
+                else snprintf(line,sizeof line,"capture_core: HOST LOSS: ~%u USB %s slots never read (macOS skipped past them after a late resubmission), %s transfer seq %u",
                          rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio",rh.pkt_index==CC_PI_UNSCHEDULED?"from":"found late, before",rh.submit_seq);
                 if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
             }
@@ -819,6 +832,144 @@ startup_failed:
     goto stopping;
 }
 
+#ifdef CC_WITH_IOUSBHOST
+/* ---------------- IOUSBHost device backend (cfg.usb_backend). Its callbacks run on one serial dispatch queue, the
+ * ring's single producer while streaming; this thread writes the SESSION record before ih_start and the final loss
+ * records after ih_stop has quiesced the queue, and ih_start holds the callbacks back until ih_go, so the two never
+ * write at once. No real-time policy: the queue's threads belong to the system's pool, and a late read costs
+ * exactly counted frames, not a guess. Each callback marks its thread as this session's for its duration, so a
+ * diag_log callback that calls cc_stop/cc_close from it is refused, as on the other backends' threads. */
+#define IHC_ENTER(s) cc_session *ihc_prev_=internal_session; internal_session=(s)
+#define IHC_LEAVE() internal_session=ihc_prev_
+static void ihc_diag_(void *ctx, const char *line){
+    cc_session *s=ctx; IHC_ENTER(s);
+    if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+    IHC_LEAVE();
+}
+static void ihc_transfer_(void *ctx, int e, uint32_t seq, int io, uint64_t unread, uint32_t too_old){
+    cc_session *s=ctx; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO; IHC_ENTER(s);
+    s->seq_ctr[e]=seq;                                /* ring-loss records name the transfer being delivered */
+    if(unread){ sched_count_(s,e,unread); sched_place_(s,ep,seq,unread,(uint16_t)CC_PI_UNSCHEDULED); }
+    if(too_old){ atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],too_old); }
+    if(io!=kIOReturnSuccess && io!=kIOReturnUnderrun){   /* reported, and its packets still go out with their status */
+        s->xfer_err++; put_meta_(s,REC_XFERERR,ep,0,seq,(uint32_t)io,NULL,0);
+    }
+    if(too_old){   /* never read either; they follow as DATA records with that status. Last: the log may stall */
+        char line[200]; snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s packets of transfer seq %u failed as too old (its first frames had passed when it was queued)",
+                                 too_old,e?"audio":"video",seq);
+        ihc_diag_(s,line);
+    }
+#ifdef CC_DEBUG_HOLD
+    if(e==0 && s->dbg_hold_at>0 && ++s->dbg_video_done==s->dbg_hold_at)
+        usleep((useconds_t)s->dbg_hold_ms*1000);      /* CC_DEBUG_HOLD_*: the queue held, on purpose */
+#endif
+    IHC_LEAVE();
+}
+static void ihc_packet_(void *ctx, int e, uint32_t seq, int pi, int ok, uint32_t st, uint32_t req, uint32_t al, const uint8_t *d){
+    cc_session *s=ctx; IHC_ENTER(s);
+    if(!ok) s->iso_err++;
+    if(al==0) s->zero_pkts++; else if(al<req) s->short_pkts++;
+    put_pkt_(s,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)pi,seq,ok?0:st,req,d,al);
+    s->bytes[e]+=al;
+    IHC_LEAVE();
+}
+static void ihc_tick_(void *ctx){
+    cc_session *s=ctx; IHC_ENTER(s);
+    put_meta_(s,REC_TICK,0,0,0,(uint32_t)(monotonic_ms_()-s->ih_t0_ms),NULL,0); rt_sample_(s);
+    IHC_LEAVE();
+}
+static void ihc_submit_failed_(void *ctx, int e, uint32_t seq, int io){
+    cc_session *s=ctx; IHC_ENTER(s);
+    s->xfer_err++; s->resub_fail++;
+    put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0);
+    IHC_LEAVE();
+}
+static void ihc_fatal_(void *ctx, int reason, int io, int e, uint32_t seq){
+    cc_session *s=ctx; IHC_ENTER(s);
+    int gone=reason==1 || io==kIOReturnNoDevice || io==kIOReturnNotAttached || io==kIOReturnOffline;
+    if(reason==2){ s->xfer_err++; s->resub_fail++; put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0); }
+    /* an unplug can fail a requeue before its notice arrives: the notice still names the end */
+    if(gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);
+    else if(atomic_load(&s->end_reason)!=CC_END_DEVICE_GONE) atomic_store(&s->end_reason,CC_END_TRANSFER_FAILED);
+    atomic_store(&s->stop_req,1);
+    pthread_mutex_lock(&s->space_m); pthread_cond_broadcast(&s->space_c); pthread_mutex_unlock(&s->space_m);
+    IHC_LEAVE();
+}
+static void* ih_main(void *arg){
+    cc_session *s=arg;
+    internal_session=s; s->rt_pri_min=INT_MAX;
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
+#ifdef CC_DEBUG_HOLD
+    { const char *a=getenv("CC_DEBUG_HOLD_AT"), *m=getenv("CC_DEBUG_HOLD_MS");
+      s->dbg_hold_at=a?atol(a):0; s->dbg_hold_ms=m?atoi(m):0; s->dbg_video_done=0;
+      if(s->dbg_hold_at>0) fprintf(stderr,"capture_core: DEBUG HOLD ARMED: the IOUSBHost queue will stop for %d ms at video completion %ld\n",s->dbg_hold_ms,s->dbg_hold_at); }
+#endif
+    { char line[200];
+      snprintf(line,sizeof line,"capture_core: IOUSBHost backend: reads at explicit USB frames, unread frames counted exactly; %d transfers queued per endpoint",XFERS);
+      ihc_diag_(s,line); }
+    char note[320];
+    snprintf(note,sizeof note,"capture_core v1 backend=iousbhost input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s rt=queue:user-interactive",
+             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on");
+    put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
+    atomic_store(&s->unsched_exact,1);
+    ih_callbacks cb={ .ctx=s, .on_transfer=ihc_transfer_, .on_packet=ihc_packet_, .on_tick=ihc_tick_,
+                      .on_submit_failed=ihc_submit_failed_, .on_fatal=ihc_fatal_, .on_diag=ihc_diag_ };
+    s->ih_t0_ms=monotonic_ms_();
+    char err[256]="";
+    int deadline=s->cfg.resubmit_deadline_ms>0?s->cfg.resubmit_deadline_ms:2000;
+    int rc=ih_start(s->ih,&cb,XFERS,V_NPK,V_PKT,A_NPK,A_PKT,deadline,err,sizeof err);
+    if(rc!=CC_OK){
+        char line[300]; snprintf(line,sizeof line,"capture_core: IOUSBHost start failed: %s",err);
+        ihc_diag_(s,line);
+        if(atomic_load(&s->end_reason)==CC_END_STOPPED) atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR);
+        atomic_store(&s->stop_req,1); startup_report_(s,rc);
+        pthread_mutex_lock(&s->life_m); while(!s->start_gate) pthread_cond_wait(&s->life_c,&s->life_m); pthread_mutex_unlock(&s->life_m);
+    } else {
+        startup_report_(s,CC_OK);
+        if(await_start_gate_(s)){
+            ih_go(s->ih);                             /* only now do completions reach the ring */
+            /* cc_stop and ihc_fatal_ broadcast space_c after setting stop_req; the timeout is a liveness backstop */
+            pthread_mutex_lock(&s->space_m);
+            while(!atomic_load(&s->stop_req)){
+                struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=1;
+                pthread_cond_timedwait(&s->space_c,&s->space_m,&ts);
+            }
+            pthread_mutex_unlock(&s->space_m);
+        }
+    }
+    ih_stats st; ih_stop(s->ih,&st);                 /* the queue is quiet from here: this thread is the producer */
+    s->fleet[0]=st.fleet[0]; s->fleet[1]=st.fleet[1];
+    s->xfers_alloc=st.transfers; s->xfers_freed=st.transfers_freed;
+    s->resub_rec=(long)(st.resubmit_recovered[0]+st.resubmit_recovered[1]);
+    s->teardown_incomplete=st.incomplete;
+    if(st.device_gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);   /* even when a notice came after the queue stopped */
+    { char line[240];
+      snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps)%s",
+               st.step_dev_ms[0],st.step_dev_ms[1],(unsigned long long)st.steps[0],(unsigned long long)st.steps[1],
+               st.gap_dev_ms[0]>0||st.gap_dev_ms[1]>0?"; across unread gaps see the lines above":"");
+      ihc_diag_(s,line); }
+    for(int e=0;e<2;e++) if(st.unread_frames[e]!=st.unread_delivered[e]+st.unread_at_stop[e]){
+        char line[240]; snprintf(line,sizeof line,"capture_core: IOUSBHost %s unread-frame accounting does NOT balance: %llu counted, %llu reported, %llu on transfers ended at the stop",
+                                 e?"audio":"video",(unsigned long long)st.unread_frames[e],(unsigned long long)st.unread_delivered[e],(unsigned long long)st.unread_at_stop[e]);
+        ihc_diag_(s,line);
+    }
+    if(s->rt_pri_min==INT_MAX) s->rt_pri_min=-1;     /* priority of whichever pool thread ran each tick; none at stop */
+    s->rt_pri_stop=-1;
+    cc_test_input_done();
+    if(!st.incomplete){ flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO); }
+    else {   /* a callback stalled past the backstop may still be writing the ring: this thread must not */
+        char line[240]; snprintf(line,sizeof line,"capture_core: IOUSBHost stop cut the queue off: pending ring loss NOT written to the stream (video %u, audio %u packets; in cc_stats)",
+                                 (unsigned)s->lost_pkts[0],(unsigned)s->lost_pkts[1]);
+        ihc_diag_(s,line);
+    }
+    cc_test_before_backend_done(s);
+    atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
+    pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
+    internal_session=NULL;
+    return NULL;
+}
+#endif
+
 // ---------------- replay backend
 /* Read-ahead: a reader thread fills a byte ring from the .tpc; the pacer takes records from it.
  * Before this the pacer read with fread on its own thread, so every slow read on a network volume
@@ -958,12 +1109,29 @@ static int rr_finish_(replay_reader *r){   /* stops and joins the reader; return
     pthread_mutex_destroy(&r->m); pthread_cond_destroy(&r->cv); free(r->ring); close(r->fd);
     return e;
 }
+/* The USB stack that made a capture, from the SESSION notes at the head of its file (the CLI's "usb=iousbhost",
+ * capture_core's "backend=iousbhost"): read separately, since a replay that starts mid-file never reaches them.
+ * Only the HOST LOSS wording depends on it. */
+static void replay_peek_session_(cc_session *s, const char *path){
+    struct stat sb; if(stat(path,&sb)!=0 || !S_ISREG(sb.st_mode)) return;   /* a FIFO's bytes belong to the stream */
+    int fd=open(path,O_RDONLY); if(fd<0) return;
+    uint8_t b[8192]; ssize_t n=pread(fd,b,sizeof b,0); close(fd);
+    for(size_t off=0,i=0; n>0 && i<4 && off+sizeof(rec_hdr)<=(size_t)n; i++){
+        rec_hdr h; memcpy(&h,b+off,sizeof h);
+        if(h.magic!=REC_MAGIC) break;
+        size_t pl=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
+        if(h.type==REC_SESSION && off+sizeof h+pl<=(size_t)n &&
+           (memmem(b+off+sizeof h,pl,"usb=iousbhost",13) || memmem(b+off+sizeof h,pl,"backend=iousbhost",17))) atomic_store(&s->unsched_exact,1);
+        off+=sizeof h+pl;
+    }
+}
 static void* replay_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     replay_reader rd, *f=&rd;
     rd_list empty_waits={0}, oversleeps={0}; uint64_t min_fill=UINT64_MAX;
+    replay_peek_session_(s,s->cfg.replay_path);
     int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20,s->cfg.replay_start_offset);
     if(rr!=CC_OK){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,rr); goto failed_start; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;
@@ -1098,6 +1266,9 @@ static void* replay_main(void *arg){
             s->lost_pkts[le]+=h.req_len; s->lost_bytes[le]+=h.actual_len;
             flush_loss_(s,h.endpoint);
             break; }
+        case REC_SESSION:   /* not forwarded; read for the USB stack that made the file (exact unread-slot counts) */
+            if(memmem(pay,plen,"usb=iousbhost",13) || memmem(pay,plen,"backend=iousbhost",17)) atomic_store(&s->unsched_exact,1);
+            break;
         default: break;
         }
     }
@@ -1135,6 +1306,11 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     if(!cfg->replay_path && cfg->input!=CC_INPUT_SVIDEO && cfg->input!=CC_INPUT_COMPONENT &&
        cfg->input!=CC_INPUT_COMPOSITE) return CC_ERR_ARGS;   // never silently map junk to S-video
     if(cfg->replay_block_when_full && !cfg->replay_path) return CC_ERR_ARGS;   // a device cannot wait for its consumer
+    if(cfg->usb_backend!=CC_USB_LIBUSB && cfg->usb_backend!=CC_USB_IOUSBHOST) return CC_ERR_ARGS;
+#ifndef CC_WITH_IOUSBHOST
+    if(!cfg->replay_path && cfg->usb_backend==CC_USB_IOUSBHOST){
+        fprintf(stderr,"capture_core: this build has no IOUSBHost backend (CC_WITH_IOUSBHOST)\n"); return CC_ERR_ARGS; }
+#endif
     cc_session *s=calloc(1,sizeof *s);
     if(!s) return CC_ERR_NOMEM;
     s->cfg=*cfg; s->cb=*cb;
@@ -1155,6 +1331,19 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     s->ring=malloc(s->ring_sz);
     if(!s->ring) goto nomem;
     atomic_store(&s->end_reason,CC_END_STOPPED);
+#ifdef CC_WITH_IOUSBHOST
+    if(!cfg->replay_path && cfg->usb_backend==CC_USB_IOUSBHOST){
+        uint32_t mode_word=cc_mode_word(&s->cfg); char err[256]="";
+        int rc=ih_open(&s->ih,mode_word,DEV_R4,DEV_LATCH,err,sizeof err);   /* the same start sequence as below */
+        if(rc!=CC_OK){
+            char line[300]; snprintf(line,sizeof line,"capture_core: IOUSBHost open failed: %s",err);
+            if(cfg->diag_log) cfg->diag_log(cfg->diag_ctx,line); else fprintf(stderr,"%s\n",line);
+            destroy_sync_(s); free(s->ring); free(s); return rc;
+        }
+        s->start_mode_word=mode_word;
+        *out=s; return CC_OK;
+    }
+#endif
     if(!cfg->replay_path){
         if(libusb_init(&s->ctx)) goto usb_fail;
         s->h=libusb_open_device_with_vid_pid(s->ctx,VID,PID);
@@ -1165,7 +1354,7 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         uint32_t mode_word=cc_mode_word(&s->cfg);
         /* Register 4 has no user meaning (the Shuttle has no input gain controls, owner 2026-10-07); the driver's
          * settings commit writes it as 80 80 80 00, so it is written so here, never anything else. */
-        const uint32_t r4=0x80808000u;
+        const uint32_t r4=DEV_R4;
         /* The device latches the mode register only at the alt-setting reset, and from the value written BEFORE the
          * most recent write (a one-write lag). Measured 2026-10-06: with the mode word sent only after the reset, each
          * start showed the previous start's setup bit. So before the reset, with the stream idle (alt 0), the driver's
@@ -1174,14 +1363,14 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         if(libusb_set_interface_alt_setting(s->h,0,0)) goto usb_fail;
         if(vout_(s->h,215,0,mode_word)!=4 || vout_(s->h,215,0,mode_word)!=4 ||
            vout_(s->h,215,4,r4)!=4 || vout_(s->h,215,4,r4)!=4 ||
-           vout_(s->h,215,24,0x73c60001u)!=4 || vout_(s->h,215,24,0x73c60001u)!=4) goto usb_fail;
+           vout_(s->h,215,24,DEV_LATCH)!=4 || vout_(s->h,215,24,DEV_LATCH)!=4) goto usb_fail;
         if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
             goto usb_fail;
         }
         sched_check_interval_(s);
         if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
         s->start_mode_word=mode_word;
-        if(vout_(s->h,215,24,0x73c60001u)!=4){
+        if(vout_(s->h,215,24,DEV_LATCH)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
             // downstream layer would report a healthy capture of the WRONG input.
             goto usb_fail;
@@ -1220,6 +1409,9 @@ int cc_start(cc_session *s){
     }
     s->delivery_created=1;
     void*(*bm)(void*)=s->cfg.replay_path?replay_main:device_main;
+#ifdef CC_WITH_IOUSBHOST
+    if(s->ih) bm=ih_main;
+#endif
     if(pthread_create(&s->backend_t,NULL,bm,s)){
         atomic_store(&s->backend_done,1); wake_(s); pthread_join(s->delivery_t,NULL);
         goto thread_fail;
@@ -1270,6 +1462,9 @@ void cc_close(cc_session *s){
     }
     if(s->h){ libusb_release_interface(s->h,0); libusb_close(s->h); }
     if(s->ctx) libusb_exit(s->ctx);
+#ifdef CC_WITH_IOUSBHOST
+    if(s->ih) ih_close(s->ih);
+#endif
     destroy_sync_(s);
     cc_test_destroyed();
     free(s->ring); free(s);
