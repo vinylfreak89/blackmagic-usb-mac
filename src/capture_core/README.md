@@ -90,6 +90,13 @@ Measured on hardware, 2026-10-17 (M3, bars), by holding the completion queue (`s
   `kIOReturnNotFound`), not a no-device code. The removal notice is what named the end. After
   the replug the device opened and streamed normally; a capture 3 s after power-on had 37
   short units while the decoder settled, against 7 at 37 s.
+- Two unplugs through the OBS plugin, 2026-10-18, each reconnected by the source on its own
+  (2.3 s after one, on the first open attempt after replug). One ended with 0 unread slots. The
+  other, 48 minutes in, was preceded by about 5 s in which completions stalled: each requeue
+  found its frame seconds in the past and was queued ahead, and 39,736 video / 38,120 audio
+  slots were recorded as never read before the removal notice ended the session. macOS logged
+  the removal (icdd) at the same instant as the notice; nothing in the system log marks the
+  stall's start. So a disconnect can show as late-read loss in its final seconds.
 - Not exercised on hardware: a refusal other than lateness or removal (it is in the fake-device
   test).
 
