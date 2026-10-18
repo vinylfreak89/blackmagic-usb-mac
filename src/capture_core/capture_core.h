@@ -69,7 +69,7 @@ typedef struct {
     uint16_t pkt_index;     // index within its transfer
     uint32_t submit_seq;    // per-endpoint transfer submission sequence
     uint32_t status;        // packet status, 0 = completed: a libusb status, or an IOReturn (e.g. 0xE00002EE too old)
-                            // through IOUSBHost (its SESSION note says backend=iousbhost)
+                            // through IOUSBHost (the file's SESSION note says usb=iousbhost)
     uint32_t req_len;
     uint32_t actual_len;    // may be 0 — zero-length packets ARE delivered
     const uint8_t *data;
