@@ -3,9 +3,14 @@
 # usage: assemble.py <source> <destination> <mods.pkl ... | work folder> [--resume]   (TEST_BASE=<offset> treats the source as a stretch starting at that file offset)
 #   --resume: <destination> is a partial output of an earlier run with the same inputs. The stream is regenerated from the start and
 #   every byte up to the partial file's length is compared with it (a mismatch stops the run); only the rest is appended.
+#   --resume-defer-check: the same, but the partial file is not read: the regenerated prefix only feeds the SHA-256, so the
+#   comparison happens when the finished file is read back and hashed (saves reading the partial; nothing is proven until then).
+# A source read that fails with an I/O error (a cloud volume whose object store is briefly unreachable) is retried for up to
+# SOURCE_RETRY_S seconds (default 1800), each retry logged, before the run stops.
 import sys, os, struct, pickle, hashlib, json, time, subprocess
 H = struct.Struct('<IBBHIIII'); MAGIC = 0x31504143; U32 = struct.Struct('<I')
-resume = '--resume' in sys.argv; sys.argv = [a for a in sys.argv if a != '--resume']
+defer = '--resume-defer-check' in sys.argv; resume = defer or '--resume' in sys.argv
+sys.argv = [a for a in sys.argv if a not in ('--resume', '--resume-defer-check')]
 src, dst = sys.argv[1], sys.argv[2]; base = int(os.environ.get('TEST_BASE', '0'))
 # the plan: one entry per rebuilt file range; its bytes are read from the work folder only when the copy reaches it
 work = sys.argv[3]; mods = []
@@ -27,8 +32,8 @@ mods = [m for m in mods if m['file_to'] <= size]      # with a limit, ranges bey
 fin = open(src, 'rb', buffering=0); resume_len = 0; vfd = None
 if resume:
     assert dst != '-', '--resume needs a file'
-    fd = os.open(dst, os.O_WRONLY); resume_len = os.fstat(fd).st_size; os.lseek(fd, resume_len, os.SEEK_SET); vfd = os.open(dst, os.O_RDONLY)
-    print('resume: verifying the first %d bytes of %s, then appending' % (resume_len, dst), file=sys.stderr, flush=True)
+    fd = os.open(dst, os.O_WRONLY); resume_len = os.fstat(fd).st_size; os.lseek(fd, resume_len, os.SEEK_SET); vfd = None if defer else os.open(dst, os.O_RDONLY)
+    print('resume: %s the first %d bytes of %s, then appending' % ('regenerating (comparison deferred to the read-back hash)' if defer else 'verifying', resume_len, dst), file=sys.stderr, flush=True)
 else: fd = 1 if dst == '-' else os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
 sha = hashlib.sha256(); written = 0; t0 = time.time(); nrec = 0; last_report = 0; segs = []
 def put(b):
@@ -37,7 +42,8 @@ def put(b):
     for o in range(0, len(mv), 1 << 20):
         chunk = mv[o:o + (1 << 20)]; done = 0
         at = written + o
-        if at < resume_len:                     # resume: this part is already in the file and must match it exactly
+        if at < resume_len and defer: done = min(len(chunk), resume_len - at)      # already in the file; the read-back hash checks it
+        elif at < resume_len:                     # resume: this part is already in the file and must match it exactly
             k = min(len(chunk), resume_len - at); have = b''
             while len(have) < k:
                 r = os.pread(vfd, k - len(have), at + len(have))
@@ -74,12 +80,26 @@ def shift(bb, ov, oa):
         p += 24 + (al if (t == 0 or t == 3) else 0); k += 1
     assert p == n, 'range does not end on a record'
     return k
+RETRY_S = float(os.environ.get('SOURCE_RETRY_S', '1800'))
+def read_retry(at, n):
+    """n bytes of the source at file offset at (as fin.read would give them), retrying I/O errors for up to RETRY_S seconds"""
+    t_first = None
+    while True:
+        try:
+            fin.seek(at - base); d = fin.read(n)
+            if t_first is not None: print('source read at %d recovered after %.0f s' % (at, time.time() - t_first), file=sys.stderr, flush=True)
+            return d
+        except OSError as e:
+            if e.errno != 5: raise
+            if t_first is None: t_first = time.time()
+            if time.time() - t_first > RETRY_S: raise SystemExit('STOPPED: source read at %d still failing after %.0f s: %r' % (at, RETRY_S, e))
+            print('source read at %d failed (%r); retrying in 30 s' % (at, e), file=sys.stderr, flush=True); time.sleep(30)
 def copy(a, b, ov, oa):
     """source bytes [a, b) (file offsets, record aligned) to the output"""
     global nrec, last_report
     fin.seek(a - base); left = b - a; carry = b''; CH = 48 << 20
     while left or carry:
-        d = fin.read(min(CH, left)) if left else b''
+        d = read_retry(b - left, min(CH, left)) if left else b''
         if left and not d: raise SystemExit('source ended early')
         left -= len(d); bb = bytearray(carry + d); carry = b''
         # cut at the last whole record
