@@ -6,7 +6,11 @@
 #   --resume-defer-check: the same, but the partial file is not read: the regenerated prefix only feeds the SHA-256, so the
 #   comparison happens when the finished file is read back and hashed (saves reading the partial; nothing is proven until then).
 # A source read that fails with an I/O error (a cloud volume whose object store is briefly unreachable) is retried for up to
-# SOURCE_RETRY_S seconds (default 1800), each retry logged, before the run stops.
+# SOURCE_RETRY_S seconds (default 1800), each retry logged, before the run stops. Each retry closes the source and leaves it
+# untouched for SOURCE_RETRY_WAIT_S (default 180) before reopening: JuiceFS keeps a failed read's error on the open handle and
+# returns it for every later read on that handle, macFUSE shares one handle among all opens of a file, and JuiceMount's NFS
+# server pools that handle until it has been idle for 2 minutes (checked every 30 s), so touching the file sooner keeps the
+# error alive (measured 2026-10-20: 30 s retries failed for 30 min; after 3 idle minutes the same reads succeeded).
 import sys, os, struct, pickle, hashlib, json, time, subprocess
 H = struct.Struct('<IBBHIIII'); MAGIC = 0x31504143; U32 = struct.Struct('<I')
 defer = '--resume-defer-check' in sys.argv; resume = defer or '--resume' in sys.argv
@@ -80,9 +84,10 @@ def shift(bb, ov, oa):
         p += 24 + (al if (t == 0 or t == 3) else 0); k += 1
     assert p == n, 'range does not end on a record'
     return k
-RETRY_S = float(os.environ.get('SOURCE_RETRY_S', '1800'))
+RETRY_S = float(os.environ.get('SOURCE_RETRY_S', '1800')); RETRY_WAIT_S = float(os.environ.get('SOURCE_RETRY_WAIT_S', '180'))
 def read_retry(at, n):
     """n bytes of the source at file offset at (as fin.read would give them), retrying I/O errors for up to RETRY_S seconds"""
+    global fin
     t_first = None
     while True:
         try:
@@ -93,7 +98,8 @@ def read_retry(at, n):
             if e.errno != 5: raise
             if t_first is None: t_first = time.time()
             if time.time() - t_first > RETRY_S: raise SystemExit('STOPPED: source read at %d still failing after %.0f s: %r' % (at, RETRY_S, e))
-            print('source read at %d failed (%r); retrying in 30 s' % (at, e), file=sys.stderr, flush=True); time.sleep(30)
+            print('source read at %d failed (%r); closing it, retrying in %.0f s' % (at, e, RETRY_WAIT_S), file=sys.stderr, flush=True)
+            fin.close(); time.sleep(RETRY_WAIT_S); fin = open(src, 'rb', buffering=0)
 def copy(a, b, ov, oa):
     """source bytes [a, b) (file offsets, record aligned) to the output"""
     global nrec, last_report
