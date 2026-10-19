@@ -6,6 +6,9 @@ from region import *
 from donor import load_donor
 from synth import synth_rows, unit_bytes, PAD
 OFF = int(os.environ['FILL_OFF'])  # donor counter = target counter + OFF for the unit holding the target's second-slot field (measured per capture pair)
+# FILL_PAIRING=same: the donor pairs fields as the target does, so target unit c is donor unit c + OFF row for row (measured per capture pair);
+# the default, shifted, is the one-field-apart pairing of synth.py.
+PAIRING = os.environ.get('FILL_PAIRING', 'shifted'); assert PAIRING in ('shifted', 'same'), PAIRING
 F_LONG = 0.5124                   # usual share of 2848-byte video packets
 F_EIGHT = 0.50094                 # usual share of 8-record audio packets
 VREQ, AREQ = 15360, 192
@@ -16,6 +19,13 @@ def unwrap(cs):
     return out
 def rec24(arr):   # (n,24) uint8 -> list of bytes
     return [bytes(r) for r in arr]
+def npk_of(blocks, ep):
+    """packets per transfer on this endpoint: the most common count among its transfers (libusb: 128 video / 80 audio; IOUSBHost: 128 / 128)"""
+    import collections
+    c = collections.Counter(k1 - k0 + 1 for e, seq, k0, k1 in blocks if e == ep); return c.most_common(1)[0][0] if c else None
+def whole_tx(npk, n_old, k):
+    """packet count of a rebuilt window of k more transfers than the fewest whole transfers that hold its n_old packets"""
+    return npk * (-(-n_old // npk) + k)
 def spread(n_big, n):
     """n flags with n_big True, spread evenly"""
     return [((i + 1) * n_big) // n > (i * n_big) // n for i in range(n)]
@@ -28,6 +38,7 @@ class Stretch:
             assert (ep, seq) not in R.tx, 'a transfer is split in the file: %s' % ((ep, seq),)
             R.tx[(ep, seq)] = [k0, k1, bi]
         self.vseqs = sorted(s for e, s in R.tx if e == 0x83); self.aseqs = sorted(s for e, s in R.tx if e == 0x84)
+        self.vnpk = npk_of(R.blocks, 0x83); self.anpk = npk_of(R.blocks, 0x84)
         self.L, self.Rr = R.pcm(); self.mono = (self.L + self.Rr).astype(np.float64)
         self.samp_rec = np.nonzero(~R.isr)[0]         # record index of each sample
     # ---- helpers on the target's region
@@ -86,6 +97,10 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     DU = D.whole_units(); dv = D.v
     def donor_rows(a): 
         o = DU[a % 65536]; return np.frombuffer(bytes(dv[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
+    def make_rows(c, row7):
+        if PAIRING == 'same':
+            u = donor_rows(c + OFF).copy(); u[PAD, 0::2] = 128; u[PAD, 1::2] = 16; return u
+        return synth_rows(donor_rows(c + OFF - 1), donor_rows(c + OFF), row7)
     TU = R.whole_units()
     def t_rows(c):
         o = TU[c % 65536]; return np.frombuffer(bytes(R.v[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
@@ -95,7 +110,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         # widen each gap over neighbouring whole units that do not match what the donor shows at that moment (torn units)
         for g in vgs:
             def damaged(c):
-                try: s = synth_rows(donor_rows(c + OFF - 1), donor_rows(c + OFF), t_rows(c)[7]); t = t_rows(c)
+                try: s = make_rows(c, t_rows(c)[7]); t = t_rows(c)
                 except KeyError: return None
                 d = np.abs(s.astype(np.int16) - t.astype(np.int16)).mean(1); return int((d > 14).sum()), float(d.max())
             g['checked'] = {}
@@ -116,8 +131,8 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         q0 = S.vseq_of_stream(s_first); q1 = S.vseq_of_stream(s_last)
         # include transfers with unusual packets nearby, and the run of all-long transfers the device sends after a gap
         while q0 - 1 in S.vseqs[1:] and S.vstats(q0 - 1)[3]: q0 -= 1
-        while q1 + 1 in S.vseqs[:-1] and (S.vstats(q1 + 1)[2] == 128 or S.vstats(q1 + 1)[3]) and R.tx[(0x83, q1 + 1)][1] < k_limit: q1 += 1
-        fseqs = [s for s in S.vseqs if q0 - 6 <= s <= q0 - 1 and S.vstats(s)[0] == 128]
+        while q1 + 1 in S.vseqs[:-1] and (S.vstats(q1 + 1)[2] == S.vnpk or S.vstats(q1 + 1)[3]) and R.tx[(0x83, q1 + 1)][1] < k_limit: q1 += 1
+        fseqs = [s for s in S.vseqs if q0 - 6 <= s <= q0 - 1 and S.vstats(s)[0] == S.vnpk]
         # new stream of the window
         k0 = R.tx[(0x83, q0)][0]; so0 = [s for s, k in R.vpk if k == k0][0]
         def win_stream(q_last):
@@ -128,7 +143,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 out += R.v[pos:g['s_from']]
                 row7 = t_rows(g['c1'])[7]
                 for j in range(1, g['n'] + 1):
-                    c = g['c1'] + j; out += unit_bytes(c, synth_rows(donor_rows(c + OFF - 1), donor_rows(c + OFF), row7))
+                    c = g['c1'] + j; out += unit_bytes(c, make_rows(c, row7))
                 pos = g['s_to']
             out += R.v[pos:so1]; return out
         # extend the window until the packet-size mix is near the usual one (by arithmetic; the stream is assembled once)
@@ -137,7 +152,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         while True:
             best = None
             for k in range(0, 40):
-                P = n_old + 128 * k; rem = nb - 2816 * P
+                P = whole_tx(S.vnpk, n_old, k); rem = nb - 2816 * P
                 if rem < 0: break
                 if rem > 32 * P: continue
                 f = rem / 32 / P
@@ -177,10 +192,21 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             # where the donor capture should be, from the two captures' unit clocks: the target's resync c sits 800 samples after the donor's resync c+OFF-1
             dres = {c: s for _, s, c in D.resyncs}
             def predicted(s_t, c):
+                if PAIRING == 'same':
+                    a = (c + OFF) % 65536; return dres[a] - s_t if a in dres else None
                 a = (c + OFF - 1) % 65536
                 return dres[a] + 800 - s_t if a in dres else None
             pr1 = predicted(sA, g['c1']); pr2 = predicted(sB, g['c2'])
             assert pr1 is not None and pr2 is not None, ('the donor capture has no resync for this moment', name)
+            if PAIRING == 'same':
+                # two plays of one tape: the linear audio sits a few hundred samples off the unit clocks and drifts with tape speed
+                # (measured 2026-10-20: -280 to -253 samples over 40 units), so the unit clocks only bound a full cross-correlation
+                for side, (seg0, seg1) in (('before', (max(0, sA - 14000), sA - 2000)), ('after', (sB + 2000, min(sB + 14000, len(S.mono))))):
+                    dd, rr = align(S, D_mono, seg0, seg1); pr = pr1 if side == 'before' else pr2
+                    rep.setdefault('audio_coarse', []).append(dict(side=side, from_unit_clock=dd - pr, r=round(rr, 4)))
+                    if rr > 0.8 and abs(dd - pr) < 8000:
+                        if side == 'before': pr1 = dd
+                        else: pr2 = dd
             def refine(seg0, seg1, pred):
                 x = S.mono[seg0:seg1]; x = x - x.mean(); best = (-2, 0)
                 for dd in range(-96, 97):
@@ -189,7 +215,13 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 return pred + best[1], best[0], 20 * np.log10(np.sqrt((x * x).mean()) / (1 << 24) + 1e-12)
             d1, r1, lv1 = refine(max(0, sA - 14000), sA - 2000, pr1); d2, r2, lv2 = refine(sB + 2000, min(sB + 14000, len(S.mono)), pr2)
             g['levels_db'] = [round(lv1, 1), round(lv2, 1)]
-            if r1 > 0.9 and r2 > 0.9: M = d2 - d1
+            if r1 > 0.9 and r2 > 0.9 and PAIRING == 'same' and exp is not None:
+                # two plays differ in tape speed, so the line-up on each side also carries the drift between them; the device's
+                # clock gives the count, and the difference is split between the two seams
+                M = exp - g['n']; e = (d2 - d1) - M
+                assert abs(e) <= 24, ('the two plays drift too far apart across the gap', name, e)
+                d1 += e // 2; d2 = d1 + M; g['drift_split'] = e
+            elif r1 > 0.9 and r2 > 0.9: M = d2 - d1
             elif exp is not None:
                 # too little signal on one side to line up by ear: the cadence gives the count, the side with signal (or the unit clocks) the position
                 M = exp - g['n']
@@ -219,7 +251,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             cut1, cut2 = int(j1), int(j2)
             assert pos <= cut1 < cut2, (pos, cut1, cut2)
             pieces.append(('t', pos, cut1)); pieces.append(('d', cut1 + d1, cut2 + d2)); pos = cut2
-            seams.append(dict(levels_db=g['levels_db'], change_point=cp, corrupt_span=[int(b1), int(b2)], cut1=cut1, cut2=cut2, donor=[cut1 + d1, cut2 + d2], replaced=cut2 - cut1, inserted=cut2 + d2 - cut1 - d1, M=M, r=[round(r1, 4), round(r2, 4)],
+            seams.append(dict(drift_split=g.get('drift_split'), levels_db=g['levels_db'], change_point=cp, corrupt_span=[int(b1), int(b2)], cut1=cut1, cut2=cut2, donor=[cut1 + d1, cut2 + d2], replaced=cut2 - cut1, inserted=cut2 + d2 - cut1 - d1, M=M, r=[round(r1, 4), round(r2, 4)],
                               expected_from_cadence=exp, got=g['n'] + M))
             # new resyncs between c1 and c2, on the cadence continuing from c1 (the last intervals absorb a cadence restart)
             ints = [tab.get((c1u + j) % 5, 1602) for j in range(g['kc'])]; need = g['n'] + M; j = g['kc'] - 1
@@ -235,7 +267,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         def best_fit(n_old, Rn):
             best = None
             for k in range(0, 60):
-                P = n_old + 80 * k; eights = (Rn - 4 * P) // 4
+                P = whole_tx(S.anpk, n_old, k); eights = (Rn - 4 * P) // 4
                 if eights < 0: break
                 if eights > P: continue
                 f = eights / P
@@ -317,11 +349,15 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                     m, t_, e_, pi, sq, st, rq, al = H.unpack_from(bb, p); struct.pack_into('<I', bb, p + 8, sq + k_add); p += 24 + al
                 outl.append(bytes(bb))
         return outl
-    VT = transfers(0x83, vwin, vnew, kv, 128, VREQ); AT = transfers(0x84, awin, anew, ka, 80, AREQ)
+    VT = transfers(0x83, vwin, vnew, kv, S.vnpk, VREQ); AT = transfers(0x84, awin, anew, ka, S.anpk, AREQ)
     # order: both endpoints spread evenly through the range, as the device's callbacks arrive
     ev = sorted([((j + 0.5) / len(VT), 0, j) for j in range(len(VT))] + [((j + 0.5) / len(AT), 1, j) for j in range(len(AT))])
     # ticks and other notes keep their place by the share of data records before them
-    notes = [(k, R.recs[k]) for k in range(k_lo, k_hi + 1) if R.recs[k][1] != 0]
+    # a host-loss record names slots that were never read; inside a range whose gap on that endpoint is now filled it no longer describes the file
+    filled_eps = ({0x83} if vwin else set()) | ({0x84} if awin else set())
+    dropped = [R.recs[k] for k in range(k_lo, k_hi + 1) if R.recs[k][1] == 1 and R.recs[k][2] in filled_eps]
+    rep['host_loss_records_removed'] = [dict(ep=r[2], seq=r[4], slots=r[6]) for r in dropped]
+    notes = [(k, R.recs[k]) for k in range(k_lo, k_hi + 1) if R.recs[k][1] != 0 and not (R.recs[k][1] == 1 and R.recs[k][2] in filled_eps)]
     n_data = (k_hi - k_lo + 1) - len(notes); done_frac = []
     for k, r in notes: done_frac.append(((k - k_lo - sum(1 for kk, _ in notes if kk < k)) / max(1, n_data), bytes(R.b[r[0] - R.p0:r[0] - R.p0 + 24 + (r[7] if r[1] == 3 else 0)])))
     out = bytearray(); total_new = sum(len(x) for x in VT) + sum(len(x) for x in AT); ni = 0; first_ep = R.blocks[b_lo][0]
@@ -375,8 +411,11 @@ def check(b, p0, log):
             if not ((seq == ls and pi == lp + 1) or (seq == ls + 1 and pi == 0)): ok = False; log('  sequence break at %d: ep %#x %d/%d -> %d/%d' % (pos, ep, ls, lp, seq, pi))
         last[ep] = (seq, pi)
         if al > req: ok = False; log('  packet longer than its request at %d' % pos)
+    npk = {e: npk_of(N.blocks, e) for e in (0x83, 0x84)}
     for e, seq, k0, k1 in N.blocks[1:-1]:
-        if k1 - k0 + 1 != (128 if e == 0x83 else 80): ok = False; log('  transfer %#x %d has %d packets' % (e, seq, k1 - k0 + 1))
+        if k1 - k0 + 1 != npk[e]: ok = False; log('  transfer %#x %d has %d packets' % (e, seq, k1 - k0 + 1))
+    for r in N.recs:
+        if r[1] == 1: log('  host-loss record left in the stretch: ep %#x seq %d, %d slots' % (r[2], r[4], r[6]))
     whole = [(off, c) for off, c, fm, okk in N.marks if okk and fm == 0xe801]
     for (o1, c1), (o2, c2) in zip(whole, whole[1:]):
         if o2 - o1 != UNIT or (c2 - c1) % 65536 != 1: ok = False; log('  unit problem after %d: next %d, %d bytes apart' % (c1, c2, o2 - o1))
