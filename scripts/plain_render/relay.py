@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """relay.py VIDEO_FIFO LOG_FILE -- streams the replay's frames to ffmpeg (stdout), in counter order, inserting a flat
 no-signal fill for any counter the replay did not publish. Frames are matched to the V lines of the growing timing
-log; frames read ahead of the log wait in a short queue (the log is buffered by the writer)."""
+log; frames read ahead of the log wait in a short queue (the log is buffered by the writer).
+plain_render.sh creates replay.done beside the log once the replay has exited: frames still unmatched after the log's last
+lines are then an error (exit 3), never an endless wait (2026-10-20: a replay that died mid-stream left this waiting 10 h)."""
 import os, sys, time
 FR=720*480*2; fill=bytes([200,41,110,41])*(720*480//2)
 vf=open(sys.argv[1],"rb",buffering=0); logp=sys.argv[2]; out=sys.stdout.buffer
@@ -34,6 +36,11 @@ while True:
     poll_log(); emit()
     if eof:
         if not queue: break
+        if os.path.exists(os.path.join(os.path.dirname(logp) or ".", "replay.done")):
+            poll_log(); emit()
+            if queue:
+                print(f"relay: FAILED: the replay exited with {len(queue)} frames it never logged", file=sys.stderr); sys.exit(3)
+            break
         time.sleep(0.2)       # the replay is flushing its last log lines
 out.flush()
 print(f"relay: filled {len(fills)} frames at counters {fills[:20]}", file=sys.stderr)
