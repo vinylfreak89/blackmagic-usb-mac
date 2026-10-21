@@ -21,6 +21,10 @@
 #
 # Refuses to overwrite OUT. WORKDIR (default: a fresh temp dir) holds the FIFO, PCM and timing log;
 # it is removed when the render succeeds.
+# A capture on the JuiceFS share (/Volumes/zpool) is read through scripts/juicefs/checked_read.py, which passes the replay each
+# piece only after proving it against the SHA-1 the object store lists (JuiceFS 1.4.1 can hand back another block's data as a
+# successful read: juicedata/juicefs#7499); a piece that never matches fails the render. PLAIN_RENDER_CHECKED_READ=0 turns this off.
+# The mux pass still reads the video-only file directly: that read is not checked yet.
 # CAPTURE.tpc may be a FIFO (the replay reads it as a stream). PLAIN_RENDER_DECISION_LOG=FILE also writes the replay's
 # decision log (the sidecar's schema) from the same pass; it is not overwritten if it exists.
 # PLAIN_RENDER_STALL_S=N: the replay's no-delivery deadline (default 120 s); raise it when the input can pause for longer,
@@ -44,7 +48,7 @@ make -C "$REPO/src/frameserver" -q frameserver_replay || { echo "REFUSE: $RP is 
 # macOS with "Code Signature Invalid" before it runs (2026-10-21). Read it in full first, then check its signature.
 cat "$RP" > /dev/null || { echo "REFUSE: could not read $RP"; exit 2; }
 codesign -v "$RP" 2>/dev/null || { echo "REFUSE: $RP fails its code-signature check"; exit 2; }
-rm -f "$D/v.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/lost_counters.txt"; mkfifo "$D/v.fifo"; date
+rm -f "$D/v.fifo" "$D/cap.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/lost_counters.txt" "$D/checked_read.rc"; mkfifo "$D/v.fifo"; date
 # Outputs are emptied in place, never deleted and recreated: JuiceMount (0.4) keeps a deleted file's write handle and its size
 # high-water mark per path, so a file recreated where one was deleted can receive writes into the deleted inode, or be reported at
 # the old size and crawl while the client reads each block before writing it (2026-10-21, both seen). Creating and truncating to 0
@@ -73,8 +77,20 @@ python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | 
   -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
   -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,yadif=mode=send_field:parity=tff,crop=704:480:8:0,setsar=10/11" \
   -c:v prores_videotoolbox -profile:v standard -an -y "$VOUT" > "$D/ffmpeg.log" 2>&1 & PL=$!
-FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$SRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
+# The replay's input: the capture itself, or a FIFO fed by the checked reader. If the checked reader ends without opening the
+# FIFO (a setup error), the write end is opened once without blocking so the replay sees end of file instead of waiting forever.
+RSRC="$SRC"; CRP=""
+case "$SRC" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; then
+  mkfifo "$D/cap.fifo"; RSRC="$D/cap.fifo"
+  { python3 "$REPO/scripts/juicefs/checked_read.py" "$SRC" --out "$D/cap.fifo" --report "$D/checked_read.json" 2>"$D/checked_read.log"
+    echo $? > "$D/checked_read.rc"
+    python3 -c 'import os, sys
+try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
+except OSError: pass' "$D/cap.fifo"; } & CRP=$!
+fi;; esac
+FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
 RC=$?; touch "$D/replay.done"
+CRC=0; if [ -n "$CRP" ]; then wait $CRP; CRC=$(cat "$D/checked_read.rc" 2>/dev/null || echo 9); rm -f "$D/cap.fifo"; tail -1 "$D/checked_read.log"; fi
 # A replay that died before opening the FIFO leaves the relay blocked opening it: open the write end once without
 # blocking, so the relay sees end of file and the pipeline ends (fails) instead of waiting forever.
 python3 -c 'import os, sys
@@ -82,6 +98,7 @@ try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
 except OSError: pass' "$D/v.fifo"
 wait $PL; FRC=$?; rm -f "$D/v.fifo"; date
 echo "replay exit $RC, encode exit $FRC"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log"
+if [ "$CRC" != 0 ]; then echo "CHECKED READ FAILED (exit $CRC): the capture was not proven intact; see $D/checked_read.log and $D/checked_read.json. Render not finished."; exit 1; fi
 if [ $RC -ne 0 ] || [ $FRC -ne 0 ]; then echo "STAGE 1 FAILED: logs in $D, video-only kept at $VOUT"; exit 1; fi
 python3 "$HERE/mux.py" "$D" "$VOUT" "$OUT" || { echo "MUX FAILED: logs in $D, video-only kept at $VOUT"; exit 1; }
 rm -f "$VOUT"; [ -z "${3:-}" ] && rm -rf "$D"
