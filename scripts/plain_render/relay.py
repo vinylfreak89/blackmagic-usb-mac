@@ -3,8 +3,10 @@
 [a0 + s*8008, a0 + (s+1)*8008) ticks of 1/240000 s (one NTSC frame, 1001/30000 s), a0 being the first frame's audio time.
 Each published frame is placed by its unit's audio-clock time (the V line's audio_pts_num), never by its counter: a unit
 counter is not time (in the Shuttle's other-format modes it steps ~50-70 times a second, 2026-10-21), the audio clock is.
-A slot gets the frame nearest its start; a frame whose slot holds a nearer one is dropped; a slot no frame reached gets a
-flat no-signal fill. A frame without an audio time (audio_pts_known 0) is placed one counter step after the previous frame
+A slot gets the frame nearest its start; a frame whose slot holds a nearer one is dropped. A single empty slot between two
+frames repeats the frame before it (counted as held): a deck in search or unlocked sends each field as a ~257-line unit followed
+by a 5-line stub that is not picture, and a fill there flashes every other frame (2026-10-21, owner's choice). Two or more empty
+slots in a row get a flat no-signal fill, so real dropouts stay visible. A frame without an audio time (audio_pts_known 0) is placed one counter step after the previous frame
 (counted as estimated). Frames are matched to the V lines of the growing timing log; frames read ahead of the log wait in
 a short queue (the log is buffered by the writer).
 plain_render.sh creates replay.done beside the log once the replay has exited: frames still unmatched after the log's last
@@ -16,7 +18,7 @@ FR = 720 * 480 * 2; fill = bytes([200, 41, 110, 41]) * (720 * 480 // 2); SLOT = 
 vf = open(sys.argv[1], "rb", buffering=0); logp = sys.argv[2]; out = sys.stdout.buffer
 log = None; partial = b""; vlines = []; queue = []; eof = False
 a0 = None; prev = None; nxt = 0; pending = None
-st = dict(placed=0, dropped=0, estimated=0, filled=0, max_dev_ticks=0)
+st = dict(placed=0, dropped=0, estimated=0, filled=0, held=0, max_dev_ticks=0); last = None
 def poll_log():
     global log, partial
     if log is None:
@@ -35,9 +37,10 @@ def audio_time(v):
     else: t = prev[1] + (v[0] - prev[0]) * SLOT; st["estimated"] += 1
     prev = (v[0], t); return t
 def emit(slot, frame):
-    global nxt
+    global nxt, last
+    if slot - nxt == 1 and last is not None: out.write(last); st["held"] += 1; nxt += 1
     while nxt < slot: out.write(fill); st["filled"] += 1; nxt += 1
-    out.write(frame); nxt += 1
+    out.write(frame); nxt += 1; last = frame
 def place():
     global a0, pending
     while queue and vlines:
@@ -74,4 +77,4 @@ out.flush()
 st.update(a0_ticks=a0, slots=nxt)
 json.dump(st, open(os.path.join(os.path.dirname(logp) or ".", "schedule.json"), "w"))
 print("relay: %d slots on the audio clock: %d frames placed, %d dropped (another frame was nearer the slot), %d estimated (no audio time), "
-      "%d filled; largest placement error %.2f ms" % (nxt, st["placed"], st["dropped"], st["estimated"], st["filled"], st["max_dev_ticks"] / 240), file=sys.stderr)
+      "%d held (one empty slot: previous frame repeated), %d filled; largest placement error %.2f ms" % (nxt, st["placed"], st["dropped"], st["estimated"], st["held"], st["filled"], st["max_dev_ticks"] / 240), file=sys.stderr)
