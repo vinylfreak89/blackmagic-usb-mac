@@ -40,8 +40,26 @@ make -C "$REPO/src/frameserver" -q frameserver_replay || { echo "REFUSE: $RP is 
 # macOS with "Code Signature Invalid" before it runs (2026-10-21). Read it in full first, then check its signature.
 cat "$RP" > /dev/null || { echo "REFUSE: could not read $RP"; exit 2; }
 codesign -v "$RP" 2>/dev/null || { echo "REFUSE: $RP fails its code-signature check"; exit 2; }
-rm -f "$D/v.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$VOUT"; mkfifo "$D/v.fifo"; date
-python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
+rm -f "$D/v.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/lost_counters.txt" "$VOUT"; mkfifo "$D/v.fifo"; date
+# Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc): the relay
+# never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off.
+SC="${SRC%.raw.tpc}.registration.csv"; LOST=none
+if [ "$SC" != "$SRC" ] && [ -f "$SC" ]; then
+  python3 - "$SC" "$D/lost_counters.txt" <<'PY' || { echo "REFUSE: could not read lost units from $SC"; exit 2; }
+import sys
+hdr = None; prev = None; lost = []
+for line in open(sys.argv[1]):
+    if line.startswith('#'): continue
+    r = line.rstrip('\n').split(',')
+    if hdr is None: hdr = {h: i for i, h in enumerate(r)}; DR, CE, OC = hdr['drop_reason'], hdr['counter_extended'], hdr['observed_counter']; continue
+    c = int(r[CE]) if r[CE] else (int(r[OC]) if r[OC] not in ('', '0') else (prev + 1 if prev is not None else None))
+    if r[DR] in ('Hole', 'PoolFull', 'PublisherFull', 'RingFullTail') and c is not None: lost.append(c % 65536)
+    if c is not None: prev = c
+open(sys.argv[2], 'w').write(''.join('%d\n' % c for c in lost)); print('lost units listed from the sidecar: %d' % len(lost))
+PY
+  LOST="$D/lost_counters.txt"
+else echo "no sidecar beside the capture: single-slot holds are off"; fi
+python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
   -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
   -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,yadif=mode=send_field:parity=tff,crop=704:480:8:0,setsar=10/11" \
   -c:v prores_videotoolbox -profile:v standard -an "$VOUT" > "$D/ffmpeg.log" 2>&1 & PL=$!
