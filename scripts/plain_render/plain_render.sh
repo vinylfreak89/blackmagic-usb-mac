@@ -33,13 +33,23 @@ DLOG=${PLAIN_RENDER_DECISION_LOG:-}
 [ -n "$DLOG" ] && [ -e "$DLOG" ] && { echo "REFUSE: decision log exists: $DLOG"; exit 2; }
 [ -x "$RP" ] || { echo "REFUSE: build $RP first (make -C src/frameserver frameserver_replay)"; exit 2; }
 make -C "$REPO/src/frameserver" -q frameserver_replay || { echo "REFUSE: $RP is older than its source; rebuild it"; exit 2; }
+# The repo can sit in iCloud-synced ~/Documents: an evicted binary launched while it is still downloading is killed by
+# macOS with "Code Signature Invalid" before it runs (2026-10-21). Read it in full first, then check its signature.
+cat "$RP" > /dev/null || { echo "REFUSE: could not read $RP"; exit 2; }
+codesign -v "$RP" 2>/dev/null || { echo "REFUSE: $RP fails its code-signature check"; exit 2; }
 rm -f "$D/v.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$VOUT"; mkfifo "$D/v.fifo"; date
 python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
   -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
   -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,yadif=mode=send_field:parity=tff,crop=704:480:8:0,setsar=10/11" \
   -c:v prores_videotoolbox -profile:v standard -an "$VOUT" > "$D/ffmpeg.log" 2>&1 & PL=$!
 FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$SRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
-RC=$?; touch "$D/replay.done"; wait $PL; FRC=$?; rm -f "$D/v.fifo"; date
+RC=$?; touch "$D/replay.done"
+# A replay that died before opening the FIFO leaves the relay blocked opening it: open the write end once without
+# blocking, so the relay sees end of file and the pipeline ends (fails) instead of waiting forever.
+python3 -c 'import os, sys
+try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
+except OSError: pass' "$D/v.fifo"
+wait $PL; FRC=$?; rm -f "$D/v.fifo"; date
 echo "replay exit $RC, encode exit $FRC"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log"
 if [ $RC -ne 0 ] || [ $FRC -ne 0 ]; then echo "STAGE 1 FAILED: logs in $D, video-only kept at $VOUT"; exit 1; fi
 python3 "$HERE/mux.py" "$D" "$VOUT" "$OUT" || { echo "MUX FAILED: logs in $D, video-only kept at $VOUT"; exit 1; }
