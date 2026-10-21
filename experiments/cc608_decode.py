@@ -4,8 +4,8 @@
 #   cc608_decode.py <capture.tpc> <units> <comma-separated unit rows>   (unit row r = NTSC line r+4)
 # Decode CEA-608 bytes from a luma line: locate the 503.5 kHz clock run-in by correlation, sample the 3 start bits and
 # 16 data bits at the run-in's phase (bit cell = 1.986 us = 26.8 px at 13.5 MHz), check odd parity per byte.
-import sys, numpy as np, collections
-sys.path.insert(0,'/Users/vinylfreak89/Documents/blackmagic-usb-mac/experiments'); from packet_capture_reader import walk_tagged
+import os, sys, numpy as np, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from packet_capture_reader import walk_tagged
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 CELL=1.986e-6*13.5e6   # 26.81 px
 def decode(row):
