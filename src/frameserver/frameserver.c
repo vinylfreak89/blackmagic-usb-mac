@@ -568,9 +568,16 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
     pthread_mutex_unlock(&f->log_m);
 }
 static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d,const hrt_result *repair) {
-    ap_correlation audio={0};int known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
+    /* The frame's audio-clock time. Live: looked up at publication, best effort (a lookup that meets the audio
+     * thread mid-write gives up after its bounded retries; video never waits for audio). Offline: the snapshot
+     * taken when the parser handed the unit over, in input order, so two replays of a capture stamp every frame
+     * the same (2026-10-21: one frame of 5,382 lost its time in one of two otherwise identical renders). A
+     * resync arrives before its unit (1-2 units ahead, measured on a 4.3 GB capture), so the snapshot has it. */
+    ap_correlation audio={0};int known;
+    if(f->cfg.offline_backpressure){ known=it->audio_evidence_known; if(known)audio=it->audio_evidence; }
+    else known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
 #ifdef AP_LOOKUP_DIAGNOSTICS
-    if(known!=it->audio_evidence_known || (known && memcmp(&audio,&it->audio_evidence,sizeof audio)))
+    if(!f->cfg.offline_backpressure && (known!=it->audio_evidence_known || (known && memcmp(&audio,&it->audio_evidence,sizeof audio))))   /* offline both are the snapshot */
         fprintf(stderr,"AUDIO-INGRESS-DIFF counter=%llu ingress_known=%d publication_known=%d ingress_residual=%lld publication_residual=%lld\n",
             (unsigned long long)d->counter,it->audio_evidence_known,known,
             (long long)it->audio_evidence.residual_ticks,(long long)audio.residual_ticks);

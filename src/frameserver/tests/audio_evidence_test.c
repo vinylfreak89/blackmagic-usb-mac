@@ -32,6 +32,7 @@ static void resync(audio_publisher *p,uint64_t c,uint64_t ordinal){
     ap_on_audio(p,&o);
 }
 static void *writer(void *ctx){resync(ctx,12,3203);return NULL;}
+static void *writer21(void *ctx){unit_audio_observation o={.kind=UNIT_AUDIO_RESYNC,.epoch=2,.counter_extended=21,.sample_ordinal=33633};ap_on_audio(ctx,&o);return NULL;}
 static void wait_writer(void){
     pthread_mutex_lock(&gate_m);double until=test_until("AUDIO_EVIDENCE_WAIT_S");
     while(!blocked)test_condition(&gate_c,&gate_m,until,"correlation writer entered");
@@ -113,8 +114,26 @@ int main(int argc,char **argv){
     (void)capture_video(f,unit,2,12); // does not replace the pending item's evidence
     fresh_log(f);geometry_publish(f,&f->geometry_item,f->pool,&d,NULL);
     assert(callback_known);check_audio_cells(f->log,"0","0");
+    /* Offline: frames take the input-order snapshot, so an overlapping writer cannot cost a frame its time,
+     * and audio that only arrives after the unit's handoff stays unknown in every run, as in the log. */
+    f->cfg.offline_backpressure=1;
+    { unit_audio_observation r={.kind=UNIT_AUDIO_RESYNC,.epoch=2,.counter_extended=20,.sample_ordinal=32032}; ap_on_audio(f->aud,&r); }
+    it=capture_video(f,unit,2,20);d.counter=20;
+    assert(it.audio_evidence_known);
+    block_counter=21;release_writer=0;blocked=0;
+    pthread_t thread2;assert(!pthread_create(&thread2,NULL,writer21,f->aud));wait_writer();
+    int before=callback_count;fresh_log(f);geometry_publish(f,&it,f->pool,&d,NULL);
+    if(callback_count!=before+1 || !callback_known || callback_pts!=it.audio_evidence.pts_num){
+        fprintf(stderr,"FAIL: offline frame published during a correlation write: known=%d pts=%llu, snapshot pts=%llu\n",
+                callback_known,(unsigned long long)callback_pts,(unsigned long long)it.audio_evidence.pts_num);exit(1);
+    }
+    unblock_writer();assert(!pthread_join(thread2,NULL));
+    it=capture_video(f,unit,2,900);d.counter=900;assert(!it.audio_evidence_known);
+    { unit_audio_observation r={.kind=UNIT_AUDIO_RESYNC,.epoch=2,.counter_extended=900,.sample_ordinal=900*1601}; ap_on_audio(f->aud,&r); }
+    fresh_log(f);geometry_publish(f,&it,f->pool,&d,NULL);
+    if(callback_known){ fprintf(stderr,"FAIL: offline frame took audio that arrived after its handoff\n");exit(1); }
     fclose(f->log);fp_close(f->pub);ap_close(f->aud);
     pthread_mutex_destroy(&f->log_m);pthread_cond_destroy(&f->c);pthread_mutex_destroy(&f->m);
     free(unit);free(f->pool);free(f->slot_used);free(f);
-    puts("audio evidence: PASS (writer overlap, eviction, late/missing audio, epoch/pending ownership, unchanged live timestamp semantics)");
+    puts("audio evidence: PASS (writer overlap, eviction, late/missing audio, epoch/pending ownership, unchanged live timestamp semantics, offline frames stamped from the input-order snapshot)");
 }

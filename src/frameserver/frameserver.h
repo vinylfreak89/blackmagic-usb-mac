@@ -85,7 +85,9 @@ typedef struct {
 // A resync not yet observed at that cutoff (or outside the correlation history)
 // produces empty audio-evidence cells, even if it arrives before publication.
 // No video is deferred and no thread waits for audio. Live audio_pts_known/num
-// retain their separate, publication-time best-effort lookup semantics.
+// retain their separate, publication-time best-effort lookup semantics; offline
+// (offline_backpressure) they take the same input-order snapshot as the log, so
+// repeated offline replays stamp identical frame times.
 
 typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;
