@@ -887,10 +887,10 @@ static void shuttle_stop(shuttle_src *s){
         if (st.log_last_file_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write/close errors in this file); left unpublished at %s", (unsigned long long)st.log_last_file_errors, s->sidecar_partial);
         else sidecar_publish(s);
     }
-    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, counter-against-audio steps seen (none applied) %llu, search frames shown %llu, frames timed without an audio time %llu",
+    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, counter-against-audio steps seen (none applied) %llu, search frames shown %llu (not shown, no free slot: %llu), frames timed without an audio time %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
-         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
+         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)st.partial_not_shown, (unsigned long long)atomic_load(&s->video_estimated));
     if (!s->replaying && s->usb_iousbhost)
         blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO,
              "[shuttle-source] USB (IOUSBHost): %llu unread-slot events, exact (gaps and too-old runs; %llu video / %llu audio packets never read)",

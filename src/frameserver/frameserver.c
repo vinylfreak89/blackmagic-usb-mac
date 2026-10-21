@@ -100,6 +100,7 @@ struct frameserver {
     enum cc_end end_reason;
     fs_stats st; _Atomic uint64_t audio_records, audio_resync, dropped_pool_full, dropped_ring_full, video_obs, holes, unframed, shorts, other_fmt, ns0800;
     _Atomic int bp_waiting, bp_abort; _Atomic uint64_t bp_waits;   // offline_backpressure: producer waits; fs_stop aborts them
+    _Atomic uint64_t partial_not_shown;    // show_partial: a picture unit that was not whole found no free slot (live only: offline waits)
     pthread_mutex_t bp_m; pthread_cond_t bp_c;                      // statically initialised in fs_open
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
@@ -232,11 +233,15 @@ static void on_video(void *ctx, const unit_video_observation *u){
     }
     /* A picture unit that is not whole (one short field per unit from a deck in search, or the PAL-family units of
      * an unlocked decoder) is kept for showing if asked. No-signal pseudo-frames, units with bytes missing and
-     * stubs of a few lines are not picture. No slot free: it is simply not shown. */
+     * stubs of a few lines are not picture. Offline, it waits for a free slot exactly as a whole unit does: whether
+     * it is shown must not depend on how busy the consumer is (2026-10-21: a render skipped 905 of 2,247 such frames
+     * while ffmpeg was the slow consumer). Live, a device cannot wait: no slot free means it is not shown, counted. */
     else if (f->cfg.show_partial && u->bytes && u->transport != UNIT_TRANSPORT_HOLE && (u->format & 0xff00u) == 0xe800u &&
              u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES && u->byte_count >= UNIT_PARSER_VIDEO_HEADER_BYTES + 32u * FP_LINE_BYTES){
+        if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
         int s = take_slot(f);
-        if (s >= 0){
+        if (s < 0) atomic_fetch_add(&f->partial_not_shown, 1);
+        else {
             memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, u->byte_count);
             it.slot = s; it.partial_lines = (unsigned)((u->byte_count - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
             it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);   /* its time on the audio clock, for the consumer's timestamp */
@@ -997,7 +1002,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
         o->rt_event_thread = cs.rt_event_thread; o->rt_libusb_threads = cs.rt_libusb_threads; o->rt_event_at_stop = cs.rt_event_at_stop;
         o->capture_teardown_incomplete = cs.teardown_incomplete;
         o->rt_priority_at_stop = cs.rt_priority_at_stop; o->rt_priority_min = cs.rt_priority_min; o->schedule_shifts = cs.schedule_shifts; o->schedule_shift_frames = cs.schedule_shift_frames; }
-    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
+    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->partial_not_shown = atomic_load(&f->partial_not_shown); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);

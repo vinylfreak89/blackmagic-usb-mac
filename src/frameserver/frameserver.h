@@ -99,6 +99,7 @@ typedef struct {
     uint64_t eligible_observations;   // fixed-raster-eligible units seen at ingress (the denominator)
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
     uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
+    uint64_t partial_not_shown; // show_partial: units that were not whole and found no free slot (live only; offline waits)
     uint64_t backpressure_waits; // offline_backpressure: times the producer waited for the worker (frames kept, not shed)
     uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
     uint64_t unscheduled_events, unscheduled_packets[2], unscheduled_late; // capture core: USB slots never read (explicit HostLoss); late: found after their data went by
