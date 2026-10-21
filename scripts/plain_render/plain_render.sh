@@ -26,6 +26,10 @@
 # PLAIN_RENDER_STALL_S=N: the replay's no-delivery deadline (default 120 s); raise it when the input can pause for longer,
 # e.g. a FIFO fed from a cloud volume whose reader waits out dropouts.
 set -u
+# The whole script is one function, called on the last line: bash reads and parses all of it before running any of it.
+# Run as plain lines, bash reads the file as it goes, so an edit during a render makes the running render execute
+# the new file from the old byte offset (2026-10-21: an edit mid-render ended one with "unexpected EOF").
+main() {
 SRC=${1:?usage: plain_render.sh CAPTURE.tpc OUT.mov [WORKDIR]}; OUT=${2:?usage: plain_render.sh CAPTURE.tpc OUT.mov [WORKDIR]}
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
 RP="$REPO/src/frameserver/frameserver_replay"
@@ -82,3 +86,5 @@ if [ $RC -ne 0 ] || [ $FRC -ne 0 ]; then echo "STAGE 1 FAILED: logs in $D, video
 python3 "$HERE/mux.py" "$D" "$VOUT" "$OUT" || { echo "MUX FAILED: logs in $D, video-only kept at $VOUT"; exit 1; }
 rm -f "$VOUT"; [ -z "${3:-}" ] && rm -rf "$D"
 date; echo ALL DONE
+}
+main "$@"; exit $?
