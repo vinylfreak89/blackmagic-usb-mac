@@ -1,33 +1,56 @@
 #!/usr/bin/env python3
-"""mux.py D VIDEO_ONLY OUT -- audio placed against the first frame by its own clock, with the samples the device did not supply inserted
-once where the A/V residual steps (as in the 13-30-55 render); then video + audio muxed in ONE pass with the index
-reserved at the front at its exact size (dry run to /dev/null first). Checks the frame count; prints RESULT.
+"""mux.py D VIDEO_ONLY OUT -- the audio exactly as the device delivered it, against the video timeline relay.py built on the audio
+clock (D/schedule.json: a0 and the slot count); then video + audio muxed in ONE pass with the index reserved at the front at its
+exact size. Checks the frame count; prints RESULT.
+Audio placement: the first block goes where its audio-clock time falls against a0 (trimmed or led by silence), and every later
+block follows the previous one with no gap: the device's samples are continuous unless the transport lost some. Silence is
+inserted only across a transport hole (the replay's "hole N" count above zero): there a discontinuity ends the audio run, and
+the next anchored block's time says how many samples are missing; the unanchored blocks before it are held and written after
+the silence. With no holes, discontinuities are counted and the audio stays contiguous. (Until 2026-10-21 silence was
+inserted wherever the A/V residual stepped, which assumed every unit counter is one NTSC frame; in the Shuttle's other-format
+modes the counter runs ~50-70 per second, and ~41 s of silence chopped one tape's continuous audio.)
 The dry run and the frame count do not read the video-only file's media: they use a local sparse stand-in holding its real
 top-level atoms with the mdat payload left as a hole, so the index size comes from the file's own sample tables and only the
 final pass reads the media (on a cloud volume each full read is a download; 2026-10-21 three reads of a 65 GB render helped
 exhaust the account's daily download cap). The reservation is the exact size, so the output has no padding beyond ffmpeg's own."""
-import os, re, subprocess, sys
-from fractions import Fraction
+import os, re, subprocess, sys, json
 D=sys.argv[1]; VOUT=sys.argv[2]; OUT=sys.argv[3]
 if os.path.exists(OUT): print("RESULT REFUSED: output exists"); sys.exit(2)
-V=[];A=[]
+sched=json.load(open(f"{D}/schedule.json")); frames=sched["slots"]; a0=sched["a0_ticks"]
+m=re.search(r"\bhole (\d+)", open(f"{D}/replay.log").read())
+if not m: print("RESULT REFUSED: replay.log has no hole count"); sys.exit(1)
+holes=int(m.group(1)); DISC, UNANCHORED = 1, 4
+A=[]
 for line in open(f"{D}/timing.csv"):
     f=line.rstrip("\n").split(",")
-    if f[0]=="V": V.append((int(f[1]),int(f[2]),int(f[3])))
-    elif f[0]=="A": A.append([int(x) for x in f[1:]])
-frames=V[-1][0]-V[0][0]+1
-v0=Fraction(V[0][1],V[0][2]); pcm=open(f"{D}/a.s24","rb"); out=open(f"{D}/a_sync.s24","wb"); pos=0; shift=0; ins=[]
-for (ordinal,pnum,pden,n,flags,ctr,res) in A:
-    target=round(res/5)
-    if target-shift>=3:
-        out.write(b"\0"*((target-shift)*6)); pos+=target-shift; ins.append((ctr,target-shift)); shift=target
-    at=round((Fraction(pnum,pden)-v0)*48000)+shift; data=pcm.read(n*6)
-    if at<0: k=min(-at,n); data=data[k*6:]; at+=k
-    if at>pos: out.write(b"\0"*((at-pos)*6)); pos=at
-    elif at<pos: data=data[(pos-at)*6:]
+    if f[0]=="A": A.append([int(x) for x in f[1:]])
+pcm=open(f"{D}/a.s24","rb"); out=open(f"{D}/a_sync.s24","wb"); pos=0; ins=[]; discs=0; overlaps=[]; held=[]; waiting=False
+def put(data):
+    global pos
     out.write(data); pos+=len(data)//6
+for k,(ordinal,pnum,pden,n,flags,ctr,res) in enumerate(A):
+    assert pden==240000, ("unexpected audio timebase", pden)
+    data=pcm.read(n*6); assert len(data)==n*6, ("audio dump shorter than its log", ordinal)
+    if k==0:
+        at=round((pnum-a0)/5)                       # 5 ticks per sample
+        if at<0: data=data[min(-at,n)*6:]
+        elif at>0: put(b"\0"*(at*6))
+        put(data); continue
+    if flags & DISC:
+        discs+=1
+        if holes: waiting=True
+    if waiting:
+        if flags & UNANCHORED: held.append(data); continue
+        at=round((pnum-a0)/5); before=pos+sum(len(h)//6 for h in held)
+        if at>before: put(b"\0"*((at-before)*6)); ins.append((ctr,at-before))
+        elif at<before: overlaps.append((ctr,before-at))
+        for h in held: put(h)
+        held=[]; waiting=False
+    put(data)
+for h in held: put(h)
 out.close()
-print(f"video {frames} frames ({frames*1001/30000:.2f} s); audio {pos} samples ({pos/48000:.2f} s); silence inserted (counter, samples): {ins}")
+print(f"video {frames} frames ({frames*1001/30000:.2f} s); audio {pos} samples ({pos/48000:.2f} s); replay holes {holes}; audio discontinuities {discs}; "
+      f"silence inserted at holes (counter, samples): {ins}; re-anchors earlier than the audio (counter, samples, left contiguous): {overlaps}")
 import struct
 def stand_in(src, dst):
     """dst: a sparse copy of src's top-level atoms with every mdat payload left as a hole (reads only atom headers and non-mdat atoms)"""

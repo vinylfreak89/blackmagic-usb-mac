@@ -8,13 +8,16 @@
 #      published 720x480 UYVY frames, the PCM and the timing log. Picture units that are not whole (a deck in search,
 #      unlocked or damaged playback) are shown with the lines they carry (FS_SHOW_PARTIAL=1, as OBS's "show partial"),
 #      so picture the Shuttle could not frame is not replaced by fill; PLAIN_RENDER_SHOW_PARTIAL=0 turns that off.
-#   2. relay.py places frames by unit counter; a counter the replay did not publish becomes a flat
-#      no-signal frame, so timing holds.
+#   2. relay.py places frames on the AUDIO clock: each frame goes to the 1001/30000 s slot nearest its unit's
+#      audio-clock time (a unit counter is not time: in the Shuttle's other-format modes it runs ~50-70 per second);
+#      a slot no frame reached becomes a flat no-signal frame, and of several frames in one slot the nearest is kept
+#      (the others are counted as dropped). It writes schedule.json (start time, slot count) for the mux.
 #   3. ffmpeg: TFF, BT.601 limited range, yadif send_field (59.94p), crop 704x480 at x=8, SAR 10/11,
 #      ProRes 422 on the VideoToolbox hardware encoder -> a hidden video-only file beside OUT.
-#   4. mux.py places the audio against the first frame by its own clock, inserts the samples the device
-#      did not supply once where the A/V residual steps, checks the frame count, and muxes video + audio
-#      in one pass with the index reserved at the front. The video-only file is removed after success.
+#   4. mux.py writes the audio as the device delivered it, continuous from the first frame's audio time,
+#      inserting silence only across a transport hole; checks the frame count against the relay's slots, and
+#      muxes video + audio in one pass with the index reserved at the front. The video-only file is removed
+#      after success.
 #
 # Refuses to overwrite OUT. WORKDIR (default: a fresh temp dir) holds the FIFO, PCM and timing log;
 # it is removed when the render succeeds.
