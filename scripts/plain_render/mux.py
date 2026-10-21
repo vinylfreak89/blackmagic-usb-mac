@@ -79,7 +79,16 @@ dry=subprocess.run(base_of(PROXY)+["-moov_size","1","-f","mov","-y","/dev/null"]
 m=re.search(r"needed (\d+) additional",dry) or re.search(r"(\d+) additional",dry)
 if not m: print("RESULT REFUSED: dry run gave no index size:", dry[-400:]); sys.exit(1)
 need=int(m.group(1))+1
-r=subprocess.run(base+["-loglevel","warning","-moov_size",str(need),OUT],capture_output=True,text=True)
+# OUT is emptied in place and written by ffmpeg into that same file: never deleted and recreated (see plain_render.sh). The video-only
+# file is read ahead of ffmpeg (readahead.py), since this pass is the only one that reads its media.
+r=subprocess.run(["bash","-c",': > "$1" && truncate -s 0 "$1" && [ "$(stat -f %z "$1")" = 0 ]',"_",OUT])
+if r.returncode!=0: print("RESULT REFUSED: could not empty the output in place"); sys.exit(1)
+fr=os.path.getsize(VOUT)/(os.path.getsize(VOUT)+os.path.getsize(f"{D}/a_sync.s24"))
+mx=subprocess.Popen(base+["-loglevel","warning","-y","-moov_size",str(need),OUT],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+ra=subprocess.Popen(["python3",os.path.join(os.path.dirname(os.path.abspath(__file__)),"readahead.py"),VOUT,"--follow",OUT,"--fraction",str(fr),"--pid",str(mx.pid)],stderr=open(f"{D}/readahead_mux.log","w"))
+so,se=mx.communicate(); ra.wait()
+class R: pass
+r=R(); r.returncode=mx.returncode; r.stderr=se
 if r.returncode!=0: print("RESULT FAILED:", r.stderr[-400:]); sys.exit(1)
 pr=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_name,duration,nb_frames","-of","compact",OUT],capture_output=True,text=True).stdout
 print(pr.strip()); print("RESULT OK", OUT)

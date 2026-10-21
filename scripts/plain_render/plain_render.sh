@@ -14,6 +14,8 @@
 #      (the others are counted as dropped). It writes schedule.json (start time, slot count) for the mux.
 #   3. ffmpeg: TFF, BT.601 limited range, yadif send_field (59.94p), crop 704x480 at x=8, SAR 10/11,
 #      ProRes 422 on the VideoToolbox hardware encoder -> a hidden video-only file beside OUT.
+#   readahead.py reads the capture (during 1) and the video-only file (during 4's final pass) ahead of their readers through
+#   the volume's FUSE mount, so a cloud volume's small NFS reads find their blocks cached.
 #   4. mux.py writes the audio as the device delivered it, continuous from the first frame's audio time,
 #      inserting silence only across a transport hole; checks the frame count against the relay's slots, and
 #      muxes video + audio in one pass with the index reserved at the front. The video-only file is removed
@@ -40,7 +42,13 @@ make -C "$REPO/src/frameserver" -q frameserver_replay || { echo "REFUSE: $RP is 
 # macOS with "Code Signature Invalid" before it runs (2026-10-21). Read it in full first, then check its signature.
 cat "$RP" > /dev/null || { echo "REFUSE: could not read $RP"; exit 2; }
 codesign -v "$RP" 2>/dev/null || { echo "REFUSE: $RP fails its code-signature check"; exit 2; }
-rm -f "$D/v.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/lost_counters.txt" "$VOUT"; mkfifo "$D/v.fifo"; date
+rm -f "$D/v.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/lost_counters.txt"; mkfifo "$D/v.fifo"; date
+# Outputs are emptied in place, never deleted and recreated: JuiceMount (0.4) keeps a deleted file's write handle and its size
+# high-water mark per path, so a file recreated where one was deleted can receive writes into the deleted inode, or be reported at
+# the old size and crawl while the client reads each block before writing it (2026-10-21, both seen). Creating and truncating to 0
+# clears the mark; ffmpeg then writes into that same file (-y).
+empty_in_place(){ : > "$1" && truncate -s 0 "$1" && [ "$(stat -f %z "$1")" = 0 ] || { echo "REFUSE: could not empty $1 in place"; exit 2; }; }
+empty_in_place "$VOUT"
 # Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc): the relay
 # never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off.
 SC="${SRC%.raw.tpc}.registration.csv"; LOST=none
@@ -62,9 +70,11 @@ else echo "no sidecar beside the capture: single-slot holds are off"; fi
 python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
   -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
   -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,yadif=mode=send_field:parity=tff,crop=704:480:8:0,setsar=10/11" \
-  -c:v prores_videotoolbox -profile:v standard -an "$VOUT" > "$D/ffmpeg.log" 2>&1 & PL=$!
+  -c:v prores_videotoolbox -profile:v standard -an -y "$VOUT" > "$D/ffmpeg.log" 2>&1 & PL=$!
+# Read the capture ahead of the replay (see readahead.py): on a cloud volume its small reads through the share wait on the object store.
+python3 "$HERE/readahead.py" "$SRC" --log "$D/timing.csv" --done "$D/replay.done" 2>"$D/readahead.log" & RA=$!
 FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$SRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
-RC=$?; touch "$D/replay.done"
+RC=$?; touch "$D/replay.done"; wait $RA 2>/dev/null
 # A replay that died before opening the FIFO leaves the relay blocked opening it: open the write end once without
 # blocking, so the relay sees end of file and the pipeline ends (fails) instead of waiting forever.
 python3 -c 'import os, sys
