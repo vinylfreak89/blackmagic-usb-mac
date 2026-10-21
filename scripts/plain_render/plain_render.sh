@@ -5,7 +5,9 @@
 # (2026-10-17 13-48-05) and for test recordings.
 #
 #   1. frameserver_replay --offline (waits, never drops) with FS_REGISTRATION_OFF=1 FS_HRETIME=0 dumps the
-#      published 720x480 UYVY frames, the PCM and the timing log.
+#      published 720x480 UYVY frames, the PCM and the timing log. Picture units that are not whole (a deck in search,
+#      unlocked or damaged playback) are shown with the lines they carry (FS_SHOW_PARTIAL=1, as OBS's "show partial"),
+#      so picture the Shuttle could not frame is not replaced by fill; PLAIN_RENDER_SHOW_PARTIAL=0 turns that off.
 #   2. relay.py places frames by unit counter; a counter the replay did not publish becomes a flat
 #      no-signal frame, so timing holds.
 #   3. ffmpeg: TFF, BT.601 limited range, yadif send_field (59.94p), crop 704x480 at x=8, SAR 10/11,
@@ -36,7 +38,7 @@ python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" 2>"$D/relay.log" | ffmpeg -
   -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
   -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,yadif=mode=send_field:parity=tff,crop=704:480:8:0,setsar=10/11" \
   -c:v prores_videotoolbox -profile:v standard -an "$VOUT" > "$D/ffmpeg.log" 2>&1 & PL=$!
-FS_REGISTRATION_OFF=1 FS_HRETIME=0 "$RP" "$SRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
+FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$SRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
 RC=$?; touch "$D/replay.done"; wait $PL; FRC=$?; rm -f "$D/v.fifo"; date
 echo "replay exit $RC, encode exit $FRC"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log"
 if [ $RC -ne 0 ] || [ $FRC -ne 0 ]; then echo "STAGE 1 FAILED: logs in $D, video-only kept at $VOUT"; exit 1; fi
