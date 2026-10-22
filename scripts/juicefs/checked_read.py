@@ -11,8 +11,8 @@ So the proof is made at read time, against the store:
   - File layout: the volume's metadata (Redis: c<inode>_<chunk> lists of 24-byte slice records, later records covering
     earlier ones) says which object holds every byte range of the file.
   - Truth: the SHA-1 the object store lists for each object (a listing; nothing is downloaded). Objects not uploaded yet
-    are compared with their staged copy; a range covering only part of an object is compared with the object's bytes in
-    the local cache, after that copy is itself checked against the listed SHA-1.
+    are compared with their staged copy; a range covering only part of an object is compared with the object's bytes, from
+    the local cache or else downloaded (4 MiB), after those bytes are themselves checked against the listed SHA-1.
   - A read that does not match is re-read up to 3 times, bypassing the kernel page cache (the bad bytes stick there);
     every mismatch is reported, never hidden.
 FILE is read through JuiceFS's own FUSE mount, so the bytes checked are exactly what JuiceFS returned.
@@ -90,7 +90,7 @@ def pieces(lay, bs):
 class Truth:
     """SHA-1s listed by the object store, per directory, fetched once each; plus the local cache and staging copies."""
     def __init__(self, remote, cache_dirs):
-        self.remote, self.dirs, self.listed, self.seconds = remote, cache_dirs, {}, 0.0
+        self.remote, self.dirs, self.listed, self.seconds, self.fetched, self.fetched_bytes = remote, cache_dirs, {}, 0.0, {}, 0
     def sha1(self, key):
         d, name = key.rsplit('/', 1)
         if d not in self.listed:
@@ -101,6 +101,18 @@ class Truth:
             self.listed[d] = {x['Name']: (x.get('Hashes') or {}).get('sha1') for x in json.loads(p.stdout or '[]')}
             self.seconds += time.time() - t
         return self.listed[d].get(name)
+    def fetch(self, key, osz):
+        """The block from the object store (a range covering only part of a block cannot use the block's listed SHA-1 on its
+        own), accepted only if it matches that listed SHA-1. Kept in memory: several pieces can share one block."""
+        if key in self.fetched: return self.fetched[key]
+        want = self.sha1(key)
+        if not want: return None
+        t = time.time(); p = subprocess.run(['rclone', 'cat', self.remote + key], capture_output=True, timeout=600); self.seconds += time.time() - t
+        data = p.stdout if p.returncode == 0 else None
+        if data is None or len(data) != osz or hashlib.sha1(data).hexdigest() != want: return None
+        self.fetched[key] = data; self.fetched_bytes += osz
+        if len(self.fetched) > 16: self.fetched.pop(next(iter(self.fetched)))
+        return data
     def local(self, kind, key, osz):
         for c in self.dirs:
             p = os.path.join(c, kind, key)
@@ -130,7 +142,7 @@ def main():
     if data_src != src and os.path.getsize(data_src) != size: die('%s is %d bytes, %s is %d' % (data_src, os.path.getsize(data_src), a[0], size))
     fd = os.open(data_src, os.O_RDONLY); fcntl.fcntl(fd, F_NOCACHE, 1)
     out = open(opt['--out'], 'wb', buffering=0) if '--out' in opt else sys.stdout.buffer
-    stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0,
+    stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0, proven_by_download=0,
                  holes=0, retried=0, mismatches=[], bytes_written=0, started=time.strftime('%F %T'))
     t0 = time.time(); last = t0
     try:
@@ -145,6 +157,7 @@ def main():
                 ref = truth.local('raw', key, osz); how = 'cache'
                 if ref is not None and truth.sha1(key) not in (None, hashlib.sha1(ref).hexdigest()): ref = None
                 if ref is None and truth.sha1(key) is None: ref = truth.local('rawstaging', key, osz); how = 'staging'
+                if ref is None and truth.sha1(key): ref = truth.fetch(key, osz); how = 'download'
                 if ref is None:
                     stats['mismatches'].append(dict(offset=foff, length=ln, key=key, reason='no listed SHA-1 and no local copy to compare with'))
                     break
@@ -164,15 +177,18 @@ def main():
             if time.time() - last >= 30:
                 last = time.time(); print('checked_read: %.1f of %.1f GB proven, %.1f MB/s' % (stats['bytes_written'] / 1e9, size / 1e9, stats['bytes_written'] / 1e6 / (last - t0)), file=sys.stderr, flush=True)
     except BrokenPipeError: stats['reader_closed'] = True
+    except OSError as e:                                     # the source went away (a disk unplugged, the volume unreachable)
+        stats['mismatches'].append(dict(offset=stats['bytes_written'], reason='read failed: %s' % e))
+        print('checked_read: READ FAILED at offset %d: %s' % (stats['bytes_written'], e), file=sys.stderr, flush=True)
     finally:
         os.close(fd)
         try: out.close()
         except BrokenPipeError: pass
     stats['complete'] = stats['bytes_written'] == size and not any(m.get('attempt') == 4 or 'reason' in m for m in stats['mismatches'])
-    stats['seconds'] = round(time.time() - t0, 1); stats['listing_seconds'] = round(truth.seconds, 1); stats['listings'] = len(truth.listed)
+    stats['seconds'] = round(time.time() - t0, 1); stats['listing_seconds'] = round(truth.seconds, 1); stats['listings'] = len(truth.listed); stats['downloaded_bytes'] = truth.fetched_bytes
     if '--report' in opt: json.dump(stats, open(opt['--report'], 'w'), indent=1)
-    print('checked_read: %s: %d pieces, %d by listed SHA-1, %d by cache copy, %d by staged copy, %d holes; %d mismatching reads; %s' % (
-        a[0], len(plan), stats['proven_by_listing'], stats['proven_by_cache'], stats['proven_by_staging'], stats['holes'], len(stats['mismatches']),
+    print('checked_read: %s: %d pieces, %d by listed SHA-1, %d by cache copy, %d by downloaded block (%.0f MB), %d by staged copy, %d holes; %d mismatching reads; %s' % (
+        a[0], len(plan), stats['proven_by_listing'], stats['proven_by_cache'], stats['proven_by_download'], truth.fetched_bytes / 1e6, stats['proven_by_staging'], stats['holes'], len(stats['mismatches']),
         'ALL BYTES PROVEN' if stats['complete'] else 'STOPPED: %d of %d bytes written' % (stats['bytes_written'], size)), file=sys.stderr, flush=True)
     sys.exit(0 if stats['complete'] else (0 if stats.get('reader_closed') else 3))
 
