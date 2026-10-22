@@ -16,22 +16,22 @@ int main(void) {
     aq_enqueue(f,&b); assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0);
     atomic_store(&f->aq_tail,1);
     b.correlation_residual=115; aq_enqueue(f,&b);
-    assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==1);
+    assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0 && ticks==80080 && clock.residual_steps==1); // seen, not applied
     b.correlation_residual=230; aq_enqueue(f,&b); // full, including a new step
     assert(atomic_load(&f->aq_dropped_blocks)==1);
     atomic_store(&f->aq_tail,2); aq_enqueue(f,&b);
     assert(f->aq[0].flags==AP_FLAG_DROPPED_BEFORE);
-    assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==1 && ticks==80310);
+    assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0 && ticks==80080 && clock.residual_steps==2); // a step inside dropped blocks is still seen
     assert(!memcmp(f->aq[0].s24le,pcm,sizeof pcm));
     // The first block of a genuinely new run is dropped; its break MUST survive.
     b.flags=AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_UNANCHORED; aq_enqueue(f,&b);
     b.flags=0; b.correlation_residual=0; aq_enqueue(f,&b); // another dropped block
     atomic_store(&f->aq_tail,3); aq_enqueue(f,&b);
     assert(f->aq[0].flags==(AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_DROPPED_BEFORE));
-    assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0 && ticks==80080);
+    assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0 && ticks==80080 && clock.residual_steps==2); // a break starts a new comparison
     atomic_store(&f->aq_tail,4); aq_enqueue(f,&b); assert(f->aq[0].flags==0);
     assert(atomic_load(&f->aq_dropped_blocks)==3 && atomic_load(&f->aq_dropped_frames)==6);
     pthread_cond_destroy(&f->aq_c); pthread_mutex_destroy(&f->aq_m);
     free(f->aq_pcm); free(f->aq); free(f);
-    puts("audio queue flags: PASS (drop vs break, hidden step, carried break, cleared flags, PCM/accounting)");
+    puts("audio queue flags: PASS (drop vs break, step seen across a drop, carried break, cleared flags, PCM/accounting)");
 }

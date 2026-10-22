@@ -49,8 +49,10 @@ static void handoff_check(const fp_frame *fr){
 }
 static void handoff_report(void){
     for(size_t i=0;i<g_late_n;i++){ const late_event *e=&g_late_ev[i]; const fs_handoff_timing *h=&e->h;
-        fprintf(stderr,"LATE counter %llu gap %.1f ms | since prev %.1f: idle %.1f classify %.1f registration %.1f h-retiming %.1f sidecar %.1f other %.1f; %u items; queued %.1f\n",
-                (unsigned long long)e->counter,e->gap/1e6,h->since_prev_ns/1e6,h->idle_ns/1e6,h->classify_ns/1e6,h->geometry_ns/1e6,h->hretime_ns/1e6,h->log_ns/1e6,h->other_ns/1e6,h->items,h->queue_wait_ns/1e6); }
+        fprintf(stderr,"LATE counter %llu gap %.1f ms | since prev %.1f: idle %.1f classify %.1f registration %.1f h-retiming %.1f sidecar %.1f other %.1f; %u items; queued %.1f"
+                " | worker CPU %.1f of %.1f not idle | upstream gap %.1f, delivery CPU %.1f, ring %.0f KB\n",
+                (unsigned long long)e->counter,e->gap/1e6,h->since_prev_ns/1e6,h->idle_ns/1e6,h->classify_ns/1e6,h->geometry_ns/1e6,h->hretime_ns/1e6,h->log_ns/1e6,h->other_ns/1e6,h->items,h->queue_wait_ns/1e6,
+                h->cpu_ns/1e6,(h->since_prev_ns>h->idle_ns?h->since_prev_ns-h->idle_ns:0)/1e6,h->up_gap_ns/1e6,h->up_cpu_ns/1e6,h->up_ring_bytes/1024.0); }
     if(g_late>g_late_n) fprintf(stderr,"LATE: %llu more not recorded (first %d kept)\n",(unsigned long long)(g_late-g_late_n),LATE_MAX);
 }
 static void dump_frame(void *c, const fp_frame *fr){
@@ -91,6 +93,7 @@ int main(int argc, char **argv){
         fputs("FS_HRETIME must be 0 or 1\n",stderr);return 2;
     }
     cfg.hretime=retime && !strcmp(retime,"1");
+    cfg.show_partial=getenv("FS_SHOW_PARTIAL") && !strcmp(getenv("FS_SHOW_PARTIAL"),"1");
     const char *regoff=getenv("FS_REGISTRATION_OFF");
     if(regoff && strcmp(regoff,"0") && strcmp(regoff,"1")) {
         fputs("FS_REGISTRATION_OFF must be 0 or 1\n",stderr);return 2;
@@ -102,6 +105,7 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc) cfg.pool_units = (unsigned)atoi(argv[++i]);
         else if (!strcmp(argv[i], "--geometry-v11")) {} /* compatibility; now the default */
         else if (!strcmp(argv[i], "--pair-next")) cfg.geometry_pair_next=1;
+        else if (!strcmp(argv[i], "--offline")) cfg.offline_backpressure=1;   /* render: wait, never drop; pace optional */
         else if (!strcmp(argv[i], "--pairing-schedule")) {
             if(i+1==argc || argv[i+1][0]=='-' || cfg.pairing_schedule){fprintf(stderr,"--pairing-schedule requires one FILE\n");return 9;}
             cfg.pairing_schedule=argv[++i];
@@ -126,7 +130,7 @@ int main(int argc, char **argv){
     g_fs = f;
     if (fs_start(f) != 0){ fprintf(stderr, "start failed\n"); return 1; }
     const char *tee_path=getenv("FS_TEE");   /* test/diagnostic: raw .tpc tee of the replayed stream */
-    if(tee_path && *tee_path && fs_tee_start(f,tee_path,"frameserver tee v1 input=replay",256u<<20)!=0){ fprintf(stderr,"tee start failed: %s\n",tee_path); return 1; }
+    if(tee_path && *tee_path && fs_tee_start(f,tee_path,"frameserver tee v1 input=replay",256u<<20,NULL)!=0){ fprintf(stderr,"tee start failed: %s\n",tee_path); return 1; }
     tool_guard(NULL,0);
     double limit=tool_stall_seconds(stall_s,cfg.capture.replay_pace_us);
     uint64_t seen = fs_packets_delivered(f); double last_progress = tool_clock();
@@ -156,10 +160,14 @@ int main(int argc, char **argv){
     printf("video obs %llu | exact %llu short %llu hole %llu unframed %llu other %llu 0x0800 %llu\n",
         (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.short_units,
         (unsigned long long)s.holes, (unsigned long long)s.unframed, (unsigned long long)s.other_format, (unsigned long long)s.no_signal_0800);
+    if(s.partial_shown||s.partial_not_shown) printf("search frames shown from units that were not whole: %llu (not shown, no free slot: %llu)\n",(unsigned long long)s.partial_shown,(unsigned long long)s.partial_not_shown);
     printf("published %llu | dropped(pool) %llu dropped(ring) %llu dropped(surfaces) %llu | unsettled %llu | begin_segment %llu discontinuity %llu | log rows %llu | pool high %u\n",
         (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.dropped_ring_full, (unsigned long long)s.publisher_dropped,
         (unsigned long long)s.unsettled_units, (unsigned long long)s.begin_segment_calls, (unsigned long long)s.discontinuity_calls,
         (unsigned long long)s.log_rows, s.pool_high_water);
+    if (cfg.offline_backpressure)
+        printf("offline: frameserver waited %llu times, replay waited %llu times (frames kept, not shed)\n",
+               (unsigned long long)s.backpressure_waits, (unsigned long long)s.replay_space_waits);
     printf("eligible ingress %llu = processed exact %llu + eligible ring loss %llu | ring loss logged %llu in %llu terminal range rows\n",
         (unsigned long long)s.eligible_observations,(unsigned long long)s.exact_units,
         (unsigned long long)s.eligible_ring_drops,(unsigned long long)s.ring_drops_logged,

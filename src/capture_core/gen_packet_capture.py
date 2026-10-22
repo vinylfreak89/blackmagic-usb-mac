@@ -40,6 +40,9 @@ def main():
     ap.add_argument("--video-transfers", type=int, default=200)
     ap.add_argument("--audio-transfers", type=int, default=300)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--bus-interleave", action="store_true",
+                    help="order transfers by their true USB start times (video 16 ms, audio 10 ms: 1.6 audio per video). "
+                         "Without it the order is the historical one, 1.6 VIDEO per audio, which the older fixtures keep.")
     ap.add_argument("--short-every", type=int, default=0,
                     help="every Nth video packet is short (device-short behaviour); 0 = none")
     ap.add_argument("--xfererr-at", type=int, default=0,
@@ -60,7 +63,10 @@ def main():
         vseq = aseq = 0
         # interleave transfers roughly as the bus does (video ~16 ms, audio ~10 ms)
         while vi < a.video_transfers or ai < a.audio_transfers:
-            do_video = vi < a.video_transfers and (ai >= a.audio_transfers or (vi * 10) <= (ai * 16))
+            if a.bus_interleave:   # next video starts at vi*16 ms, next audio at ai*10 ms: emit the earlier one
+                do_video = vi < a.video_transfers and (ai >= a.audio_transfers or (vi * 16) <= (ai * 10))
+            else:
+                do_video = vi < a.video_transfers and (ai >= a.audio_transfers or (vi * 10) <= (ai * 16))
             if do_video:
                 for pi in range(V_NPK):
                     n = V_PKT

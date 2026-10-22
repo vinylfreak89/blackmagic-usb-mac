@@ -2,53 +2,44 @@
 #define SHUTTLE_AUDIO_TIMING_H
 #include "../frameserver/audio_publisher.h"
 
-/* Audio-worker owned. Preserve the plugin's existing >10-tick step policy;
- * this adapter advances timestamps in ticks, not the renderer's sample grid. */
-typedef struct {
-    int64_t applied_ticks, last_residual;
-    int have_residual;
-} shuttle_audio_clock;
+/* Audio is the clock.
+ *
+ * The device's unit counter is not time. It steps once per unit, and a unit is a full frame only while the device
+ * holds a full frame: a deck in search sends one short field per unit (the counter ran 5,197 units in 41 s of
+ * fast-forward, 2026-10-02), a stopped deck's no-signal units carry about one sample more than a frame's worth,
+ * and the short units at play start are short in time, not short of samples. Timing video from the counter and
+ * filling every shortfall of audio against it with silence put minutes of silence into OBS during a wind, and
+ * the audio that followed arrived late until something reset it.
+ *
+ * Samples are real time whatever the counter does. So audio blocks go out on the publisher's sample-contiguous
+ * timeline untouched, and a video frame takes the audio-clock time of its own unit (fp_frame.audio_pts_num).
+ * Nothing is inserted or dropped here. */
 
-/* -1: unanchored, do not publish; 0: ordinary block; 1: applied a step.
- * Queue drops retain the baseline so a step in omitted blocks is still seen.
- * A real break resets BEFORE discarding an unanchored block: its successor may
- * be anchored without repeating the break flag.
- * A step is applied in whole audio frames and reported in *step_frames (may be
- * NULL): the caller delivers that many frames of silence right before this block
- * (step > 0: the device lost samples) or drops that many frames from its start
- * (step < 0), so the consumer sees contiguous audio. OBS mishandles a bare
- * timestamp jump: a 974-sample step became ~50 ms of garble, silence and
- * repeated audio, then a permanent 1,606-sample offset (2026-09-28 capture). */
-static inline int shuttle_audio_time_step(shuttle_audio_clock *s, const ap_block *b, uint64_t *ticks, int64_t *step_frames) {
-    if (step_frames) *step_frames = 0;
-    if (b->flags & AP_FLAG_DISCONTINUITY_BEFORE) *s = (shuttle_audio_clock){0};
-    if (b->flags & AP_FLAG_UNANCHORED) return -1;
-    int stepped = 0;
-    if (s->have_residual) {
-        int64_t delta = b->correlation_residual - s->last_residual;
-        if (delta > 10 || delta < -10) {
-            int64_t frames = (delta + (delta > 0 ? 2 : -2)) / (int64_t)AP_TICKS_PER_FRAME;   /* nearest whole frame */
-            s->applied_ticks += frames * (int64_t)AP_TICKS_PER_FRAME; stepped = 1;
-            if (step_frames) *step_frames = frames;
-        }
-    }
-    s->last_residual = b->correlation_residual; s->have_residual = 1;
-    int64_t t = (int64_t)b->pts_num + s->applied_ticks;
-    *ticks = t < 0 ? 0 : (uint64_t)t;
-    return stepped;
+typedef struct { int have; uint64_t last; } shuttle_video_clock;
+
+/* A video frame's time in audio-clock ticks (1/AP_PTS_DEN s): its unit's audio-clock time when known. When it
+ * is not known (no resync for that unit yet), the previous frame's time plus `nominal` ticks, or `first` for
+ * the first frame of a session; *estimated is set. Times never go back: a known time at or before the previous
+ * frame's (after an estimate ran ahead) is placed one tick after it. */
+static inline uint64_t shuttle_video_time(shuttle_video_clock *c, int known, uint64_t audio_ticks,
+                                          uint64_t nominal, uint64_t first, int *estimated) {
+    uint64_t t = known ? audio_ticks : c->have ? c->last + nominal : first;
+    if (estimated) *estimated = !known;
+    if (c->have && t <= c->last) t = c->last + 1;
+    c->have = 1; c->last = t;
+    return t;
 }
-/* Contiguous delivery of a step: frames of silence to emit right before the block (gap), and
- * frames to drop from the block's start (skip), carrying an early-audio overlap longer than the
- * block into the next ones via *pending. A gap or a break cancels a pending overlap. */
-static inline void shuttle_audio_plan(int64_t step, int discontinuity, uint32_t n_frames,
-                                      int64_t *pending, int64_t *gap, uint32_t *skip) {
-    if (step > 0 || discontinuity) *pending = 0;
-    if (step < 0) *pending += -step;
-    *gap = step > 0 ? step : 0;
-    *skip = (uint32_t)(*pending < (int64_t)n_frames ? *pending : (int64_t)n_frames);
-    *pending -= *skip;
-}
+
+/* An audio block's time: the publisher's, as it is. -1: not yet placed on the timeline (no resync in this run),
+ * do not publish. Counts, for the log only, the blocks whose correlation residual stepped by more than two
+ * samples from the block before: the places the old policy would have inserted or dropped audio. */
+typedef struct { int have; int64_t last_residual; uint64_t residual_steps; } shuttle_audio_clock;
 static inline int shuttle_audio_time(shuttle_audio_clock *s, const ap_block *b, uint64_t *ticks) {
-    return shuttle_audio_time_step(s, b, ticks, NULL);
+    if (b->flags & AP_FLAG_DISCONTINUITY_BEFORE) s->have = 0;
+    if (b->flags & AP_FLAG_UNANCHORED) return -1;
+    if (s->have) { int64_t d = b->correlation_residual - s->last_residual; if (d > 10 || d < -10) s->residual_steps++; }
+    s->have = 1; s->last_residual = b->correlation_residual;
+    *ticks = b->pts_num;
+    return 0;
 }
 #endif

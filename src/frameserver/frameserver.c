@@ -38,6 +38,7 @@ typedef struct {
     int slot;                              // pool slot holding the unit bytes, or -1
     fs_drop drop;                          // why an eligible unit carries no bytes (sidecar honesty)
     int eligible, gap_only;
+    unsigned partial_lines;                // show_partial: whole lines of picture in a unit that is not whole, held in the slot
     uint64_t preceding_ring_drops;
     unit_video_observation obs;            // metadata copy; bytes/payload re-pointed to the slot
     /* Decision-log evidence has an input-order cutoff: the parser's video-unit
@@ -47,6 +48,7 @@ typedef struct {
     int audio_evidence_known;
     ap_correlation audio_evidence;
     uint64_t t_enqueue;                    // parser handoff (CLOCK_UPTIME_RAW ns), for handoff timing
+    uint64_t up_gap_ns, up_cpu_ns, up_ring_bytes;   // see fs_handoff_timing: the delivery thread's view at enqueue
 } fs_item;
 
 struct frameserver {
@@ -60,7 +62,8 @@ struct frameserver {
     hrt_workspace *retime_work;
     hrt_result retime_result;
     fs_item geometry_item;
-    fs_handoff_timing ht; uint64_t ht_since, idle_since;   // worker-only handoff accounting
+    fs_handoff_timing ht; uint64_t ht_since, idle_since, ht_cpu0;   // worker-only handoff accounting
+    uint64_t dlv_prev_enq, dlv_prev_cpu;                  // delivery thread only: the previous video unit's enqueue
     int geometry_pending, geometry_reset;
     uint64_t geometry_epoch;
     int geometry_have_epoch;
@@ -96,6 +99,9 @@ struct frameserver {
     fs_life life; int worker_created, start_gate; _Atomic int notify_end;   // read by both workers, written by fs_start
     enum cc_end end_reason;
     fs_stats st; _Atomic uint64_t audio_records, audio_resync, dropped_pool_full, dropped_ring_full, video_obs, holes, unframed, shorts, other_fmt, ns0800;
+    _Atomic int bp_waiting, bp_abort; _Atomic uint64_t bp_waits;   // offline_backpressure: producer waits; fs_stop aborts them
+    _Atomic uint64_t partial_not_shown;    // show_partial: a picture unit that was not whole found no free slot (live only: offline waits)
+    pthread_mutex_t bp_m; pthread_cond_t bp_c;                      // statically initialised in fs_open
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
     uint64_t ring_drops_pending;           // producer-owned: attached only to a later item
@@ -133,6 +139,30 @@ extern void fs_test_after_item(frameserver *f);
 #define fs_test_after_item(f) ((void)(f))
 #endif
 
+// ------------------------------------------------------------ offline backpressure (replay renders only)
+// The producer (delivery thread) waits on a state change the consumers signal; the timeout is a liveness backstop.
+static void bp_notify(frameserver *f){
+    if(atomic_load(&f->bp_waiting)){ pthread_mutex_lock(&f->bp_m); pthread_cond_broadcast(&f->bp_c); pthread_mutex_unlock(&f->bp_m); }
+}
+static void bp_wait(frameserver *f, int (*room)(frameserver *)){
+    if(room(f)) return;
+    atomic_fetch_add(&f->bp_waiting,1); atomic_fetch_add(&f->bp_waits,1);
+    pthread_mutex_lock(&f->bp_m);
+    while(!room(f) && !atomic_load(&f->bp_abort)){
+        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100*1000000L;
+        if(ts.tv_nsec>=1000000000L){ ts.tv_sec++; ts.tv_nsec-=1000000000L; }
+        pthread_cond_timedwait(&f->bp_c,&f->bp_m,&ts);
+    }
+    pthread_mutex_unlock(&f->bp_m);
+    atomic_fetch_sub(&f->bp_waiting,1);
+}
+static int bp_slot_free(frameserver *f){
+    for(unsigned i=0;i<f->n_slots;i++) if(!atomic_load(&f->slot_used[i])) return 1;
+    return 0;
+}
+static int bp_ring_room(frameserver *f);
+static int bp_audio_room(frameserver *f);
+
 // ------------------------------------------------------------ producer side (delivery thread)
 static int take_slot(frameserver *f){
     unsigned used = 0; int free_i = -1;
@@ -145,6 +175,7 @@ static int take_slot(frameserver *f){
     return free_i;
 }
 static int push(frameserver *f, const fs_item *it){
+    if (f->cfg.offline_backpressure) bp_wait(f, bp_ring_room);
     unsigned h = atomic_load_explicit(&f->r_head, memory_order_relaxed);
     unsigned t = atomic_load_explicit(&f->r_tail, memory_order_acquire);
     // Ring full: the worker is behind. Distinct from pool exhaustion (slots held too long).
@@ -188,6 +219,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
         it.eligible=1;
         atomic_fetch_add(&f->eligible_ingress, 1);
+        if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
         int s = take_slot(f);
         if (s < 0){
             // Bytes are shed (§8 property 7) but the OBSERVATION is not: the item still reaches the
@@ -199,7 +231,28 @@ static void on_video(void *ctx, const unit_video_observation *u){
             it.slot = s;
         }
     }
+    /* A picture unit that is not whole (one short field per unit from a deck in search, or the PAL-family units of
+     * an unlocked decoder) is kept for showing if asked. No-signal pseudo-frames, units with bytes missing and
+     * stubs of a few lines are not picture. Offline, it waits for a free slot exactly as a whole unit does: whether
+     * it is shown must not depend on how busy the consumer is (2026-10-21: a render skipped 905 of 2,247 such frames
+     * while ffmpeg was the slow consumer). Live, a device cannot wait: no slot free means it is not shown, counted. */
+    else if (f->cfg.show_partial && u->bytes && u->transport != UNIT_TRANSPORT_HOLE && (u->format & 0xff00u) == 0xe800u &&
+             u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES && u->byte_count >= UNIT_PARSER_VIDEO_HEADER_BYTES + 32u * FP_LINE_BYTES){
+        if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
+        int s = take_slot(f);
+        if (s < 0) atomic_fetch_add(&f->partial_not_shown, 1);
+        else {
+            memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, u->byte_count);
+            it.slot = s; it.partial_lines = (unsigned)((u->byte_count - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
+            it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);   /* its time on the audio clock, for the consumer's timestamp */
+        }
+    }
     it.t_enqueue = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    { uint64_t cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
+      it.up_gap_ns=f->dlv_prev_enq&&it.t_enqueue>f->dlv_prev_enq?it.t_enqueue-f->dlv_prev_enq:0;
+      it.up_cpu_ns=f->dlv_prev_enq&&cpu>f->dlv_prev_cpu?cpu-f->dlv_prev_cpu:0;
+      it.up_ring_bytes=f->cap?cc_ring_pending(f->cap):0;
+      f->dlv_prev_enq=it.t_enqueue; f->dlv_prev_cpu=cpu; }
     push(f, &it);
 }
 static void on_audio(void *ctx, const unit_audio_observation *a){
@@ -209,8 +262,15 @@ static void on_audio(void *ctx, const unit_audio_observation *a){
     ap_on_audio(f->aud, a);                 // delivery thread: bounded, allocation-free
 }
 // publisher sink (delivery thread): copy the block into the bounded queue or drop it explicitly
+static int bp_ring_room(frameserver *f){
+    return atomic_load_explicit(&f->r_head, memory_order_relaxed) - atomic_load_explicit(&f->r_tail, memory_order_acquire) < RING_ITEMS-1;
+}
+static int bp_audio_room(frameserver *f){
+    return atomic_load_explicit(&f->aq_head, memory_order_relaxed) - atomic_load_explicit(&f->aq_tail, memory_order_acquire) < f->aq_slots;
+}
 static void aq_enqueue(void *ctx, const ap_block *b){
     frameserver *f = ctx;
+    if (f->cfg.offline_backpressure) bp_wait(f, bp_audio_room);
     unsigned h = atomic_load_explicit(&f->aq_head, memory_order_relaxed);
     unsigned t = atomic_load_explicit(&f->aq_tail, memory_order_acquire);
     if (h - t >= f->aq_slots || b->n_frames > f->aq_cap_frames){
@@ -257,6 +317,7 @@ static void *audio_worker_main(void *arg){
         if (f->user_audio_sink.on_block) f->user_audio_sink.on_block(f->user_audio_sink.ctx, b);
         f->aq_delivered_blocks++; f->aq_delivered_frames += b->n_frames;
         atomic_store_explicit(&f->aq_tail, t + 1, memory_order_release);
+        bp_notify(f);
     }
     atomic_store(&f->audio_worker_done, 1);
     // on_end means BOTH media workers are terminal: whichever drains second fires it
@@ -270,6 +331,16 @@ static void *audio_worker_main(void *arg){
 static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; TEE(on_packet(f->tee_cb.ctx, p)); unit_parser_on_packet(f->parser, p); }
 static void cc_on_tick(void *ctx, uint32_t ms){ frameserver *f = ctx; TEE(on_tick(f->tee_cb.ctx, ms)); }
 static void cc_on_loss(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ frameserver *f = ctx; TEE(on_loss(f->tee_cb.ctx, ep, n, b)); unit_parser_on_loss(f->parser, ep, n, b); }
+/* the same events with their kind: the raw tee writes an unread-USB-slot record back as captured (pkt_index 0xFFFD + seq) */
+static void tee_loss_ex(frameserver *f, uint8_t ep, uint32_t n, uint64_t b, int kind, uint32_t seq){
+    if (f->tee_cb.on_loss_ex) f->tee_cb.on_loss_ex(f->tee_cb.ctx, ep, n, b, kind, seq); else f->tee_cb.on_loss(f->tee_cb.ctx, ep, n, b);
+}
+static void cc_on_loss_ex(void *ctx, uint8_t ep, uint32_t n, uint64_t b, int kind, uint32_t seq){
+    frameserver *f = ctx;
+    pthread_mutex_lock(&f->tee_m); if (f->tee) tee_loss_ex(f, ep, n, b, kind, seq); pthread_mutex_unlock(&f->tee_m);
+    if (kind == CC_LOSS_HOLE){ unit_parser_on_loss(f->parser, CC_EP_VIDEO, n, b); unit_parser_on_loss(f->parser, CC_EP_AUDIO, n, b); }   // bytes of both streams
+    else if (kind != CC_LOSS_UNSCHEDULED_LATE) unit_parser_on_loss(f->parser, ep, n, b);   // a late record is not in the unit in progress
+}
 static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; TEE(on_error(f->tee_cb.ctx, ep, seq, st, kind)); unit_parser_on_error(f->parser, ep, seq, st, kind); }
 static void cc_on_end(void *ctx, enum cc_end r){
     frameserver *f = ctx; f->end_reason = r;
@@ -497,9 +568,16 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
     pthread_mutex_unlock(&f->log_m);
 }
 static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d,const hrt_result *repair) {
-    ap_correlation audio={0};int known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
+    /* The frame's audio-clock time. Live: looked up at publication, best effort (a lookup that meets the audio
+     * thread mid-write gives up after its bounded retries; video never waits for audio). Offline: the snapshot
+     * taken when the parser handed the unit over, in input order, so two replays of a capture stamp every frame
+     * the same (2026-10-21: one frame of 5,382 lost its time in one of two otherwise identical renders). A
+     * resync arrives before its unit (1-2 units ahead, measured on a 4.3 GB capture), so the snapshot has it. */
+    ap_correlation audio={0};int known;
+    if(f->cfg.offline_backpressure){ known=it->audio_evidence_known; if(known)audio=it->audio_evidence; }
+    else known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
 #ifdef AP_LOOKUP_DIAGNOSTICS
-    if(known!=it->audio_evidence_known || (known && memcmp(&audio,&it->audio_evidence,sizeof audio)))
+    if(!f->cfg.offline_backpressure && (known!=it->audio_evidence_known || (known && memcmp(&audio,&it->audio_evidence,sizeof audio))))   /* offline both are the snapshot */
         fprintf(stderr,"AUDIO-INGRESS-DIFF counter=%llu ingress_known=%d publication_known=%d ingress_residual=%lld publication_residual=%lld\n",
             (unsigned long long)d->counter,it->audio_evidence_known,known,
             (long long)it->audio_evidence.residual_ticks,(long long)audio.residual_ticks);
@@ -507,7 +585,7 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
     int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
-    if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }   /* accounting restarts at each handoff */
+    if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); f->ht_cpu0=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID); }   /* accounting restarts at each handoff */
     uint64_t tl=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
@@ -552,7 +630,17 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(!unit) {
         geometry_flush(f);
         if(it->drop==FS_DROP_POOL_FULL){atomic_fetch_add(&f->dropped_pool_full,1);f->st.exact_units++;f->st.discontinuity_calls++;}
-        geometry_log(f,it,NULL,0,it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport),NULL,NULL);
+        /* after the flush above, so an earlier whole unit still waiting for its pair is published first */
+        const char *why=it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport);
+        if(it->partial_lines && it->slot>=0) {
+            const uint8_t *rows=f->pool+(size_t)it->slot*UNIT_PARSER_VIDEO_UNIT_BYTES+UNIT_PARSER_VIDEO_HEADER_BYTES;
+            if(fp_publish_partial(f->pub,rows,it->partial_lines,it->obs.counter_extended,it->audio_evidence_known,it->audio_evidence.pts_num)==0) {
+                f->st.partial_shown++;
+                why=it->obs.transport==UNIT_TRANSPORT_SHORT?"ShortShown":"OtherShown";
+            }
+            atomic_store(&f->slot_used[it->slot],0); bp_notify(f);
+        }
+        geometry_log(f,it,NULL,0,why,NULL,NULL);
         return;
     }
     f->st.exact_units++;
@@ -602,7 +690,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
         }
         f->geometry_epoch=it->obs.epoch;
     }
-    atomic_store(&f->slot_used[it->slot],0);
+    atomic_store(&f->slot_used[it->slot],0); bp_notify(f);
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
@@ -611,7 +699,7 @@ static void process_item(frameserver *f, const fs_item *it){
     }
     unit_video_observation obs = it->obs;
     const uint8_t *unit = NULL;
-    if (it->slot >= 0){ unit = f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES; obs.bytes = unit; obs.payload = unit + UNIT_PARSER_VIDEO_HEADER_BYTES; }
+    if (it->slot >= 0 && !it->partial_lines){ unit = f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES; obs.bytes = unit; obs.payload = unit + UNIT_PARSER_VIDEO_HEADER_BYTES; }
     switch (obs.transport){ case UNIT_TRANSPORT_HOLE: atomic_fetch_add(&f->holes, 1); break;
         case UNIT_TRANSPORT_SHORT: atomic_fetch_add(&f->shorts, 1); break;
         case UNIT_TRANSPORT_UNFRAMED: atomic_fetch_add(&f->unframed, 1); break; default: break; }
@@ -664,9 +752,11 @@ static void *worker_main(void *arg){
         }
         fs_item it = f->ring[t % RING_ITEMS];
         atomic_store_explicit(&f->r_tail, t + 1, memory_order_release);
+        bp_notify(f);
         { uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
           if(f->idle_since){ f->ht.idle_ns+=now-f->idle_since; f->idle_since=0; }
-          f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++; }
+          f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++;
+          f->ht.up_gap_ns=it.up_gap_ns; f->ht.up_cpu_ns=it.up_cpu_ns; f->ht.up_ring_bytes=it.up_ring_bytes; }
         process_item(f, &it);
         fs_test_after_item(f);
     }
@@ -685,8 +775,10 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if(cfg->pairing_schedule && cfg->geometry_pair_next) {
         fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
+    if(cfg->offline_backpressure && !cfg->capture.replay_path) return -1;   // a live device cannot wait for its consumer
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->cfg = *cfg;
+    f->bp_m=(pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; f->bp_c=(pthread_cond_t)PTHREAD_COND_INITIALIZER;
     if(pthread_mutex_init(&f->m,NULL)) goto sync_fail;
     f->m_init=1;
     if(pthread_cond_init(&f->c,NULL)) goto sync_fail;
@@ -750,8 +842,9 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
     if (pthread_mutex_init(&f->tee_m, NULL)){ fs_close(f); return -1; } f->tee_m_init = 1;
     if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
-    cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f };
-    if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
+    cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f, cc_on_loss_ex };
+    cc_config capcfg = cfg->capture; if (cfg->offline_backpressure) capcfg.replay_block_when_full = 1;
+    if (cc_open(&f->cap, &capcfg, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
 sync_fail:
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);
@@ -805,6 +898,7 @@ int fs_stop(frameserver *f){
     if(f->life==FS_LIFE_STOPPED){ pthread_mutex_unlock(&f->life_m); return 0; }
     if(f->life!=FS_LIFE_RUNNING){ pthread_mutex_unlock(&f->life_m); return -1; }
     f->life=FS_LIFE_STOPPING; pthread_mutex_unlock(&f->life_m);
+    atomic_store(&f->bp_abort,1); pthread_mutex_lock(&f->bp_m); pthread_cond_broadcast(&f->bp_c); pthread_mutex_unlock(&f->bp_m);   // a waiting producer must not hold up the stop
     cc_stop(f->cap);                        // fires on_end -> producer_done (audio flushed before it)
     pthread_join(f->worker, NULL);
     pthread_join(f->audio_worker, NULL);    // exits by itself once cc_on_end set audio_done and the queue drained
@@ -856,11 +950,12 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors){
     if(L && row_errors) *row_errors = errs;
     return L;
 }
-int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring_bytes){
+int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring_bytes, const char *spill_dir){
     if(!f || !path || !*path || fs_log_from_worker(f) || !f->tee_m_init) return -1;
     pthread_mutex_lock(&f->tee_m); int attached = f->tee != NULL; pthread_mutex_unlock(&f->tee_m);
     if(attached) return -1;
-    cc_async_sink *k; if(cc_async_sink_open(&k, path, note, ring_bytes, 1u<<20) != CC_OK) return -1;
+    cc_async_sink_spill sp = { spill_dir, 0, 0, 0 };
+    cc_async_sink *k; if(cc_async_sink_open_spill(&k, path, note, ring_bytes, 1u<<20, spill_dir ? &sp : NULL) != CC_OK) return -1;
     pthread_mutex_lock(&f->life_m);
     if(f->life!=FS_LIFE_RUNNING){ pthread_mutex_unlock(&f->life_m); cc_async_sink_close(k,NULL); remove(path); return -1; }
     pthread_mutex_lock(&f->tee_m);
@@ -868,6 +963,18 @@ int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring
     cc_async_sink_callbacks(k, &f->tee_cb); f->tee = k;
     pthread_mutex_unlock(&f->tee_m); pthread_mutex_unlock(&f->life_m);
     return 0;
+}
+int fs_tee_spill_state(frameserver *f){
+    if(!f || !f->tee_m_init) return -EINVAL;
+    pthread_mutex_lock(&f->tee_m); int r = f->tee ? cc_async_sink_spill_state(f->tee) : -EINVAL; pthread_mutex_unlock(&f->tee_m);
+    return r;
+}
+int fs_tee_spill_info(frameserver *f, int64_t *room, uint64_t *stale_files, uint64_t *stale_bytes){
+    if(!f || !f->tee_m_init) return -1;
+    pthread_mutex_lock(&f->tee_m); int ok = f->tee != NULL;
+    if(ok){ *room = cc_async_sink_spill_room(f->tee); cc_async_sink_spill_stale(f->tee, stale_files, stale_bytes); }
+    pthread_mutex_unlock(&f->tee_m);
+    return ok ? 0 : -1;
 }
 cc_async_sink *fs_tee_detach(frameserver *f){
     if(!f || !f->tee_m_init) return NULL;
@@ -880,6 +987,11 @@ void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *o){
     o->since_prev_ns=f->ht_since&&now>f->ht_since?now-f->ht_since:0;
     uint64_t known=o->idle_ns+o->classify_ns+o->geometry_ns+o->hretime_ns+o->log_ns;
     o->other_ns=o->since_prev_ns>known?o->since_prev_ns-known:0;
+    uint64_t cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);   /* the caller is the worker (inside the frame sink) */
+    o->cpu_ns=f->ht_since&&cpu>f->ht_cpu0?cpu-f->ht_cpu0:0;
+}
+int fs_device_start_info(const frameserver *f, uint32_t *mode_word){
+    return f && f->cap ? cc_start_info(f->cap, mode_word) : -1;
 }
 void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;
@@ -891,7 +1003,13 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_blocks_delivered = f->aq_delivered_blocks; o->audio_frames_delivered = f->aq_delivered_frames;
     o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
     o->audio_master_frames = atomic_load(&f->audio_master_frames);
-    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
+    o->backpressure_waits = atomic_load(&f->bp_waits);
+    if (f->cap){ cc_stats cs; cc_get_stats(f->cap, &cs); o->replay_space_waits = cs.replay_space_waits;
+        o->unscheduled_events = cs.unscheduled_events; o->unscheduled_packets[0] = cs.unscheduled_packets[0]; o->unscheduled_packets[1] = cs.unscheduled_packets[1]; o->unscheduled_late = cs.unscheduled_late;
+        o->rt_event_thread = cs.rt_event_thread; o->rt_libusb_threads = cs.rt_libusb_threads; o->rt_event_at_stop = cs.rt_event_at_stop;
+        o->capture_teardown_incomplete = cs.teardown_incomplete;
+        o->rt_priority_at_stop = cs.rt_priority_at_stop; o->rt_priority_min = cs.rt_priority_min; o->schedule_shifts = cs.schedule_shifts; o->schedule_shift_frames = cs.schedule_shift_frames; }
+    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->partial_not_shown = atomic_load(&f->partial_not_shown); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);

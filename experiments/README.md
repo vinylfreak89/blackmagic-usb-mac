@@ -19,7 +19,7 @@ Config 1, bus-powered 224mA, Interface 0:
 ```
 
 ## iso_stream_smoke — no-signal isochronous streaming
-Runs the full capture init (alt1→alt2 reset, mode word `0x3f000000` = S-video+analog+8-bit,
+Runs the full capture init (alt1→alt2 reset, mode word `0x3c000000` = S-video+analog+8-bit (driver table; was `0x3f000000` before 2026-10-13),
 latch `0x73c60001`) and streams iso on 0x83/0x84 for ~4s with **nothing connected**.
 **Verified result: the Darwin iso path works.**
 ```

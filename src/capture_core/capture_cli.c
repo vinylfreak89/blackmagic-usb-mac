@@ -2,6 +2,7 @@
 //   shuttle-capture <input> <secs> <out.tpc> [ringMB] [scratchDir]      capture
 //   shuttle-capture --replay <in.tpc> <out.tpc|/dev/null> [paceUS] [scratchDir]
 // Optional trailing --stall-s N (default 120, at least ten pacing intervals).
+// Optional trailing --iousbhost: capture through Apple's IOUSBHost instead of libusb (unread USB frames counted exactly).
 // CC_LIFECYCLE_S overrides the 60 s startup/stop/finalization watchdog for tests.
 // Exit 3: sink write failure. Exit 6: stall or lifecycle/output deadline expired.
 #include "capture_core.h"
@@ -13,9 +14,13 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "../tool_deadline.h"
 static cc_session *g_s;
-static cc_tagged_sink *g_k;
+static cc_async_sink *g_k;
+/* The writer's memory ring (pages handed back as it drains) and its local spill for a destination that falls behind. */
+#define CLI_SINK_RING ((size_t)1 << 30)
+#define CLI_SPILL_FMT "/private/tmp/shuttle-capture-%u"
 static _Atomic int g_done;
 static _Atomic int g_end_reason;
 static void end_cb(void *ctx, enum cc_end r){
@@ -24,6 +29,34 @@ static void end_cb(void *ctx, enum cc_end r){
     atomic_store(&g_done,1);
 }
 
+/* spill recovery on a thread, guarded by progress like the drain at close (it may move gigabytes to a network volume) */
+struct recover_job { const char *dir; cc_spill_recover_stats *st; _Atomic uint64_t progress; int rc; _Atomic int done; };
+static void *recoverer(void *a){ struct recover_job *j=a; j->rc=cc_spill_recover(j->dir,NULL,NULL,NULL,&j->progress,j->st); atomic_store(&j->done,1); return NULL; }
+static int recover_guarded(const char *dir, cc_spill_recover_stats *st, double seconds){
+    static const char phase[]="spill recovery: the destination took nothing for the lifecycle period (it resumes at the next start)";
+    struct recover_job j={dir,st,0,0,0}; uint64_t seen=0; pthread_t t;
+    tool_guard(phase,seconds);
+    if(pthread_create(&t,NULL,recoverer,&j)!=0) return cc_spill_recover(dir,NULL,NULL,NULL,NULL,st);
+    while(!atomic_load(&j.done)){ usleep(100000); uint64_t now=atomic_load(&j.progress); if(now!=seen){ seen=now; tool_guard(phase,seconds); } }
+    pthread_join(t,NULL);
+    return j.rc;
+}
+struct sink_finish_job { cc_async_sink *k; _Atomic int done; };
+static void *sink_finisher(void *a){ struct sink_finish_job *j=a; cc_async_sink_finish(j->k); atomic_store(&j->done,1); return NULL; }
+/* drain on a thread while this one re-arms the guard on progress; the sink is freed only after the drain is joined */
+static int close_sink_guarded(cc_async_sink *k, cc_async_sink_stats *st, const char *phase, double seconds){
+    struct sink_finish_job j={k,0}; uint64_t seen=cc_async_sink_progress(k);
+    tool_guard(phase,seconds);
+    pthread_t t;
+    if(pthread_create(&t,NULL,sink_finisher,&j)==0){
+        while(!atomic_load(&j.done)){             /* polled: a liveness check, not how the drain finishes */
+            usleep(100000);
+            uint64_t now=cc_async_sink_progress(k); if(now!=seen){ seen=now; tool_guard(phase,seconds); }
+        }
+        pthread_join(t,NULL);
+    }
+    return cc_async_sink_close(k,st);
+}
 static const char *end_name(enum cc_end r){
     switch(r){
     case CC_END_STOPPED: return "Stopped";
@@ -42,11 +75,6 @@ static const char *input_name(enum cc_input input){
     case CC_INPUT_COMPONENT: return "component";
     }
     return "unknown";
-}
-static uint32_t mode_word(enum cc_input input){
-    uint32_t video=input==CC_INPUT_COMPONENT?0x02000000u:
-                   input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-    return 0x09000000u|video|0x10000000u|0x20000000u;
 }
 
 static int path_below(const char *path,const char *root){
@@ -92,7 +120,8 @@ static int stage_path(const char *dest,const char *scratch,char staged[PATH_MAX]
     }
     int fd=mkstemp(staged);
     if(fd<0){ perror("mkstemp"); return -1; }
-    close(fd);
+    /* the name is chosen; the writer creates the file itself, exclusively (it refuses an existing one) */
+    close(fd); unlink(staged);
     return 0;
 }
 int main(int argc,char**argv){
@@ -104,6 +133,8 @@ int main(int argc,char**argv){
     for (;;) {
         if(argc>1 && !strcmp(argv[argc-1],"--fail-stop-control-loss")){
             cfg.fail_stop_on_control_loss=1; argc--;
+        } else if(argc>1 && !strcmp(argv[argc-1],"--iousbhost")){
+            cfg.usb_backend=CC_USB_IOUSBHOST; argc--;
         } else if(argc>2 && !strcmp(argv[argc-2],"--stall-s")) {
             stall_s=tool_seconds(argv[argc-1],120); argc-=2;
         } else break;
@@ -118,7 +149,7 @@ int main(int argc,char**argv){
         secs=atoi(argv[2]); out=argv[3];
         if(argc>4) cfg.ring_mb=atoi(argv[4]);
         if(argc>5) scratch=argv[5];
-    } else { fprintf(stderr,"usage: %s <input> <secs> <out> [ringMB] [scratchDir] [--fail-stop-control-loss] | --replay <in> <out> [paceUS] [scratchDir] [--stall-s N] [--fail-stop-control-loss]\n",argv[0]); return 9; }
+    } else { fprintf(stderr,"usage: %s <input> <secs> <out> [ringMB] [scratchDir] [--fail-stop-control-loss] [--iousbhost] | --replay <in> <out> [paceUS] [scratchDir] [--stall-s N] [--fail-stop-control-loss]\n",argv[0]); return 9; }
     char staged[PATH_MAX]={0}; const char *sink_path=out;
     int publish=strcmp(out,"/dev/null")!=0;
     if(publish){
@@ -133,23 +164,36 @@ int main(int argc,char**argv){
                  ring_mb,cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     else
         snprintf(session_note,sizeof session_note,
-                 "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=8+8 control_loss=%s",
-                 input_name(cfg.input),mode_word(cfg.input),ring_mb,
-                 cfg.fail_stop_on_control_loss?"fail-stop":"continue");
-    if(cc_tagged_sink_open(&g_k,sink_path,session_note)!=CC_OK){
+                 "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=%d+%d control_loss=%s usb=%s",
+                 input_name(cfg.input),cc_mode_word(&cfg),ring_mb,CC_XFERS_PER_ENDPOINT,CC_XFERS_PER_ENDPOINT,
+                 cfg.fail_stop_on_control_loss?"fail-stop":"continue",cfg.usb_backend==CC_USB_IOUSBHOST?"iousbhost":"libusb");
+    char spill_dir[64]; snprintf(spill_dir,sizeof spill_dir,CLI_SPILL_FMT,(unsigned)getuid());
+    { cc_spill_recover_stats rs;                   /* a capture that crashed before: its spill goes home first */
+      if(recover_guarded(spill_dir,&rs,lifecycle_s)==0 && (rs.recovered||rs.kept||rs.failed))
+          fprintf(stderr,"spill recovery: %u captures recovered (%.1f MB), %u kept, %u failed\n",rs.recovered,rs.bytes/1e6,rs.kept,rs.failed);
+      tool_guard("open output / cc_open / cc_start",lifecycle_s); }
+    cc_async_sink_spill spill={spill_dir,0,0,0};
+    if(cc_async_sink_open_spill(&g_k,sink_path,session_note,CLI_SINK_RING,1u<<20,&spill)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;
     }
-    cc_callbacks cb; cc_tagged_sink_callbacks(g_k,&cb); cb.on_end=end_cb;
+    { int ss=cc_async_sink_spill_state(g_k); uint64_t sf,sb; cc_async_sink_spill_stale(g_k,&sf,&sb);
+      if(ss<0) fprintf(stderr,"local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind\n",spill_dir,strerror(-ss));
+      else if(ss==1 && cc_async_sink_spill_room(g_k)<(int64_t)(128<<20))
+          fprintf(stderr,"local spill %s has NO ROOM now (%.1f GB above its 32 GB free-space floor): memory is the only buffer until space is freed\n",
+                  spill_dir,cc_async_sink_spill_room(g_k)/1e9);
+      if(sf) fprintf(stderr,"local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone that recovery could not put back (see its lines above; left in place)\n",
+                     spill_dir,(unsigned long long)sf,sb/1e6); }
+    cc_callbacks cb; cc_async_sink_callbacks(g_k,&cb); cb.on_end=end_cb;
     int rc=cc_open(&g_s,&cfg,&cb);
     if(rc!=CC_OK){
         fprintf(stderr,"open: %s\n",cc_strerror(rc));
-        cc_tagged_sink_close(g_k); if(publish) unlink(staged); return 2;
+        cc_async_sink_close(g_k,NULL); if(publish) unlink(staged); return 2;
     }
     rc=cc_start(g_s);
     if(rc!=CC_OK){
         fprintf(stderr,"start: %s\n",cc_strerror(rc));
         cc_close(g_s);
-        cc_tagged_sink_close(g_k);
+        cc_async_sink_close(g_k,NULL);
         if(publish) unlink(staged);
         return 2;
     }
@@ -179,10 +223,36 @@ int main(int argc,char**argv){
            (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
            st.zero_len_packets,st.short_packets,st.ring_high_water,st.ring_size,
            st.fleet[0],st.fleet[1],st.fleet_size);
+    printf("unread USB slots (macOS skipped past them): %llu events (%llu found late), %llu video / %llu audio packets; unexplained schedule shifts %llu (%llu frames)\n",
+           (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_late,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
+           (unsigned long long)st.schedule_shifts,(unsigned long long)st.schedule_shift_frames);
+    if(!cfg.replay_path && cfg.usb_backend==CC_USB_IOUSBHOST)
+        printf("IOUSBHost: reads at explicit USB frames on a user-interactive queue (no real-time policy); lowest priority seen at a tick %d\n",st.rt_priority_min);
+    else if(!cfg.replay_path)
+        printf("real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up)%s, libusb %d\n",
+               st.rt_event_thread?"yes":"NO",st.rt_priority_min,st.rt_priority_at_stop,
+               !st.rt_event_thread||st.rt_priority_min<97?" — REAL TIME LOST: USB reads could be held off":"",st.rt_libusb_threads);
     printf("end=%s | control_records_dropped=%ld control_loss_markers=%ld\n",
            end_name(end_reason),st.control_records_dropped,st.control_loss_markers);
     cc_close(g_s);
-    int krc=cc_tagged_sink_close(g_k);
+    /* The writer may still hold a backlog (memory and the local spill) that the destination has to take. Closing
+     * is bounded by progress, not by a fixed time: the guard re-arms whenever the writer moves on, and fires only
+     * when it has been stuck for the lifecycle period, saying where the undelivered bytes are. */
+    static char drain_phase[400];
+    snprintf(drain_phase,sizeof drain_phase,"sink drain: the destination took nothing for the lifecycle period; capture bytes not yet delivered stay in %s (memory backlog lost) and the partial capture at %s",
+             spill_dir,sink_path);
+    cc_async_sink_stats ks; int krc=close_sink_guarded(g_k,&ks,drain_phase,lifecycle_s);
+    printf("writer: %.1f MB written, lost v=%llu a=%llu pkts, control records dropped %llu, ring peak %.1f MB, longest write %.1f ms, %llu over 100 ms\n",
+           ks.bytes_written/1e6,(unsigned long long)ks.lost_packets[0],(unsigned long long)ks.lost_packets[1],(unsigned long long)ks.control_dropped,
+           ks.high_water/1e6,ks.max_write_ns/1e6,(unsigned long long)ks.slow_writes);
+    printf("local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s\n",
+           ks.spill_state==1?"on":ks.spill_state==0?"off (same volume)":"UNUSABLE",ks.spill_bytes/1e6,ks.spill_peak/1e6,
+           (unsigned long long)ks.spill_segments,(unsigned long long)ks.spill_floor_refusals,ks.spill_max_write_ns/1e6,
+           ks.spill_error?", turned off by: ":"",ks.spill_error?strerror(ks.spill_error):"");
+    if(ks.spill_read_errors)
+        printf("LOCAL SPILL READ FAILED %llu times: %llu video / %llu audio packets (%.1f MB) lost there, confessed in the file in their place; the capture went on\n",
+               (unsigned long long)ks.spill_read_errors,(unsigned long long)ks.spill_read_lost_packets[0],(unsigned long long)ks.spill_read_lost_packets[1],
+               (ks.spill_read_lost_bytes[0]+ks.spill_read_lost_bytes[1])/1e6);
     if(krc!=CC_OK){
         fprintf(stderr,"SINK WRITE FAILURE; partial capture retained at %s\n",sink_path);
         return 3;

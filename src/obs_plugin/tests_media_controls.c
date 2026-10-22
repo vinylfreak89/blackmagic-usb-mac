@@ -3,6 +3,7 @@
 // timeline is 118 units = 3,937 ms). libobs is replaced by tests_obs_stubs.c; the render thread is
 // this test thread (media callbacks and video_tick), the UI getters are called from it as well.
 #include "tests_obs_stubs.h"
+#include "capture_core.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -10,15 +11,28 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 bool obs_module_load(void);
+void shuttle_test_device_gone(void *d);
+int shuttle_test_reconnect_wanted(void *d);
+unsigned shuttle_test_reconnect_tries(void *d);
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
 /* bounded wait on a condition OBS's own controls would poll */
+/* lines the failure paths below must log (counted, not printed: tests_obs_stubs.c) */
+static const char *const L_REC_IDLE = "the recording output is not active after the press";
+static const char *const L_STREAM_IDLE = "the streaming output is not active after the press";
+static const char *const L_OWNED = "recording started while the stream owns the raw file and sidecar";
+static const char *const L_OPEN = "frameserver open failed";
+static const char *const L_RESTART = "capture restart failed";
+static const char *const L_GONE = "disconnected (USB connection lost)";
+static const char *const L_GAVE_UP = "could not reconnect to the Shuttle after 30 attempts";
+static const char *const L_NOFILE = "replay file cannot be opened";
 #define WAIT(cond, secs, what) do{ double t0_ = now(); while(!(cond) && now() - t0_ < (secs)) usleep(2000); CHECK((cond), "timed out after %g s waiting for %s", (double)(secs), what); }while(0)
 
 int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s fixture_plain.tpc\n", argv[0]); return 9; }
     stub_verbose = getenv("VERBOSE") != NULL;
+    setenv("SHUTTLE_SOURCE_NO_SPILL_RECOVERY", "1", 1);   /* the load starts spill recovery: not on this user's scratch */
     obs_module_load();
     const struct obs_source_info *I = stub_info;
     CHECK(I && (I->output_flags & OBS_SOURCE_CONTROLLABLE_MEDIA), "source registered with media controls");
@@ -87,6 +101,7 @@ int main(int argc, char **argv){
     /* 4b. a record press whose output fails to start: RECORDING_STARTING stops the replay (actions in that
      * blank gap are ignored), restart_check (main queue) finds no active output and resumes the replay with
      * restart_pending still set. From there the controls must act; before the fix they were ignored. */
+    stub_expect(L_REC_IDLE); stub_expect(L_STREAM_IDLE); stub_expect(L_OWNED);
     stub_restart_on_record(1);
     I->media_restart(d);
     WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "playing before the record press");
@@ -103,7 +118,29 @@ int main(int argc, char **argv){
     I->media_restart(d);   /* stopped, restart_pending still set: the controls must still act */
     WAIT(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 5, "a restart after stop, after a failed record press");
     stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
+
+    /* 4c. the same through streaming (the discard stream): STREAMING_STARTING stops the replay, restart_check
+     * finds no active streaming output and resumes it, and STREAMING_STOPPED ends the session. */
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "playing before the stream press");
+    stub_fire_event(OBS_FRONTEND_EVENT_STREAMING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "STREAMING_STARTING left state %d", I->media_get_state(d));
+    started = stub_started_signals;
+    for (double t0 = now(); stub_started_signals == started && now() - t0 < 10; ) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+    CHECK(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "restart_check did not resume the replay after a stream press");
+    /* 4d. while the stream owns the session, a record press is ignored: the replay keeps playing */
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "a record press during the stream changed the replay (state %d)", I->media_get_state(d));
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
+    stub_fire_event(OBS_FRONTEND_EVENT_STREAMING_STOPPED);
+    /* 4e. after the stream stopped, a record press acts again */
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "a record press after the stream stopped was ignored (state %d)", I->media_get_state(d));
+    started = stub_started_signals;
+    for (double t0 = now(); stub_started_signals == started && now() - t0 < 10; ) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
     stub_restart_on_record(0);
+    { int r = stub_expect_end(L_REC_IDLE), t = stub_expect_end(L_STREAM_IDLE), o = stub_expect_end(L_OWNED);   /* 4b + 4e; 4c; 4d */
+      CHECK(r == 2 && t == 1 && o == 1, "failed-press warnings: recording %d (want 2), stream %d (want 1), owned %d (want 1)", r, t, o); }
 
     /* 5. stop */
     I->media_stop(d);
@@ -112,6 +149,7 @@ int main(int argc, char **argv){
 
     /* 6. live (no device here, so the capture does not start): controls report STOPPED with no duration,
      * and after an action the next tick re-greys OBS's controls */
+    stub_expect(L_OPEN); stub_expect(L_RESTART);
     st = stub_settings(argv[1], 0);
     I->update(d, st);
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED && I->media_get_duration(d) == 0 && I->media_get_time(d) == 0, "live controls: state %d duration %lld time %lld",
@@ -129,14 +167,54 @@ int main(int argc, char **argv){
     I->media_set_time(d, 1000); I->media_play_pause(d, true);
     usleep(50000);
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "live state after pause/seek: %d", I->media_get_state(d));
+    { int o = stub_expect_end(L_OPEN), r = stub_expect_end(L_RESTART);   /* two live updates and a restart, no device */
+      CHECK(o == 3 && r == 1, "live without a device: %d open failures (want 3), %d restart failures (want 1)", o, r); }
+    /* the USB stack drop-down reaches capture_core's config: unset and "libusb" select libusb, "iousbhost" IOUSBHost
+     * (each update is another refused live start, after the count above) */
+    CHECK(shuttle_test_usb_backend == CC_USB_LIBUSB, "unset USB stack selected %d, not libusb", shuttle_test_usb_backend);
+    stub_usb_backend("iousbhost"); I->update(d, st);
+    CHECK(shuttle_test_usb_backend == CC_USB_IOUSBHOST, "\"iousbhost\" selected %d, not IOUSBHost", shuttle_test_usb_backend);
+    stub_usb_backend("libusb"); I->update(d, st);
+    CHECK(shuttle_test_usb_backend == CC_USB_LIBUSB, "\"libusb\" selected %d, not libusb", shuttle_test_usb_backend);
+    stub_usb_backend(NULL);
+
+    /* 6a. live, the device drops off USB (reported as the capture core does). There is no device here, so every
+     * reconnect attempt fails: the picture is blanked at once, attempts repeat (RECONNECT_INTERVAL_NS is 20 ms in
+     * this build) and stop after the limit; a second disconnect then a user stop cancels the attempts. */
+    {
+        uint64_t blanks = stub_blank_calls;
+        stub_expect(L_OPEN); stub_expect(L_GONE); stub_expect(L_GAVE_UP);
+        shuttle_test_device_gone(d);
+        CHECK(stub_blank_calls == blanks + 1, "a disconnect did not blank the source (%llu blank calls)", (unsigned long long)(stub_blank_calls - blanks));
+        CHECK(shuttle_test_reconnect_wanted(d), "a disconnect did not start reconnecting");
+        WAIT(shuttle_test_reconnect_tries(d) >= 30, 10, "timed reconnect attempts to stop after the limit (30 x 20 ms)");
+        usleep(200000);
+        CHECK(shuttle_test_reconnect_tries(d) == 30, "attempts went on past the limit: %u", shuttle_test_reconnect_tries(d));
+        CHECK(shuttle_test_reconnect_wanted(d), "after the limit it should still wait for the device to come back");
+        { int o = stub_expect_end(L_OPEN), g = stub_expect_end(L_GONE), u = stub_expect_end(L_GAVE_UP);   /* one per attempt; one disconnect; one give-up */
+          CHECK(o == 30 && g == 1 && u == 1, "reconnecting: %d open failures (want 30), %d disconnects (want 1), %d give-ups (want 1)", o, g, u); }
+        /* while it is already reconnecting a second disconnect logs nothing new; attempts made before the stop
+         * lands depend on timing, and the update afterwards tries the device once more */
+        stub_expect(L_OPEN); stub_expect(L_GONE); stub_expect(L_GAVE_UP);
+        shuttle_test_device_gone(d);
+        CHECK(shuttle_test_reconnect_wanted(d), "a second disconnect did not keep reconnecting");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting");
+        I->update(d, st);
+        { int o = stub_expect_end(L_OPEN), g = stub_expect_end(L_GONE), u = stub_expect_end(L_GAVE_UP);
+          CHECK(o >= 1 && g == 0 && u <= 1, "after the second disconnect: %d open failures (want at least 1), %d disconnect lines (want 0), %d give-ups (want at most 1)", o, g, u); }
+    }
 
     /* 6b. a replay path that cannot be opened: the previous file's length does not stay on the bar */
     st = stub_settings(argv[1], 1);
     I->update(d, st);
     WAIT(I->media_get_duration(d) == 3937, 10, "the fixture's length again");
     ended = stub_ended_signals;
+    stub_expect(L_NOFILE); stub_expect(L_OPEN);
     st = stub_settings("/nonexistent/volume/capture.tpc", 1);
     I->update(d, st);
+    { int n = stub_expect_end(L_NOFILE), o = stub_expect_end(L_OPEN);
+      CHECK(n == 1 && o == 0, "unopenable replay: %d file errors (want 1), %d open failures (want 0: it stops before opening)", n, o); }
     CHECK(I->media_get_duration(d) == 0 && stub_ended_signals == ended + 1, "after a failed replay start: duration %lld, ended signals +%d",
           (long long)I->media_get_duration(d), stub_ended_signals - ended);
 
@@ -153,6 +231,7 @@ int main(int argc, char **argv){
 #endif
     CHECK(now() - t0 < destroy_bound, "destroy took %.2f s", now() - t0);
     CHECK(stub_frame_errors == 0, "%llu frames handed to OBS were not I210 4c with the expected planes", (unsigned long long)stub_frame_errors);
+    obs_module_unload();                                   /* joins what the load started */
     printf(fails ? "MEDIA CONTROLS: %d FAILURES\n" : "MEDIA CONTROLS PASS\n", fails);
     return fails ? 1 : 0;
 }

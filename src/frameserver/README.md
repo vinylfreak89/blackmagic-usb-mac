@@ -127,8 +127,18 @@ the frame even when its log cells are empty. That bounded seqlock lookup may
 also abstain during concurrent writes. The OBS timestamp policy, PCM, media
 publication order and registration decisions are unchanged.
 
+Offline (`--offline`, `offline_backpressure`), published frames take the same
+input-order snapshot as the log instead, so repeated replays stamp identical
+frame times (2026-10-22: with the writer-yield stress build, the publication
+lookup lost 118 of 5,382 frame times on a 4.3 GB capture; the snapshot lost 0,
+and two runs matched). A frame then has a time only if its resync arrived
+before the unit's handoff: on that capture every resync arrived 1-2 units
+before its unit, but that ordering was measured on one capture. The replay's
+"frames with audio-clock pts" count shows any shortfall.
+
 `make tests/audio_lookup_probe` builds a diagnostic replay which timestamps
-failed lookups and compares ingress with publication evidence.
+failed lookups and, live, compares ingress with publication evidence (offline
+both are the snapshot, so the comparison is skipped).
 `tests/audio_lookup_stress` additionally yields the writer inside its update;
 report those scheduler-perturbed counts separately from natural replay rates.
 Neither probe nor scheduler hook is enabled in production. `audio_evidence_test`

@@ -61,6 +61,13 @@ typedef struct {
     int registration_off;      // default 0; 1 publishes every field at the nominal (0,0) placement.
                                // The engine still runs and logs its evaluation; applied/frame offsets
                                // in the sidecar are the published 0. H-retiming uses that placement.
+    int offline_backpressure;  // default 0; replay only (fs_open refuses it for a device). Offline render: a full frame
+                               // pool, work ring or audio queue makes the producer WAIT for the worker instead of shedding,
+                               // and the capture core's replay waits too (replay_block_when_full). Output can then be as
+                               // slow as it likes: the render runs slower and loses nothing. Live capture never waits.
+    int show_partial;          // default 0; 1 also shows picture units that are not whole (a deck in search or an
+                               // unlocked source sends one short field per unit): stretched to the frame, no
+                               // placement, transport FP_TRANSPORT_SHORT. The log row says ShortShown / OtherShown.
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded
@@ -78,7 +85,9 @@ typedef struct {
 // A resync not yet observed at that cutoff (or outside the correlation history)
 // produces empty audio-evidence cells, even if it arrives before publication.
 // No video is deferred and no thread waits for audio. Live audio_pts_known/num
-// retain their separate, publication-time best-effort lookup semantics.
+// retain their separate, publication-time best-effort lookup semantics; offline
+// (offline_backpressure) they take the same input-order snapshot as the log, so
+// repeated offline replays stamp identical frame times.
 
 typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;
@@ -91,6 +100,14 @@ typedef struct {
     //   audio_frames_delivered + audio_dropped_frames == audio_frames_published (queue accounts every block).
     uint64_t eligible_observations;   // fixed-raster-eligible units seen at ingress (the denominator)
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
+    uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
+    uint64_t partial_not_shown; // show_partial: units that were not whole and found no free slot (live only; offline waits)
+    uint64_t backpressure_waits; // offline_backpressure: times the producer waited for the worker (frames kept, not shed)
+    uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
+    uint64_t unscheduled_events, unscheduled_packets[2], unscheduled_late; // capture core: USB slots never read (explicit HostLoss); late: found after their data went by
+    int rt_event_thread, rt_libusb_threads, rt_event_at_stop, rt_priority_at_stop, rt_priority_min; // capture core: real-time USB threads
+    int capture_teardown_incomplete;  // capture core: its stop could not prove its USB callbacks finished; the session is leaked by design
+    uint64_t schedule_shifts, schedule_shift_frames; // capture core: completions persistently later than its model
     uint64_t eligible_ring_drops, ring_gap_rows;
     // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
     // dropped_ring_full: item ring full -> observation never reaches the worker; counted, and folded
@@ -144,7 +161,15 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors);
 // files). The first records are mid-unit: a tee starts wherever the stream is. One at a time.
 // The ring's memory follows its backlog (cc_async_sink hands drained pages back), so ring_bytes may be far larger
 // than what a recording normally holds; it must be a whole number of pages for that.
-int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes);
+// spill_dir: a local, non-synced directory where the backlog goes when the destination falls behind (see
+// cc_async_sink_open_spill; NULL for none, and a destination on that same volume gets none).
+int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes, const char *spill_dir);
+// The attached tee's spill: 1 on, 0 none (not configured, or same volume), -errno unusable; -EINVAL with no tee.
+int  fs_tee_spill_state(frameserver *f);
+// The attached tee's spill room above its floor at open, and stale segment files of writers that are gone (cc_async_sink_spill_room/_stale).
+int  fs_tee_spill_info(frameserver *f, int64_t *room, uint64_t *stale_files, uint64_t *stale_bytes);
+// The mode word the device start-up sent (cc_start_info; cc_open sends it, so it is known from fs_open on); -1 for a replay or without an open device session.
+int  fs_device_start_info(const frameserver *f, uint32_t *mode_word);
 // Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may
 // block). NULL if none. fs_stop closes a still-attached tee itself.
 cc_async_sink *fs_tee_detach(frameserver *f);
@@ -159,6 +184,14 @@ typedef struct {
     uint64_t queue_wait_ns;   // this unit: parser enqueue -> worker pickup
     uint64_t classify_ns, geometry_ns, hretime_ns, log_ns, other_ns;
     uint32_t items;           // input items processed since the previous handoff
+    // Whether a slow stage was slow or the worker was not running: its own CPU time over the same span
+    // (CLOCK_THREAD_CPUTIME_ID). Busy wall time (since_prev - idle) far above it means it was descheduled.
+    uint64_t cpu_ns;
+    // Upstream of this unit, measured on the capture delivery thread (the parser's) when it queued the unit: the
+    // time since it queued the previous video unit, its own CPU time in that span, and the bytes waiting in the
+    // capture ring then. A long gap with much in the ring: the delivery thread was behind; with little: the data
+    // reached the host late.
+    uint64_t up_gap_ns, up_cpu_ns, up_ring_bytes;
 } fs_handoff_timing;
 void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *out);
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and

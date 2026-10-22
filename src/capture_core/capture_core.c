@@ -17,15 +17,37 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread/qos.h>
+#include <mach/mach.h>
+#include <mach/thread_policy.h>
+#include <mach/mach_time.h>
+#include <limits.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <signal.h>
+#include <sys/file.h>
+#include <CoreFoundation/CoreFoundation.h>
+#ifdef CC_WITH_IOUSBHOST
+#include <IOKit/IOReturn.h>
+#include "capture_iousbhost.h"
+#endif
 
 #define VID 0x1EDB
 #define PID 0xBD3B
+#define DEV_R4 0x80808000u      /* register 4 as the driver's settings commit writes it (see cc_open) */
+#define DEV_LATCH 0x73c60001u   /* the latch word, register 0x18 */
 #define V_PKT 15360
 #define V_NPK 128
 #define A_PKT 0xc0
-#define A_NPK 80
-#define XFERS 8
+/* Audio transfers: 128 packets = 16 ms, like video, so both endpoints keep the same ~512 ms queued. With 80 (10 ms) the
+ * audio queue was 320 ms and a 450 ms hold-off lost audio while video survived (shim ground truth, 2026-10-16). */
+#define A_NPK 128
+/* Transfers queued per endpoint. Each video transfer is 128 microframes (16 ms), so 32 keep ~512 ms of USB slots
+ * requested ahead. With 8 (128 ms), a held-off event thread let macOS reschedule late resubmissions past the
+ * frames in between, which are then never read and leave no record (2026-10-15: 1,352 video packets in one second). */
+#define XFERS CC_XFERS_PER_ENDPOINT
 #define NXF (XFERS*2)
+#define SCHED_MAXDOUBT 8   /* unread-slot model: open doubts (and held gaps) per endpoint; a ninth merges the two oldest */
 
 #define REC_MAGIC 0x31504143u
 enum { REC_DATA=0, REC_HOSTLOSS=1, REC_XFERERR=2, REC_SESSION=3, REC_TICK=4 };
@@ -45,6 +67,9 @@ typedef struct {
     int pending;
     uint64_t pending_since_ms;
     uint64_t next_retry_ms;
+    int64_t end_frame;          /* unscheduled-slot model: the USB frame this transfer's slots end at */
+    uint32_t gap_frames;        /* frames left unread before this transfer (reported just before its data) */
+    int uncertain;              /* failed submits just before this one: libusb may have advanced its queue end */
     struct cc_session *s;
 } xinfo;
 
@@ -53,6 +78,7 @@ enum cc_life { CC_LIFE_OPEN, CC_LIFE_STARTING, CC_LIFE_RUNNING,
 enum { DELIVERY_BUFFER_BYTES = 1u << 20 };
 
 struct cc_session {
+    uint32_t start_mode_word;                  // provenance: the mode word sent at start (0 until the device start-up sent it)
     cc_config cfg;
     cc_callbacks cb;
     // ring
@@ -69,6 +95,25 @@ struct cc_session {
     uint64_t align_bytes;                          /* replay: walked past before the first whole video transfer */
     _Atomic int replay_paused;                     /* cc_replay_pause: the pacer holds at a transfer boundary */
     pthread_mutex_t pause_m; pthread_cond_t pause_c; int pause_init;
+    _Atomic int space_waiting;                     /* replay_block_when_full: the replay waits for ring space */
+    pthread_mutex_t space_m; pthread_cond_t space_c;   /* statically initialised in cc_open; signalled by the delivery thread */
+    _Atomic uint64_t replay_space_waits;
+    /* unscheduled-slot detector (device backend, event thread only): per endpoint, completions are expected every
+     * transfer = npk x 125 us. A window's minimum lateness that steps up and stays up means slots were skipped. */
+    struct { int anchored; uint64_t origin_ns; int64_t corr_ns, wmin_ns; int wn, high_windows;
+             int64_t lib_qend, data_end; int64_t tf; int uncertain;
+             int nd, npg;                                         /* open doubts; held gaps */
+             struct { uint32_t seq; int64_t end, min, fmin, fgap; int left, frozen; } dq[SCHED_MAXDOUBT];   /* fgap: end of the gap that froze it */
+             /* each doubt: its carrier; minimum lateness from it on; the same up to the first gap held after it (a
+              * drain realigns the schedule, so later completions no longer show the phantom); completions left */
+             struct { uint32_t seq; int64_t end; uint32_t frames; } pg[SCHED_MAXDOUBT];   /* gaps predicted against an open doubt */
+             } sch[2];
+    double abs_to_ns;
+    _Atomic uint64_t unsched_events, unsched_pkts[2], unsched_late, unclosed_marks, hole_marks, hole_bytes;
+    int sched_off; char sched_note[160];   /* the unread-slot model is off when the endpoints are not bInterval 1 */
+    int rt_event, rt_lib, rt_still, rt_pri_stop, rt_pri_min;   /* rt_pri_min: lowest scheduled priority, sampled each tick and at stop */
+    _Atomic uint64_t sched_shifts, sched_shift_frames;   /* backstop: unexplained completion shifts (model missed a gap) */
+    long dbg_hold_at; int dbg_hold_ms; long dbg_video_done;   /* CC_DEBUG_HOLD_AT/MS: hold the event thread once (builds with -DCC_DEBUG_HOLD only) */
     _Atomic int stop_req, backend_done, started_successfully;
     _Atomic int end_reason; _Atomic int end_fired;
     _Atomic uint64_t packets_delivered; /* delivery thread, not the libusb callback */
@@ -89,6 +134,9 @@ struct cc_session {
     libusb_context *ctx; libusb_device_handle *h;
     xinfo xs[NXF];
     _Atomic long inflight;
+    struct ih_dev *ih;               // IOUSBHost backend (cfg.usb_backend); NULL for libusb and replay
+    _Atomic int unsched_exact;       // the stream came through IOUSBHost (live, or a replay whose SESSION note says so)
+    uint64_t ih_t0_ms;
 };
 
 static void destroy_sync_(cc_session *s){
@@ -252,6 +300,20 @@ static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
     if(resuming) cc_test_data_resumed();
 #endif
 }
+/* replay_block_when_full: wait until the next DATA record fits (as put_pkt_ requires) or the session stops. The
+ * delivery thread broadcasts after every consumed record while a waiter exists; the timeout is a liveness backstop. */
+static void replay_wait_space_(cc_session *s, size_t data_need){
+    if(ring_free_(s)>=META_RESERVE+data_need) return;
+    atomic_fetch_add(&s->space_waiting,1); atomic_fetch_add(&s->replay_space_waits,1);
+    pthread_mutex_lock(&s->space_m);
+    while(ring_free_(s)<META_RESERVE+data_need && !atomic_load(&s->stop_req)){
+        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100000000;
+        if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
+        pthread_cond_timedwait(&s->space_c,&s->space_m,&ts);
+    }
+    pthread_mutex_unlock(&s->space_m);
+    atomic_fetch_sub(&s->space_waiting,1);
+}
 static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
                       uint32_t seq, uint32_t st, const void *p, uint32_t plen){
     if(ring_free_(s)<sizeof(rec_hdr)+plen+CONTROL_TERMINAL_RESERVE){
@@ -319,6 +381,7 @@ static void* delivery_main(void *arg){
         memcpy(buf,s->ring+p0,f2);
         if(plen>f2) memcpy(buf+f2,s->ring,plen-f2);
         atomic_store_explicit(&s->r_tail,t+sizeof rh+plen,memory_order_release);
+        if(atomic_load(&s->space_waiting)){ pthread_mutex_lock(&s->space_m); pthread_cond_broadcast(&s->space_c); pthread_mutex_unlock(&s->space_m); }
         switch(rh.type){
         case REC_DATA: {
             cc_packet p={rh.endpoint,rh.pkt_index,rh.submit_seq,rh.status,
@@ -327,7 +390,20 @@ static void* delivery_main(void *arg){
             atomic_fetch_add_explicit(&s->packets_delivered,1,memory_order_relaxed);
             break; }
         case REC_HOSTLOSS:
-            if(s->cb.on_loss) s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
+            if(rh.pkt_index==CC_PI_UNSCHEDULED || rh.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* loud: this loss leaves no other trace anywhere */
+                /* libusb's count is the unread-slot model's estimate ("~"); IOUSBHost's is exact (its SESSION note) */
+                char line[240];
+                if(atomic_load(&s->unsched_exact))
+                    snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s slots never read (macOS refused the late read; it was queued %s), %s transfer seq %u",
+                             rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio","8 frames ahead",rh.pkt_index==CC_PI_UNSCHEDULED?"before":"found late, before",rh.submit_seq);
+                else snprintf(line,sizeof line,"capture_core: HOST LOSS: ~%u USB %s slots never read (macOS skipped past them after a late resubmission), %s transfer seq %u",
+                         rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio",rh.pkt_index==CC_PI_UNSCHEDULED?"from":"found late, before",rh.submit_seq);
+                if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+            }
+            if(s->cb.on_loss_ex) s->cb.on_loss_ex(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len,
+                                                  rh.pkt_index==CC_PI_UNSCHEDULED?CC_LOSS_UNSCHEDULED:rh.pkt_index==CC_PI_UNSCHEDULED_LATE?CC_LOSS_UNSCHEDULED_LATE:rh.pkt_index==CC_PI_UNCLOSED?CC_LOSS_UNCLOSED:rh.pkt_index==CC_PI_HOLE?CC_LOSS_HOLE:CC_LOSS_RING,rh.submit_seq);
+            else if(s->cb.on_loss && rh.pkt_index!=CC_PI_UNSCHEDULED_LATE)   /* a late record has no position: on_loss would flag where it lands */
+                s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
             break;
         case REC_XFERERR:
             if(s->cb.on_error) s->cb.on_error(s->cb.ctx,rh.endpoint,rh.submit_seq,
@@ -348,11 +424,240 @@ static void* delivery_main(void *arg){
 }
 
 // ---------------- device backend
+/* Real-time scheduling (THREAD_TIME_CONSTRAINT_POLICY, the mechanism Core Audio uses; no root, no entitlement) for the
+ * threads that only move USB packets into the ring: our event thread and libusb's internal Darwin completion thread.
+ * Ordinary system load (another app's I/O, the window server, a network volume's client) must not hold them off.
+ * Aperiodic; computation is a budget per wake-up, preemptible so a burst of callbacks cannot monopolise a core. */
+static int rt_policy_(thread_t th){
+    mach_timebase_info_data_t tb; if(mach_timebase_info(&tb)!=KERN_SUCCESS || !tb.numer) return -1;
+    double us=1000.0*(double)tb.denom/(double)tb.numer;          /* absolute-time units per microsecond */
+    thread_time_constraint_policy_data_t p={ .period=0, .computation=(uint32_t)(5000*us), .constraint=(uint32_t)(10000*us), .preemptible=1 };
+    return thread_policy_set(th,THREAD_TIME_CONSTRAINT_POLICY,(thread_policy_t)&p,THREAD_TIME_CONSTRAINT_POLICY_COUNT)==KERN_SUCCESS?0:-1;
+}
+/* libusb's Darwin backend delivers completions on its own CFRunLoop thread before our event thread sees them. It is
+ * created inside libusb_init and named by libusb; find it by name. Returns how many threads were promoted. */
+static int rt_promote_libusb_threads_(char *names, size_t names_sz){
+    thread_act_array_t th; mach_msg_type_number_t n=0; int promoted=0; size_t used=0;
+    if(names_sz) names[0]=0;
+    if(task_threads(mach_task_self(),&th,&n)!=KERN_SUCCESS) return -1;
+    for(mach_msg_type_number_t i=0;i<n;i++){
+        pthread_t pt=pthread_from_mach_thread_np(th[i]); char nm[64]="";
+        if(pt) pthread_getname_np(pt,nm,sizeof nm);
+        if(!strncmp(nm,"org.libusb",10) && rt_policy_(th[i])==0){
+            promoted++;
+            if(used<names_sz){ int w=snprintf(names+used,names_sz-used,"%s%s",used?",":"",nm); if(w>0) used+=(size_t)w; }
+        }
+        mach_port_deallocate(mach_task_self(),th[i]);
+    }
+    vm_deallocate(mach_task_self(),(vm_address_t)th,n*sizeof *th);
+    return promoted;
+}
+/* Unscheduled-slot detector: libusb's Darwin backend (1.0.30 darwin_usb.c) schedules an isochronous transfer at
+ *     start = max(current 1 ms bus frame + 4, the end of what the endpoint already has queued)
+ * and sets that end to start + the transfer's length after the IOKit call (even when the call fails; earlier failures,
+ * such as BUSY or NO_DEVICE in libusb core, return before it). A start past the end of the data already queued leaves
+ * frames that are never read and that nothing records. The event thread mirrors the rule (arithmetic only): each
+ * transfer's start and end frame is known at submit, so a gap is known with the transfer it precedes; it is counted
+ * at once and its HostLoss goes into the stream immediately before that transfer's data. A stall that does not drain
+ * the queue creates no gap, so it cannot be reported.
+ * The bus frame comes from the host clock: frame 0 is where the initial fleet starts, anchored by the first NORMAL
+ * completion; corr_ns is the latency floor (minimum of completion minus scheduled end) over normal completions, so
+ * the 3 ppm USB/host drift never accumulates. Known limit: the floor absorbs the bus-to-callback delay, so every
+ * gap is under-predicted by that delay (a gap no larger than it is missed at the gap). Measure it on hardware
+ * (CC_DEBUG_HOLD_*); exact frame numbers need IOKit's own completion timestamps.
+ * A failed submit is uncertain (libusb may or may not have advanced its queue end): it is settled when the next
+ * transferred ones complete: a late callback can be a phantom transfer or a held event thread, so the minimum
+ * lateness over SCHED_DEFER completions decides, and a phantom is written as a late record (CC_PI_UNSCHEDULED_LATE).
+ * Backstop: completions that stay > 2 ms later than the model for 3 windows are counted as a schedule shift and the
+ * model re-anchored; no record is placed (it could only land on an intact unit). */
+#define SCHED_FRAME_NS 1000000ll
+#define SCHED_LEAD 4                          /* libusb: frame += 4 */
+#define SCHED_PKTS_PER_FRAME 8                /* bInterval 1 at high speed (both endpoints, 8,000 packets/s measured) */
+#define SCHED_DEFER 40                        /* completions a doubtful settlement watches: 640 ms, past the 512 ms queue */
+static uint64_t sched_now_ns_(const cc_session *s){ return (uint64_t)((double)mach_absolute_time()*s->abs_to_ns); }
+static void sched_count_(cc_session *s, int e, uint64_t frames){
+    atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],frames*SCHED_PKTS_PER_FRAME);
+}
+static void sched_place_(cc_session *s, uint8_t ep, uint32_t seq, uint64_t frames, uint16_t pi){
+    uint32_t pk=(uint32_t)(frames*SCHED_PKTS_PER_FRAME);
+    int e=ep_i(ep);
+    if(s->lost_pkts[e]) flush_loss_(s,ep);            /* ring loss already pending on this endpoint comes first */
+    if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){
+        rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,pi,seq,0,pk,0};
+        ring_put_record_(s,&h,NULL,0); wake_(s);
+    } else put_meta_(s,REC_HOSTLOSS,ep,pi,seq,0,NULL,0);   /* reserve policy: marks control loss */
+}
+/* The model counts SCHED_PKTS_PER_FRAME packets per 1 ms frame, which holds for bInterval 1 on both iso endpoints of
+ * IF0 alt 2. Read it from the device: anything else turns the model off (named), an unreadable descriptor leaves
+ * it on and says so. The note goes out with the real-time status line when the event thread starts. */
+static void sched_check_interval_(cc_session *s){
+    struct libusb_config_descriptor *cd=NULL; int found=0, bad=0, iv=0;
+    if(libusb_get_active_config_descriptor(libusb_get_device(s->h),&cd)==0 && cd){
+        for(int i=0;i<cd->bNumInterfaces;i++) for(int a=0;a<cd->interface[i].num_altsetting;a++){
+            const struct libusb_interface_descriptor *d=&cd->interface[i].altsetting[a];
+            if(d->bInterfaceNumber!=0 || d->bAlternateSetting!=2) continue;
+            for(int k=0;k<d->bNumEndpoints;k++){
+                uint8_t ep=d->endpoint[k].bEndpointAddress;
+                if(ep!=CC_EP_VIDEO && ep!=CC_EP_AUDIO) continue;
+                found++; if(d->endpoint[k].bInterval!=1){ bad=1; iv=d->endpoint[k].bInterval; }
+            }
+        }
+        libusb_free_config_descriptor(cd);
+    }
+    s->sched_off=bad;
+    if(bad) snprintf(s->sched_note,sizeof s->sched_note,"capture_core: an iso endpoint has bInterval %d, not 1: unread-USB-slot detection is OFF for this session",iv);
+    else if(found!=2) snprintf(s->sched_note,sizeof s->sched_note,"capture_core: iso endpoint intervals could not be read (%d of 2): unread-USB-slot detection assumes bInterval 1",found);
+}
+/* every submit attempt goes through here: initial fleet (pre-anchor: back to back), resubmit, retry */
+static int sched_submit_(cc_session *s, xinfo *xi, int initial_index){
+    if(s->sched_off) return libusb_submit_transfer(xi->x);
+    int e=ep_i(xi->ep); __typeof__(s->sch[0]) *q=&s->sch[e];
+    if(!q->tf) q->tf=(int64_t)xi->x->num_iso_packets/SCHED_PKTS_PER_FRAME;
+    int64_t start; uint32_t gap=0;
+    if(initial_index>=0 || !q->anchored) start=q->lib_qend;   /* frames fixed at the anchor: initial i ends at (i+1)tf */
+    else {
+        int64_t cur=((int64_t)(sched_now_ns_(s)-q->origin_ns)-q->corr_ns)/SCHED_FRAME_NS;
+        start=cur+SCHED_LEAD; if(start<q->lib_qend) start=q->lib_qend;
+        gap=start>q->data_end?(uint32_t)(start-q->data_end):0;
+    }
+    int rc=libusb_submit_transfer(xi->x);
+    if(rc==0){
+        q->lib_qend=start+q->tf; xi->end_frame=q->lib_qend; q->data_end=xi->end_frame;
+        xi->gap_frames=gap; xi->uncertain=q->uncertain; q->uncertain=0;
+        if(gap) sched_count_(s,e,gap);                /* counted when known, even if this transfer never completes */
+    } else { q->uncertain++; xi->gap_frames=0; xi->uncertain=0; }
+    return rc;
+}
+/* Settle the oldest open doubt of one endpoint (event thread), once it has seen SCHED_DEFER normal completions. A
+ * phantom transfer adds a whole transfer to every later completion, a hold catches up: its minimum lateness, less
+ * what earlier settled doubts already took out of the model, is its phantom (later doubts' minimums only grow, so the
+ * total stays exact; when no completion between two carriers came on time, the step lands on the earlier one).
+ * The model then catches up, walking the queue in order with a running offset: the phantom adds to it, a gap
+ * predicted against the unshifted queue was too large by it (a drained queue restarts at the bus frame either way),
+ * so the gap shrinks by the offset and the offset by the gap; transfers in flight move by the offset at their place.
+ * Held gaps before the next open doubt's carrier are final and written as late records; later ones stay held.
+ * A drain after the carrier hides the phantom from the full minimum (the gap swallows it): then the minimum frozen
+ * at that gap, when it is whole transfers and the gap is at least as large, is the phantom, named at its carrier. */
+static void sched_settle_(cc_session *s, int e, xinfo *xi, int64_t *r, const char *why){
+    __typeof__(s->sch[0]) *q=&s->sch[e]; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO;
+    int64_t half=q->tf*SCHED_FRAME_NS/2, tfn=q->tf*SCHED_FRAME_NS, c=q->dq[0].min;
+    int64_t sh=c>half && c<INT64_MAX/2?(c+SCHED_FRAME_NS/2)/SCHED_FRAME_NS:0;   /* no normal completion after it: no evidence */
+    uint32_t seq=q->dq[0].seq; int64_t dend=q->dq[0].end, fm=q->dq[0].fmin, next=q->nd>1?q->dq[1].end:INT64_MAX;
+    int64_t reloc=0;                                  /* frames of a drained-over phantom to name at the carrier */
+    if(!sh && q->dq[0].frozen && fm>half && fm<INT64_MAX/2){
+        int64_t k=(fm+tfn/2)/tfn, res=fm-k*tfn;
+        if(k>=1 && res<=2*SCHED_FRAME_NS && res>=-2*SCHED_FRAME_NS) reloc=k*q->tf;
+    }
+    for(int i=1;i<q->nd;i++){ q->dq[i].min-=sh*SCHED_FRAME_NS; if(q->dq[i].fmin<INT64_MAX/2) q->dq[i].fmin-=sh*SCHED_FRAME_NS; }
+    if(sh){ sched_count_(s,e,(uint64_t)sh); atomic_fetch_add(&s->unsched_late,1); sched_place_(s,ep,seq,(uint64_t)sh,(uint16_t)CC_PI_UNSCHEDULED_LATE); }
+    if(why && sh){ char line[160]; snprintf(line,sizeof line,"capture_core: unread-slot doubt settled %s, from fewer completions than usual",why);
+                   if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line); }
+    /* the walk: this doubt (+offset), held gaps, and this endpoint's transfers (in flight, and xi itself), by end */
+    struct { int64_t end; int kind, idx; } it[SCHED_MAXDOUBT+NXF+1]; int n=0;
+    it[n++]=(__typeof__(it[0])){dend,0,0};
+    for(int i=0;i<q->npg;i++) it[n++]=(__typeof__(it[0])){q->pg[i].end,1,i};
+    for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].ep==ep && !s->xs[i].pending) it[n++]=(__typeof__(it[0])){s->xs[i].end_frame,2,i};
+    for(int a=1;a<n;a++){ __typeof__(it[0]) v=it[a]; int b=a; while(b>0 && (it[b-1].end>v.end || (it[b-1].end==v.end && it[b-1].kind>v.kind))){ it[b]=it[b-1]; b--; } it[b]=v; }
+    int64_t o=0, reloc_done=0, reloc_gap=0; int keep[SCHED_MAXDOUBT]={0};
+    for(int a=0;a<n;a++){
+        if(it[a].kind==0){ o+=sh; continue; }
+        int pgi=it[a].kind==1?it[a].idx:-1;
+        uint32_t g=pgi>=0?q->pg[pgi].frames:s->xs[it[a].idx].gap_frames;
+        if(g){
+            int64_t real=(int64_t)g>o?(int64_t)g-o:0; o=o>(int64_t)g?o-(int64_t)g:0;
+            if(real<(int64_t)g){ atomic_fetch_sub(&s->unsched_pkts[e],((uint64_t)g-(uint64_t)real)*SCHED_PKTS_PER_FRAME); if(!real) atomic_fetch_sub(&s->unsched_events,1); }
+            if(reloc && it[a].end>dend && real>=reloc){   /* the first gap after the carrier swallowed its phantom */
+                real-=reloc; atomic_fetch_add(&s->unsched_late,1);
+                sched_place_(s,ep,seq,(uint64_t)reloc,(uint16_t)CC_PI_UNSCHEDULED_LATE);
+                reloc_done=reloc; reloc_gap=it[a].end;
+                if(real) atomic_fetch_add(&s->unsched_events,1);   /* one gap became two records */
+                reloc=0;
+            } else if(it[a].end>dend) reloc=0;            /* only the first gap after it */
+            if(pgi>=0){
+                if(q->pg[pgi].end<next){ if(real){ atomic_fetch_add(&s->unsched_late,1); sched_place_(s,ep,q->pg[pgi].seq,(uint64_t)real,(uint16_t)CC_PI_UNSCHEDULED_LATE); } }
+                else { q->pg[pgi].frames=(uint32_t)real; keep[pgi]=1; }   /* after a later open doubt: still held */
+            } else s->xs[it[a].idx].gap_frames=(uint32_t)real;
+        }
+        if(it[a].kind==2){
+            xinfo *x=&s->xs[it[a].idx]; x->end_frame+=o;
+            if(x==xi && r) *r-=o*SCHED_FRAME_NS;
+        }
+    }
+    q->lib_qend+=o; q->data_end+=o;
+    /* a later doubt opened before that drain saw the same phantom in its frozen minimum: it has been named now */
+    if(reloc_done) for(int i=1;i<q->nd;i++) if(q->dq[i].end<reloc_gap && q->dq[i].fmin<INT64_MAX/2) q->dq[i].fmin-=reloc_done*SCHED_FRAME_NS;
+    int w=0; for(int i=0;i<q->npg;i++) if(keep[i]) q->pg[w++]=q->pg[i]; q->npg=w;
+    for(int i=1;i<q->nd;i++) q->dq[i-1]=q->dq[i]; q->nd--;
+    if(!q->nd){ q->wn=0; q->high_windows=0; }
+}
+static void sched_open_doubt_(cc_session *s, int e, uint32_t seq, int64_t end, int64_t late){
+    __typeof__(s->sch[0]) *q=&s->sch[e]; (void)s;
+    if(q->nd==SCHED_MAXDOUBT){                        /* full: the two oldest become one (older carrier; total kept) */
+        q->dq[1].seq=q->dq[0].seq; q->dq[1].end=q->dq[0].end;
+        /* both frozen by one drain: the later frozen minimum holds both phantoms (nested); otherwise the drain came
+         * between them and only the older one's frozen minimum describes the stretch before it */
+        if(!(q->dq[0].frozen && q->dq[1].frozen && q->dq[0].fgap==q->dq[1].fgap)){ q->dq[1].fmin=q->dq[0].fmin; q->dq[1].fgap=q->dq[0].fgap; }
+        q->dq[1].frozen|=q->dq[0].frozen;
+        for(int i=1;i<q->nd;i++) q->dq[i-1]=q->dq[i]; q->nd--;
+    }
+    q->dq[q->nd].seq=seq; q->dq[q->nd].end=end; q->dq[q->nd].min=late; q->dq[q->nd].fmin=late;
+    q->dq[q->nd].left=SCHED_DEFER; q->dq[q->nd].frozen=0; q->nd++;
+}
+/* before the transfer's data, on the event thread */
+static void sched_complete_(cc_session *s, xinfo *xi, int normal){
+    if(s->sched_off) return;
+    int e=ep_i(xi->ep); __typeof__(s->sch[0]) *q=&s->sch[e];
+    uint64_t now=sched_now_ns_(s);
+    if(!normal){                                      /* no timing here: its doubt opens without a sample */
+        if(xi->uncertain) sched_open_doubt_(s,e,xi->seq,xi->end_frame,INT64_MAX);
+        xi->uncertain=0; return;
+    }
+    if(!q->anchored){ q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0; }
+    int64_t r=(int64_t)(now-q->origin_ns)-xi->end_frame*SCHED_FRAME_NS, late=r-q->corr_ns;
+    /* A failed submit before this transfer: libusb may have advanced its queue end (a phantom transfer: unread slots)
+     * or not, and a held event thread looks the same in one completion. A phantom keeps every later completion late,
+     * a hold catches up, so each doubt's minimum lateness over its next SCHED_DEFER completions decides; by then the
+     * data has gone by, and a phantom is written as a late record naming the transfer it precedes. */
+    if(xi->uncertain){ sched_open_doubt_(s,e,xi->seq,xi->end_frame,late); xi->uncertain=0; }
+    /* a gap here realigned the schedule: this completion no longer shows an earlier phantom, so it freezes first */
+    if(xi->gap_frames && q->nd && q->npg<SCHED_MAXDOUBT) for(int i=0;i<q->nd;i++) if(!q->dq[i].frozen){ q->dq[i].frozen=1; q->dq[i].fgap=xi->end_frame; }
+    for(int i=0;i<q->nd;i++){
+        if(late<q->dq[i].min) q->dq[i].min=late;
+        if(!q->dq[i].frozen && late<q->dq[i].fmin) q->dq[i].fmin=late;
+        q->dq[i].left--;
+    }
+    if(xi->gap_frames){
+        if(q->nd && q->npg<SCHED_MAXDOUBT){           /* predicted against a queue an open doubt may have moved */
+            q->pg[q->npg].seq=xi->seq; q->pg[q->npg].end=xi->end_frame; q->pg[q->npg].frames=xi->gap_frames; q->npg++;
+        } else sched_place_(s,xi->ep,xi->seq,xi->gap_frames,(uint16_t)CC_PI_UNSCHEDULED);
+        xi->gap_frames=0;
+    }
+    while(q->nd && q->dq[0].left<=0) sched_settle_(s,e,xi,&r,NULL);
+    if(r<q->corr_ns) q->corr_ns=r;                    /* latency floor: any decrease at once */
+    if(q->nd) return;                                 /* the open doubts own this stretch, not the backstop */
+    if(!q->wn || r<q->wmin_ns) q->wmin_ns=r;
+    if(++q->wn<16) return;
+    q->wn=0;
+    int64_t step=q->wmin_ns-q->corr_ns;
+    if(step>2*SCHED_FRAME_NS){
+        if(++q->high_windows>=3){                     /* the model missed something: count it, re-anchor, place nothing */
+            atomic_fetch_add(&s->sched_shifts,1); atomic_fetch_add(&s->sched_shift_frames,(uint64_t)(step/SCHED_FRAME_NS));
+            q->corr_ns=q->wmin_ns; q->high_windows=0;
+        }
+    } else { q->high_windows=0; q->corr_ns+=step<50000?step:50000; }   /* drift: slow increase only */
+}
 static void usb_cb(struct libusb_transfer *x){
     xinfo *xi=x->user_data;
     cc_session *s=xi->s;
     atomic_fetch_sub(&s->inflight,1);
     int e=ep_i(xi->ep);
+    int stopping_cancel=x->status==LIBUSB_TRANSFER_CANCELLED && atomic_load(&s->stop_req);
+    if(!stopping_cancel && x->status!=LIBUSB_TRANSFER_NO_DEVICE)
+        sched_complete_(s,xi,x->status==LIBUSB_TRANSFER_COMPLETED);   /* places a known gap before this data */
+#ifdef CC_DEBUG_HOLD
+    if(e==0 && s->dbg_hold_at>0 && ++s->dbg_video_done==s->dbg_hold_at)
+        usleep((useconds_t)s->dbg_hold_ms*1000);      /* CC_DEBUG_HOLD_*: a held-off event thread, on purpose */
+#endif
     if(x->status==LIBUSB_TRANSFER_COMPLETED){
         for(int i=0;i<x->num_iso_packets;i++){
             struct libusb_iso_packet_descriptor *p=&x->iso_packet_desc[i];
@@ -375,7 +680,7 @@ static void usb_cb(struct libusb_transfer *x){
     }
     if(!atomic_load(&s->stop_req) && x->status!=LIBUSB_TRANSFER_NO_DEVICE){
         xi->seq=s->seq_ctr[e]++;
-        int rc=libusb_submit_transfer(x);
+        int rc=sched_submit_(s,xi,-1);
         if(rc==0){ atomic_fetch_add(&s->inflight,1); return; }
         s->xfer_err++; s->resub_fail++;
         put_meta_(s,REC_XFERERR,xi->ep,0xFFFF,xi->seq,(uint32_t)(-rc),NULL,0);
@@ -392,13 +697,55 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
     uint8_t b[4]={(uint8_t)(be>>24),(uint8_t)(be>>16),(uint8_t)(be>>8),(uint8_t)be};
     return libusb_control_transfer(h,0x40,req,0,idx,b,4,1000);
 }
+/* Input select, wire byte 0 of register 0x00, as the vendor driver writes it: one of bits 7 (SDI), 0 (HDMI),
+ * 2 (S-Video), 1 (composite), or none (component). Measured 2026-10-13 against bars with each cable alone and
+ * both: 0x04 decodes S-Video, 0x02 decodes the composite jack (3.58 MHz residue in luma 5.3x, S-Video 0.8x).
+ * The words this code sent before, 0x09|0x06 for S-Video and 0x09|0x04 for "composite", set the HDMI bit and
+ * put composite on the S-Video bit, so "composite" decoded S-Video. Component (0x00) is the driver's and has
+ * not been exercised on hardware. Bits 4 (analog audio) and 5 (8-bit) as before; bit 3 is the 7.5 IRE setup bit. */
+uint32_t cc_mode_word(const cc_config *cfg){
+    uint32_t vsel = cfg->input==CC_INPUT_COMPONENT?0x00000000u
+                  : cfg->input==CC_INPUT_COMPOSITE?0x02000000u:0x04000000u;
+    uint32_t w=0x08000000u|vsel|0x10000000u|0x20000000u;
+    if(cfg->setup_off) w&=~0x08000000u;
+    return w;
+}
+int cc_start_info(const cc_session *s, uint32_t *mode_word){
+    if(!s || s->cfg.replay_path || !s->start_mode_word) return -1;
+    *mode_word=s->start_mode_word;
+    return 0;
+}
+/* The event thread's scheduled priority now (-1 unknown), folded into the session minimum. A fail-safe demotion
+ * drops it below the real-time queues (97 and up) whatever the policy reads back; sampled once a second. */
+static void rt_sample_(cc_session *s){
+    struct thread_extended_info ei; mach_msg_type_number_t c=THREAD_EXTENDED_INFO_COUNT;
+    int p=thread_info(pthread_mach_thread_np(pthread_self()),THREAD_EXTENDED_INFO,(thread_info_t)&ei,&c)==KERN_SUCCESS?ei.pth_curpri:-1;
+    if(p<s->rt_pri_min) s->rt_pri_min=p;
+}
 static void* device_main(void *arg){
     cc_session *s=arg;
-    internal_session=s;
+    internal_session=s; s->rt_pri_min=INT_MAX;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
-    char note[192];
-    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d",
-             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS);
+    { mach_timebase_info_data_t tb; mach_timebase_info(&tb); s->abs_to_ns=tb.numer?(double)tb.numer/(double)tb.denom:1.0; }
+#ifdef CC_DEBUG_HOLD   /* a measurement build: the hold is never compiled into a normal one */
+    { const char *a=getenv("CC_DEBUG_HOLD_AT"), *m=getenv("CC_DEBUG_HOLD_MS");
+      s->dbg_hold_at=a?atol(a):0; s->dbg_hold_ms=m?atoi(m):0; s->dbg_video_done=0;
+      if(s->dbg_hold_at>0) fprintf(stderr,"capture_core: DEBUG HOLD ARMED: the USB event thread will stop for %d ms at video completion %ld\n",s->dbg_hold_ms,s->dbg_hold_at); }
+#endif
+    if(s->sched_note[0]){ if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,s->sched_note); else fprintf(stderr,"%s\n",s->sched_note); }
+    char note[480], lnames[96];
+    int rt_self=rt_policy_(pthread_mach_thread_np(pthread_self()))==0, rt_lib=rt_promote_libusb_threads_(lnames,sizeof lnames);
+    s->rt_event=rt_self; s->rt_lib=rt_lib;
+    { char line[240];
+      if(!rt_self || rt_lib<1)
+          snprintf(line,sizeof line,"capture_core: real-time scheduling NOT fully applied (event thread %s, libusb threads promoted %d): USB reads can be held off by system load",
+                   rt_self?"ok":"FAILED",rt_lib);
+      else snprintf(line,sizeof line,"capture_core: real-time scheduling on: event thread and %d libusb thread%s (%s); %d transfers queued per endpoint",
+                    rt_lib,rt_lib==1?"":"s",lnames,XFERS);
+      if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line); }
+    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s rt=event:%s,libusb:%d[%s]",
+             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on",
+             rt_self?"yes":"NO",rt_lib,lnames);
     put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
     int n=0, startup_rc=CC_OK;
     for(int w=0;w<2;w++){
@@ -411,7 +758,7 @@ static void* device_main(void *arg){
             s->xs[n]=(xinfo){.x=x,.ep=ep,.seq=s->seq_ctr[w]++,.idx=n,.s=s};
             libusb_fill_iso_transfer(x,s->h,ep,buf,npk*pkt,npk,usb_cb,&s->xs[n],0);
             libusb_set_iso_packet_lengths(x,pkt);
-            int rc=libusb_submit_transfer(x);
+            int rc=sched_submit_(s,&s->xs[n],i);
             if(rc==0) atomic_fetch_add(&s->inflight,1);
             else { s->xfer_err++; s->resub_fail++;
                 put_meta_(s,REC_XFERERR,ep,0xFFFF,s->xs[n].seq,(uint32_t)(-rc),NULL,0);
@@ -429,7 +776,7 @@ static void* device_main(void *arg){
         int pending=0;
         for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].pending){
             pending=1; uint64_t now=monotonic_ms_(); if(now<s->xs[i].next_retry_ms) continue;
-            int rc=libusb_submit_transfer(s->xs[i].x);
+            int rc=sched_submit_(s,&s->xs[i],-1);
             if(rc==0){ s->xs[i].pending=0; atomic_fetch_add(&s->inflight,1); s->resub_rec++; continue; }
             s->resub_fail++; s->xs[i].next_retry_ms=now+10;
             int deadline=s->cfg.resubmit_deadline_ms>0?s->cfg.resubmit_deadline_ms:2000;
@@ -442,9 +789,15 @@ static void* device_main(void *arg){
         if(pending) usleep(1000); // shim and pathological backends may return immediately
         struct timespec tn; clock_gettime(CLOCK_MONOTONIC,&tn);
         uint32_t ms=(uint32_t)((tn.tv_sec-t0.tv_sec)*1000+(tn.tv_nsec-t0.tv_nsec)/1000000);
-        if(ms-last_tick>=1000){ last_tick=ms; put_meta_(s,REC_TICK,0,0,0,ms,NULL,0); }
+        if(ms-last_tick>=1000){ last_tick=ms; put_meta_(s,REC_TICK,0,0,0,ms,NULL,0); rt_sample_(s); }
     }
 stopping:
+    { thread_time_constraint_policy_data_t p; mach_msg_type_number_t n=THREAD_TIME_CONSTRAINT_POLICY_COUNT; boolean_t dflt=0;
+      s->rt_still=thread_policy_get(pthread_mach_thread_np(pthread_self()),THREAD_TIME_CONSTRAINT_POLICY,(thread_policy_t)&p,&n,&dflt)==KERN_SUCCESS && !dflt;
+      /* the policy read back can survive a fail-safe demotion; the scheduled priority cannot (real-time queues >= 97) */
+      struct thread_extended_info ei; mach_msg_type_number_t c=THREAD_EXTENDED_INFO_COUNT;
+      s->rt_pri_stop=thread_info(pthread_mach_thread_np(pthread_self()),THREAD_EXTENDED_INFO,(thread_info_t)&ei,&c)==KERN_SUCCESS?ei.pth_curpri:-1;
+      if(s->rt_pri_stop<s->rt_pri_min) s->rt_pri_min=s->rt_pri_stop; }
     // capture fleet before cancelling
     for(int i=0;i<NXF;i++) if(s->xs[i].x && !s->xs[i].pending)
         s->fleet[ep_i(s->xs[i].ep)]++;
@@ -465,6 +818,8 @@ stopping:
     }
     cc_test_input_done();
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
+    /* doubts still open (a failed submit within a window of the end): settled from what was seen, never dropped */
+    if(!s->sched_off) for(int e=0;e<2;e++) while(s->sch[e].nd) sched_settle_(s,e,NULL,NULL,"at stop");
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
@@ -476,6 +831,144 @@ startup_failed:
     pthread_mutex_lock(&s->life_m); while(!s->start_gate) pthread_cond_wait(&s->life_c,&s->life_m); pthread_mutex_unlock(&s->life_m);
     goto stopping;
 }
+
+#ifdef CC_WITH_IOUSBHOST
+/* ---------------- IOUSBHost device backend (cfg.usb_backend). Its callbacks run on one serial dispatch queue, the
+ * ring's single producer while streaming; this thread writes the SESSION record before ih_start and the final loss
+ * records after ih_stop has quiesced the queue, and ih_start holds the callbacks back until ih_go, so the two never
+ * write at once. No real-time policy: the queue's threads belong to the system's pool, and a late read costs
+ * exactly counted frames, not a guess. Each callback marks its thread as this session's for its duration, so a
+ * diag_log callback that calls cc_stop/cc_close from it is refused, as on the other backends' threads. */
+#define IHC_ENTER(s) cc_session *ihc_prev_=internal_session; internal_session=(s)
+#define IHC_LEAVE() internal_session=ihc_prev_
+static void ihc_diag_(void *ctx, const char *line){
+    cc_session *s=ctx; IHC_ENTER(s);
+    if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+    IHC_LEAVE();
+}
+static void ihc_transfer_(void *ctx, int e, uint32_t seq, int io, uint64_t unread, uint32_t too_old){
+    cc_session *s=ctx; uint8_t ep=e?CC_EP_AUDIO:CC_EP_VIDEO; IHC_ENTER(s);
+    s->seq_ctr[e]=seq;                                /* ring-loss records name the transfer being delivered */
+    if(unread){ sched_count_(s,e,unread); sched_place_(s,ep,seq,unread,(uint16_t)CC_PI_UNSCHEDULED); }
+    if(too_old){ atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],too_old); }
+    if(io!=kIOReturnSuccess && io!=kIOReturnUnderrun){   /* reported, and its packets still go out with their status */
+        s->xfer_err++; put_meta_(s,REC_XFERERR,ep,0,seq,(uint32_t)io,NULL,0);
+    }
+    if(too_old){   /* never read either; they follow as DATA records with that status. Last: the log may stall */
+        char line[200]; snprintf(line,sizeof line,"capture_core: HOST LOSS: %u USB %s packets of transfer seq %u failed as too old (its first frames had passed when it was queued)",
+                                 too_old,e?"audio":"video",seq);
+        ihc_diag_(s,line);
+    }
+#ifdef CC_DEBUG_HOLD
+    if(e==0 && s->dbg_hold_at>0 && ++s->dbg_video_done==s->dbg_hold_at)
+        usleep((useconds_t)s->dbg_hold_ms*1000);      /* CC_DEBUG_HOLD_*: the queue held, on purpose */
+#endif
+    IHC_LEAVE();
+}
+static void ihc_packet_(void *ctx, int e, uint32_t seq, int pi, int ok, uint32_t st, uint32_t req, uint32_t al, const uint8_t *d){
+    cc_session *s=ctx; IHC_ENTER(s);
+    if(!ok) s->iso_err++;
+    if(al==0) s->zero_pkts++; else if(al<req) s->short_pkts++;
+    put_pkt_(s,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)pi,seq,ok?0:st,req,d,al);
+    s->bytes[e]+=al;
+    IHC_LEAVE();
+}
+static void ihc_tick_(void *ctx){
+    cc_session *s=ctx; IHC_ENTER(s);
+    put_meta_(s,REC_TICK,0,0,0,(uint32_t)(monotonic_ms_()-s->ih_t0_ms),NULL,0); rt_sample_(s);
+    IHC_LEAVE();
+}
+static void ihc_submit_failed_(void *ctx, int e, uint32_t seq, int io){
+    cc_session *s=ctx; IHC_ENTER(s);
+    s->xfer_err++; s->resub_fail++;
+    put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0);
+    IHC_LEAVE();
+}
+static void ihc_fatal_(void *ctx, int reason, int io, int e, uint32_t seq){
+    cc_session *s=ctx; IHC_ENTER(s);
+    int gone=reason==1 || io==kIOReturnNoDevice || io==kIOReturnNotAttached || io==kIOReturnOffline;
+    if(reason==2){ s->xfer_err++; s->resub_fail++; put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0); }
+    /* an unplug can fail a requeue before its notice arrives: the notice still names the end */
+    if(gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);
+    else if(atomic_load(&s->end_reason)!=CC_END_DEVICE_GONE) atomic_store(&s->end_reason,CC_END_TRANSFER_FAILED);
+    atomic_store(&s->stop_req,1);
+    pthread_mutex_lock(&s->space_m); pthread_cond_broadcast(&s->space_c); pthread_mutex_unlock(&s->space_m);
+    IHC_LEAVE();
+}
+static void* ih_main(void *arg){
+    cc_session *s=arg;
+    internal_session=s; s->rt_pri_min=INT_MAX;
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
+#ifdef CC_DEBUG_HOLD
+    { const char *a=getenv("CC_DEBUG_HOLD_AT"), *m=getenv("CC_DEBUG_HOLD_MS");
+      s->dbg_hold_at=a?atol(a):0; s->dbg_hold_ms=m?atoi(m):0; s->dbg_video_done=0;
+      if(s->dbg_hold_at>0) fprintf(stderr,"capture_core: DEBUG HOLD ARMED: the IOUSBHost queue will stop for %d ms at video completion %ld\n",s->dbg_hold_ms,s->dbg_hold_at); }
+#endif
+    { char line[200];
+      snprintf(line,sizeof line,"capture_core: IOUSBHost backend: reads at explicit USB frames, unread frames counted exactly; %d transfers queued per endpoint",XFERS);
+      ihc_diag_(s,line); }
+    char note[320];
+    snprintf(note,sizeof note,"capture_core v1 backend=iousbhost input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s rt=queue:user-interactive",
+             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on");
+    put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
+    atomic_store(&s->unsched_exact,1);
+    ih_callbacks cb={ .ctx=s, .on_transfer=ihc_transfer_, .on_packet=ihc_packet_, .on_tick=ihc_tick_,
+                      .on_submit_failed=ihc_submit_failed_, .on_fatal=ihc_fatal_, .on_diag=ihc_diag_ };
+    s->ih_t0_ms=monotonic_ms_();
+    char err[256]="";
+    int deadline=s->cfg.resubmit_deadline_ms>0?s->cfg.resubmit_deadline_ms:2000;
+    int rc=ih_start(s->ih,&cb,XFERS,V_NPK,V_PKT,A_NPK,A_PKT,deadline,err,sizeof err);
+    if(rc!=CC_OK){
+        char line[300]; snprintf(line,sizeof line,"capture_core: IOUSBHost start failed: %s",err);
+        ihc_diag_(s,line);
+        if(atomic_load(&s->end_reason)==CC_END_STOPPED) atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR);
+        atomic_store(&s->stop_req,1); startup_report_(s,rc);
+        pthread_mutex_lock(&s->life_m); while(!s->start_gate) pthread_cond_wait(&s->life_c,&s->life_m); pthread_mutex_unlock(&s->life_m);
+    } else {
+        startup_report_(s,CC_OK);
+        if(await_start_gate_(s)){
+            ih_go(s->ih);                             /* only now do completions reach the ring */
+            /* cc_stop and ihc_fatal_ broadcast space_c after setting stop_req; the timeout is a liveness backstop */
+            pthread_mutex_lock(&s->space_m);
+            while(!atomic_load(&s->stop_req)){
+                struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=1;
+                pthread_cond_timedwait(&s->space_c,&s->space_m,&ts);
+            }
+            pthread_mutex_unlock(&s->space_m);
+        }
+    }
+    ih_stats st; ih_stop(s->ih,&st);                 /* the queue is quiet from here: this thread is the producer */
+    s->fleet[0]=st.fleet[0]; s->fleet[1]=st.fleet[1];
+    s->xfers_alloc=st.transfers; s->xfers_freed=st.transfers_freed;
+    s->resub_rec=(long)(st.resubmit_recovered[0]+st.resubmit_recovered[1]);
+    s->teardown_incomplete=st.incomplete;
+    if(st.device_gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);   /* even when a notice came after the queue stopped */
+    { char line[240];
+      snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps)%s",
+               st.step_dev_ms[0],st.step_dev_ms[1],(unsigned long long)st.steps[0],(unsigned long long)st.steps[1],
+               st.gap_dev_ms[0]>0||st.gap_dev_ms[1]>0?"; across unread gaps see the lines above":"");
+      ihc_diag_(s,line); }
+    for(int e=0;e<2;e++) if(st.unread_frames[e]!=st.unread_delivered[e]+st.unread_at_stop[e]){
+        char line[240]; snprintf(line,sizeof line,"capture_core: IOUSBHost %s unread-frame accounting does NOT balance: %llu counted, %llu reported, %llu on transfers ended at the stop",
+                                 e?"audio":"video",(unsigned long long)st.unread_frames[e],(unsigned long long)st.unread_delivered[e],(unsigned long long)st.unread_at_stop[e]);
+        ihc_diag_(s,line);
+    }
+    if(s->rt_pri_min==INT_MAX) s->rt_pri_min=-1;     /* priority of whichever pool thread ran each tick; none at stop */
+    s->rt_pri_stop=-1;
+    cc_test_input_done();
+    if(!st.incomplete){ flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO); }
+    else {   /* a callback stalled past the backstop may still be writing the ring: this thread must not */
+        char line[240]; snprintf(line,sizeof line,"capture_core: IOUSBHost stop cut the queue off: pending ring loss NOT written to the stream (video %u, audio %u packets; in cc_stats)",
+                                 (unsigned)s->lost_pkts[0],(unsigned)s->lost_pkts[1]);
+        ihc_diag_(s,line);
+    }
+    cc_test_before_backend_done(s);
+    atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
+    pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
+    internal_session=NULL;
+    return NULL;
+}
+#endif
 
 // ---------------- replay backend
 /* Read-ahead: a reader thread fills a byte ring from the .tpc; the pacer takes records from it.
@@ -616,12 +1109,37 @@ static int rr_finish_(replay_reader *r){   /* stops and joins the reader; return
     pthread_mutex_destroy(&r->m); pthread_cond_destroy(&r->cv); free(r->ring); close(r->fd);
     return e;
 }
+/* The USB stack that made a capture, from the SESSION notes at the head of its file (the CLI's "usb=iousbhost",
+ * capture_core's "backend=iousbhost"): read separately, since a replay that starts mid-file never reaches them.
+ * Only the HOST LOSS wording depends on it. */
+/* A SESSION note saying the capture came through IOUSBHost. The OBS plugin's tee note puts usb= first, before the
+ * recording's name (the user's text); the CLI's note has no user text; capture_core's own note never reaches a file. */
+static int note_says_iousbhost_(const uint8_t *p, size_t n){
+    static const char tee[]="shuttle-source tee v1 usb=iousbhost ", cli[]="shuttle-capture v1 ";
+    if(n>=sizeof tee-1 && !memcmp(p,tee,sizeof tee-1)) return 1;
+    if(n>=sizeof cli-1 && !memcmp(p,cli,sizeof cli-1)) return memmem(p,n," usb=iousbhost",14)!=NULL;
+    return memmem(p,n,"backend=iousbhost",17)!=NULL && n>=17 && !memcmp(p,"capture_core v1 ",16);
+}
+static void replay_peek_session_(cc_session *s, const char *path){
+    struct stat sb; if(stat(path,&sb)!=0 || !S_ISREG(sb.st_mode)) return;   /* a FIFO's bytes belong to the stream */
+    int fd=open(path,O_RDONLY); if(fd<0) return;
+    uint8_t b[8192]; ssize_t n=pread(fd,b,sizeof b,0); close(fd);
+    for(size_t off=0,i=0; n>0 && i<4 && off+sizeof(rec_hdr)<=(size_t)n; i++){
+        rec_hdr h; memcpy(&h,b+off,sizeof h);
+        if(h.magic!=REC_MAGIC) break;
+        size_t pl=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
+        if(h.type==REC_SESSION && off+sizeof h+pl<=(size_t)n &&
+           note_says_iousbhost_(b+off+sizeof h,pl)) atomic_store(&s->unsched_exact,1);
+        off+=sizeof h+pl;
+    }
+}
 static void* replay_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     replay_reader rd, *f=&rd;
     rd_list empty_waits={0}, oversleeps={0}; uint64_t min_fill=UINT64_MAX;
+    replay_peek_session_(s,s->cfg.replay_path);
     int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20,s->cfg.replay_start_offset);
     if(rr!=CC_OK){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,rr); goto failed_start; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;
@@ -686,7 +1204,8 @@ static void* replay_main(void *arg){
         switch(h.type){
         case REC_DATA: {
             int e=ep_i(h.endpoint);
-            // deliver with the ORIGINAL tags; backpressure via ring, honestly
+            // deliver with the ORIGINAL tags; backpressure via ring, honestly (offline: wait for room instead)
+            if(s->cfg.replay_block_when_full) replay_wait_space_(s,sizeof(rec_hdr)+(size_t)h.actual_len);
             put_pkt_(s,h.endpoint,h.pkt_index,h.submit_seq,h.status,h.req_len,pay,h.actual_len);
             s->bytes[e]+=h.actual_len;
             if(h.actual_len==0) s->zero_pkts++; else if(h.actual_len<h.req_len) s->short_pkts++;
@@ -732,12 +1251,32 @@ static void* replay_main(void *arg){
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
         case REC_XFERERR: put_meta_(s,REC_XFERERR,h.endpoint,h.pkt_index,h.submit_seq,h.status,NULL,0); break;
         case REC_HOSTLOSS: {
+            int le=ep_i(h.endpoint);
+            if(h.pkt_index==CC_PI_UNCLOSED || h.pkt_index==CC_PI_HOLE){   /* recovery's marks: forwarded as captured */
+                if(s->cfg.replay_block_when_full) replay_wait_space_(s,0);
+                if(s->lost_pkts[le]) flush_loss_(s,h.endpoint);
+                if(h.pkt_index==CC_PI_UNCLOSED) atomic_fetch_add(&s->unclosed_marks,1); else { atomic_fetch_add(&s->hole_marks,1); atomic_fetch_add(&s->hole_bytes,h.actual_len); }
+                if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){ ring_put_record_(s,&h,NULL,0); wake_(s); }
+                else put_meta_(s,REC_HOSTLOSS,h.endpoint,h.pkt_index,h.submit_seq,0,NULL,0);
+                break;
+            }
+            if(h.pkt_index==CC_PI_UNSCHEDULED || h.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* the capture's own unread-slot record: forward it as captured */
+                if(s->cfg.replay_block_when_full) replay_wait_space_(s,0);
+                if(s->lost_pkts[le]) flush_loss_(s,h.endpoint);   /* earlier ring loss first */
+                atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[le],h.req_len);
+                if(h.pkt_index==CC_PI_UNSCHEDULED_LATE) atomic_fetch_add(&s->unsched_late,1);
+                if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){ ring_put_record_(s,&h,NULL,0); wake_(s); }
+                else put_meta_(s,REC_HOSTLOSS,h.endpoint,h.pkt_index,h.submit_seq,0,NULL,0);
+                break;
+            }
             // fold the ORIGINAL capture's loss into our accounting so counts
             // survive replay (forwarding with zeroed fields lost them)
-            int le=ep_i(h.endpoint);
             s->lost_pkts[le]+=h.req_len; s->lost_bytes[le]+=h.actual_len;
             flush_loss_(s,h.endpoint);
             break; }
+        case REC_SESSION:   /* not forwarded; read for the USB stack that made the file (exact unread-slot counts) */
+            if(note_says_iousbhost_(pay,plen)) atomic_store(&s->unsched_exact,1);
+            break;
         default: break;
         }
     }
@@ -774,9 +1313,17 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     if(!out||!cfg||!cb||!cb->on_packet||!cb->on_end) return CC_ERR_ARGS;
     if(!cfg->replay_path && cfg->input!=CC_INPUT_SVIDEO && cfg->input!=CC_INPUT_COMPONENT &&
        cfg->input!=CC_INPUT_COMPOSITE) return CC_ERR_ARGS;   // never silently map junk to S-video
+    if(cfg->replay_block_when_full && !cfg->replay_path) return CC_ERR_ARGS;   // a device cannot wait for its consumer
+    if(cfg->usb_backend!=CC_USB_LIBUSB && cfg->usb_backend!=CC_USB_IOUSBHOST) return CC_ERR_ARGS;
+#ifndef CC_WITH_IOUSBHOST
+    if(!cfg->replay_path && cfg->usb_backend==CC_USB_IOUSBHOST){
+        const char *line="capture_core: the IOUSBHost USB stack was selected but this build has no IOUSBHost backend (CC_WITH_IOUSBHOST)";
+        if(cfg->diag_log) cfg->diag_log(cfg->diag_ctx,line); else fprintf(stderr,"%s\n",line); return CC_ERR_ARGS; }
+#endif
     cc_session *s=calloc(1,sizeof *s);
     if(!s) return CC_ERR_NOMEM;
     s->cfg=*cfg; s->cb=*cb;
+    s->space_m=(pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; s->space_c=(pthread_cond_t)PTHREAD_COND_INITIALIZER;
     if(pthread_mutex_init(&s->sig_m,NULL)) goto sync_fail;
     s->sig_m_init=1;
     if(pthread_cond_init(&s->sig_c,NULL)) goto sync_fail;
@@ -793,6 +1340,19 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     s->ring=malloc(s->ring_sz);
     if(!s->ring) goto nomem;
     atomic_store(&s->end_reason,CC_END_STOPPED);
+#ifdef CC_WITH_IOUSBHOST
+    if(!cfg->replay_path && cfg->usb_backend==CC_USB_IOUSBHOST){
+        uint32_t mode_word=cc_mode_word(&s->cfg); char err[256]="";
+        int rc=ih_open(&s->ih,mode_word,DEV_R4,DEV_LATCH,err,sizeof err);   /* the same start sequence as below */
+        if(rc!=CC_OK){
+            char line[300]; snprintf(line,sizeof line,"capture_core: IOUSBHost open failed: %s",err);
+            if(cfg->diag_log) cfg->diag_log(cfg->diag_ctx,line); else fprintf(stderr,"%s\n",line);
+            destroy_sync_(s); free(s->ring); free(s); return rc;
+        }
+        s->start_mode_word=mode_word;
+        *out=s; return CC_OK;
+    }
+#endif
     if(!cfg->replay_path){
         if(libusb_init(&s->ctx)) goto usb_fail;
         s->h=libusb_open_device_with_vid_pid(s->ctx,VID,PID);
@@ -800,13 +1360,26 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         if(libusb_claim_interface(s->h,0)) goto usb_fail;
         // alt1 -> alt2 is the reset + input select (§5); an unchecked failure here streams nothing
         // or streams the previous state, so every lifecycle transition must be confirmed.
+        uint32_t mode_word=cc_mode_word(&s->cfg);
+        /* Register 4 has no user meaning (the Shuttle has no input gain controls, owner 2026-10-07); the driver's
+         * settings commit writes it as 80 80 80 00, so it is written so here, never anything else. */
+        const uint32_t r4=DEV_R4;
+        /* The device latches the mode register only at the alt-setting reset, and from the value written BEFORE the
+         * most recent write (a one-write lag). Measured 2026-10-06: with the mode word sent only after the reset, each
+         * start showed the previous start's setup bit. So before the reset, with the stream idle (alt 0), the driver's
+         * commit goes out twice in a row, in address order (0x00, 0x04, 0x18), so the staged and the committed value
+         * are both this start's; the reset then applies them. The words after the reset stay as they always were. */
+        if(libusb_set_interface_alt_setting(s->h,0,0)) goto usb_fail;
+        if(vout_(s->h,215,0,mode_word)!=4 || vout_(s->h,215,0,mode_word)!=4 ||
+           vout_(s->h,215,4,r4)!=4 || vout_(s->h,215,4,r4)!=4 ||
+           vout_(s->h,215,24,DEV_LATCH)!=4 || vout_(s->h,215,24,DEV_LATCH)!=4) goto usb_fail;
         if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
             goto usb_fail;
         }
-        uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
-                      : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-        if(vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4 ||
-           vout_(s->h,215,24,0x73c60001u)!=4){
+        sched_check_interval_(s);
+        if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
+        s->start_mode_word=mode_word;
+        if(vout_(s->h,215,24,DEV_LATCH)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
             // downstream layer would report a healthy capture of the WRONG input.
             goto usb_fail;
@@ -845,6 +1418,9 @@ int cc_start(cc_session *s){
     }
     s->delivery_created=1;
     void*(*bm)(void*)=s->cfg.replay_path?replay_main:device_main;
+#ifdef CC_WITH_IOUSBHOST
+    if(s->ih) bm=ih_main;
+#endif
     if(pthread_create(&s->backend_t,NULL,bm,s)){
         atomic_store(&s->backend_done,1); wake_(s); pthread_join(s->delivery_t,NULL);
         goto thread_fail;
@@ -874,6 +1450,7 @@ int cc_stop(cc_session *s){
     s->life=CC_LIFE_STOPPING; pthread_mutex_unlock(&s->life_m);
     atomic_store(&s->stop_req,1);
     pthread_mutex_lock(&s->pause_m); pthread_cond_broadcast(&s->pause_c); pthread_mutex_unlock(&s->pause_m);   /* a paused pacer wakes now */
+    pthread_mutex_lock(&s->space_m); pthread_cond_broadcast(&s->space_c); pthread_mutex_unlock(&s->space_m);   /* so does a replay waiting for ring space */
     pthread_join(s->backend_t,NULL);
     pthread_join(s->delivery_t,NULL);
     pthread_mutex_lock(&s->life_m); s->life=CC_LIFE_STOPPED; pthread_cond_broadcast(&s->life_c); pthread_mutex_unlock(&s->life_m);
@@ -894,6 +1471,9 @@ void cc_close(cc_session *s){
     }
     if(s->h){ libusb_release_interface(s->h,0); libusb_close(s->h); }
     if(s->ctx) libusb_exit(s->ctx);
+#ifdef CC_WITH_IOUSBHOST
+    if(s->ih) ih_close(s->ih);
+#endif
     destroy_sync_(s);
     cc_test_destroyed();
     free(s->ring); free(s);
@@ -914,7 +1494,11 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->fleet[0]=s->fleet[0]; o->fleet[1]=s->fleet[1]; o->fleet_size=XFERS;
     o->transfers_allocated=s->xfers_alloc; o->transfers_freed=s->xfers_freed;
     o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
-    o->replay_align_bytes=s->align_bytes;
+    o->replay_align_bytes=s->align_bytes; o->replay_space_waits=atomic_load(&s->replay_space_waits);
+    o->unscheduled_events=atomic_load(&s->unsched_events);
+    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still; o->rt_priority_at_stop=s->rt_pri_stop; o->rt_priority_min=s->rt_pri_min; o->unscheduled_late=atomic_load(&s->unsched_late); o->unclosed_marks=atomic_load(&s->unclosed_marks); o->hole_marks=atomic_load(&s->hole_marks); o->hole_bytes=atomic_load(&s->hole_bytes);
+    o->schedule_shifts=atomic_load(&s->sched_shifts); o->schedule_shift_frames=atomic_load(&s->sched_shift_frames);
+    o->unscheduled_packets[0]=atomic_load(&s->unsched_pkts[0]); o->unscheduled_packets[1]=atomic_load(&s->unsched_pkts[1]);
 }
 int cc_replay_pause(cc_session *s, int paused){
     if(!s || !s->cfg.replay_path) return CC_ERR_STATE;
@@ -923,6 +1507,11 @@ int cc_replay_pause(cc_session *s, int paused){
     pthread_cond_broadcast(&s->pause_c);
     pthread_mutex_unlock(&s->pause_m);
     return CC_OK;
+}
+size_t cc_ring_pending(const cc_session *s){
+    if(!s) return 0;
+    size_t t=atomic_load_explicit(&s->r_tail,memory_order_acquire), h=atomic_load_explicit(&s->r_head,memory_order_acquire);
+    return h>t?h-t:0;
 }
 uint64_t cc_packets_delivered(const cc_session *s){
     return atomic_load_explicit(&s->packets_delivered,memory_order_relaxed);
@@ -952,6 +1541,12 @@ static void snk_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,0,0,0,pk,(uint32_t)(by>0xffffffffu?0xffffffffu:by)};
     snk_wr(k,&h,sizeof h);
 }
+static void snk_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
+    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE && kind!=CC_LOSS_UNCLOSED && kind!=CC_LOSS_HOLE){ snk_loss(ctx,ep,pk,by); return; }
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:kind==CC_LOSS_UNCLOSED?CC_PI_UNCLOSED:kind==CC_LOSS_HOLE?CC_PI_HOLE:CC_PI_UNSCHEDULED_LATE),seq,0,pk,
+               kind==CC_LOSS_HOLE?(uint32_t)(by>0xffffffffu?0xffffffffu:by):0};
+    snk_wr(sink_of(ctx),&h,sizeof h);
+}
 static void snk_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
     struct cc_tagged_sink *k=sink_of(ctx);
     uint16_t pi=kind==CC_ERROR_CONTROL_LOSS?0xFFFE:(kind==CC_ERROR_SUBMIT?0xFFFF:0);
@@ -978,7 +1573,7 @@ int cc_tagged_sink_open(cc_tagged_sink **out, const char *path, const char *note
 void cc_tagged_sink_callbacks(cc_tagged_sink *k, cc_callbacks *o){
     memset(o,0,sizeof *o);
     o->on_packet=snk_packet; o->on_loss=snk_loss; o->on_error=snk_error;
-    o->on_tick=snk_tick; o->on_end=snk_end; o->ctx=k;
+    o->on_tick=snk_tick; o->on_end=snk_end; o->ctx=k; o->on_loss_ex=snk_loss_ex;
 }
 int cc_tagged_sink_close(cc_tagged_sink *k){
     int rc = CC_OK;
@@ -988,21 +1583,52 @@ int cc_tagged_sink_close(cc_tagged_sink *k){
 
 // ---------------- buffered tpc sink (tee)
 ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n) = NULL;
+int (*cc_async_sink_test_fsync)(int fd) = NULL;
+ssize_t (*cc_async_sink_test_spill_write)(int fd, const void *buf, size_t n, off_t off) = NULL;
+uint64_t (*cc_async_sink_test_free)(const char *dir) = NULL;
+ssize_t (*cc_async_sink_test_spill_read)(int fd, void *buf, size_t n, off_t off) = NULL;
+int cc_async_sink_test_spill_any_volume = 0;
+/* Flush to the volume this often. A network volume (LucidLink's SMB share) refuses writes at the flush, not at
+ * write(): a full filespace once let gigabytes of acknowledged writes pile up as failing write-backs that the
+ * system retried until it hung (2026-10-03). A refused flush is a write error like any other: the file stops. */
+size_t cc_async_sink_sync_every = (size_t)256 << 20;
 int cc_async_sink_writer_qos = QOS_CLASS_UTILITY;
 static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
 struct cc_async_sink {
     int fd; uint8_t *ring; size_t cap, chunk;
     _Atomic size_t head, tail;           // monotonic byte counts: producer publishes head, writer tail
     size_t granule;                      // tail is published in whole granules so drained pages can be handed back; 0 = exact
-    _Atomic size_t drained;              // writer: exact drain position (the published tail lags it by under a granule)
+    _Atomic size_t drained;              // exact position up to which memory has been taken (the published tail lags it by under a granule)
     _Atomic uint64_t max_wake_backlog, released_bytes, release_failures;
     pthread_t thr; pthread_mutex_t m; pthread_cond_t cv; _Atomic int stop;
     uint64_t pend_pk[2], pend_by[2];     // producer-only: dropped DATA not yet confessed
     _Atomic uint64_t records, written, lost_pk[2], lost_by[2], control_dropped, discarded;
-    _Atomic size_t high_water, max_write; int io_errno; int qos;
+    _Atomic size_t high_water, max_write; _Atomic int io_errno; int qos;
     _Atomic uint64_t write_started;      // writer: nonzero while inside a write call (its start time)
     _Atomic uint64_t writes, write_ns, max_write_ns, slow_writes, max_ready_gap_ns;
     _Atomic uint64_t loss_episodes, loss_in_write, max_in_write_at_loss_ns;
+    /* Two consumers take memory from the front, one take at a time, under m: the writer (copies a chunk out, then
+     * writes it to the destination) and, with a spill, the spiller (moves the oldest backlog to local segment files).
+     * Bytes leave memory in stream order and the writer always empties the spill before it takes memory again, so the
+     * destination receives the stream in order. Spill offsets [sp_r, sp_w) are the bytes on disk, segment = off/sseg. */
+    size_t mpos;                         // under m: stream position up to which memory is taken (or being taken)
+    int take_busy, stuck;                // under m: a take is in progress; a release failed (the tail stays put)
+    uint8_t *bbuf;                       // writer: the chunk being written
+    int spill_on, spill_thread, spill_state; _Atomic int spill_error;
+    pthread_t sthr; pthread_cond_t acv; _Atomic size_t a_wake_at;   // the producer wakes the spiller when head reaches a_wake_at
+    char *sdir, *sbase; uint32_t stag; uint64_t sfloor; size_t safter, sseg;
+    uint64_t sp_w, sp_r, floor_retry_ns; // under m: bytes spilled and consumed (sp_w-sp_r is on disk)
+    /* Spilled chunks, in order: whole records each, with what they hold, so a chunk the local disk cannot give back
+     * is replaced in the file by HostLoss records saying exactly what was lost there. Under m. */
+    struct as_sd { uint64_t seg; uint32_t off, len, ctl; uint32_t pk[2]; uint64_t by[2]; int last; } *sdq;
+    uint64_t sd_w, sd_r, segs_made, seg_lo, swoff;   /* chunks; segments created; the oldest not yet deleted; fill of the open one */
+    _Atomic uint64_t spill_read_errors, spill_read_lost_pk[2], spill_read_lost_by[2];
+    int64_t spill_room; uint64_t stale_files, stale_bytes; int finished;
+    int mfd, mfd_stale;                  /* the spill manifest, locked for this writer's life (-1: none); updates failed */
+    int64_t sdelta;                      /* writer: destination bytes minus stream bytes (HostLoss written for lost spill chunks) */   /* at open: free bytes above the floor; segments of dead writers */
+    int swfd, srfd; uint64_t swseg, srseg;   // spiller's open segment; writer's
+    size_t bcap;                         // bbuf: a chunk, or one record larger than a chunk
+    _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns;
 };
 static size_t as_free_(struct cc_async_sink *k){
     return k->cap-(atomic_load_explicit(&k->head,memory_order_relaxed)-atomic_load_explicit(&k->tail,memory_order_acquire));
@@ -1011,8 +1637,13 @@ static void as_copy_(struct cc_async_sink *k, size_t at, const void *p, size_t n
     size_t o=at%k->cap, first=n<k->cap-o?n:k->cap-o;
     memcpy(k->ring+o,p,first); if(n>first) memcpy(k->ring,(const uint8_t*)p+first,n-first);
 }
+/* The producer never waits for the writers' lock (they hold it across a page hand-back): a busy lock skips the
+ * signal, and the waiter's 100 ms liveness backstop picks the data up instead. */
 static void as_wake_(struct cc_async_sink *k){
-    pthread_mutex_lock(&k->m); pthread_cond_signal(&k->cv); pthread_mutex_unlock(&k->m);
+    if(pthread_mutex_trylock(&k->m)!=0) return;
+    pthread_cond_signal(&k->cv);
+    if(atomic_load_explicit(&k->head,memory_order_relaxed)>=atomic_load_explicit(&k->a_wake_at,memory_order_relaxed)) pthread_cond_signal(&k->acv);
+    pthread_mutex_unlock(&k->m);
 }
 /* one record: header + payload, published together; caller checked space */
 static void as_put_(struct cc_async_sink *k, const rec_hdr *h, const void *pay, size_t plen){
@@ -1073,6 +1704,19 @@ static void as_loss_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     if(as_free_(k)<as_loss_records_(by)*sizeof(rec_hdr)){ as_episode_(k); k->pend_pk[e]+=pk; k->pend_by[e]+=by; return; }
     k->pend_pk[e]=pk; k->pend_by[e]=by; as_flush_loss_(k,e); as_wake_(k);
 }
+static void as_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
+    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE && kind!=CC_LOSS_UNCLOSED && kind!=CC_LOSS_HOLE){ as_loss_(ctx,ep,pk,by); return; }   /* never merged into a ring-loss run */
+    struct cc_async_sink *k=ctx; int e=ep==CC_EP_AUDIO;
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:kind==CC_LOSS_UNCLOSED?CC_PI_UNCLOSED:kind==CC_LOSS_HOLE?CC_PI_HOLE:CC_PI_UNSCHEDULED_LATE),seq,0,pk,
+               kind==CC_LOSS_HOLE?(uint32_t)(by>0xffffffffu?0xffffffffu:by):0};
+    if(k->pend_pk[e]){                                /* loss confessed before this record stays before it */
+        /* Pending loss means the ring had no room for a packet: both records must fit, or this one is counted as a
+         * dropped control record (the pending HostLoss still marks the stretch) and the run stays pending. */
+        if(as_free_(k)<as_loss_records_(k->pend_by[e])*sizeof(rec_hdr)+sizeof h){ atomic_fetch_add_explicit(&k->control_dropped,1,memory_order_relaxed); return; }
+        as_flush_loss_(k,e);
+    }
+    as_meta_(k,&h);
+}
 static void as_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
     uint16_t pi=kind==CC_ERROR_CONTROL_LOSS?0xFFFE:(kind==CC_ERROR_SUBMIT?0xFFFF:0);
     rec_hdr h={REC_MAGIC,REC_XFERERR,ep,pi,seq,(uint32_t)st,0,0}; as_meta_(ctx,&h);
@@ -1097,90 +1741,601 @@ static int as_release_(struct cc_async_sink *k, size_t a, size_t b){
     }
     return 1;
 }
+static void as_wait_(pthread_cond_t *c, pthread_mutex_t *m, uint64_t ns){   /* liveness backstop around an event wait */
+    struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts);
+    ts.tv_nsec+=(long)(ns%1000000000ull); ts.tv_sec+=(time_t)(ns/1000000000ull);
+    if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
+    pthread_cond_timedwait(c,m,&ts);
+}
+/* Memory up to pos has been taken: hand it back to the producer. Under m; takes complete in stream order. */
+static void as_consumed_(struct cc_async_sink *k, size_t pos){
+    atomic_store_explicit(&k->drained,pos,memory_order_relaxed);
+    size_t pub=k->granule?pos-pos%k->granule:pos, was=atomic_load_explicit(&k->tail,memory_order_relaxed);
+    /* A refused release may have left a hole in the ring. The tail is then never published past it: the producer
+     * cannot reach the hole, sees the ring fill, and drops with exact counts; close reports the failure. */
+    if(pub>was && !k->stuck){
+        if(k->granule && !as_release_(k,was,pub)) k->stuck=1;
+        else atomic_store_explicit(&k->tail,pub,memory_order_release);
+    }
+}
+static void as_seg_name_(const struct cc_async_sink *k, uint64_t seg, char *out, size_t cap){
+    snprintf(out,cap,"%s/%.96s.p%d.%08x.spill%06llu",k->sdir,k->sbase,(int)getpid(),(unsigned)k->stag,(unsigned long long)seg);
+}
+/* Write buf[0,n) to the destination. Short only after a failure, which sets io_errno; the rest is counted discarded. */
+static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n, uint64_t *last_done, uint64_t *since_sync){
+    size_t done=0;
+    while(done<n){
+        uint64_t t0=as_now_();
+        if(*last_done && t0-*last_done>atomic_load_explicit(&k->max_ready_gap_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_ready_gap_ns,t0-*last_done,memory_order_relaxed);
+        atomic_store_explicit(&k->write_started,t0,memory_order_relaxed);
+        ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,buf+done,n-done):write(k->fd,buf+done,n-done);
+        uint64_t t1=as_now_(), dt=t1-t0;
+        atomic_store_explicit(&k->write_started,0,memory_order_relaxed); *last_done=t1;
+        atomic_fetch_add_explicit(&k->writes,1,memory_order_relaxed); atomic_fetch_add_explicit(&k->write_ns,dt,memory_order_relaxed);
+        if(dt>atomic_load_explicit(&k->max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_write_ns,dt,memory_order_relaxed);
+        if(dt>100000000ull) atomic_fetch_add_explicit(&k->slow_writes,1,memory_order_relaxed);
+        if(w<0 && errno==EINTR) continue;
+        if(w<=0){ k->io_errno=w<0?errno:EIO; break; }
+        if((size_t)w>atomic_load_explicit(&k->max_write,memory_order_relaxed)) atomic_store_explicit(&k->max_write,(size_t)w,memory_order_relaxed);
+        done+=(size_t)w;
+    }
+    atomic_fetch_add_explicit(&k->written,done,memory_order_relaxed);
+    if(done<n) atomic_fetch_add_explicit(&k->discarded,n-done,memory_order_relaxed);
+    *since_sync+=done;
+    if(!k->io_errno && cc_async_sink_sync_every && *since_sync>=cc_async_sink_sync_every){
+        *since_sync=0;
+        int r=cc_async_sink_test_fsync?cc_async_sink_test_fsync(k->fd):fsync(k->fd);
+        if(r!=0) k->io_errno=errno?errno:EIO;   /* from here on everything drains into the discarded count */
+    }
+}
+#define AS_SD_CAP ((uint64_t)1<<18)      /* spilled chunks tracked at once: 256 GB of spill at 1 MiB chunks */
+#define AS_PI_SPILL_LOSS 0xFFFBu          /* HostLoss written where spilled records could not be read back */
+#define AS_SPILL_CHUNK ((size_t)1<<20)     /* spilled chunks hold at most this (one recovery write each) */
+static void as_peek_(const struct cc_async_sink *k, size_t at, void *out, size_t n){
+    size_t o=at%k->cap, first=n<k->cap-o?n:k->cap-o;
+    memcpy(out,k->ring+o,first); if(n>first) memcpy((uint8_t*)out+first,k->ring,n-first);
+}
+/* Whole records from stream position `from` (a record boundary) to `end`, at most `max` bytes but at least one
+ * record; what they hold: DATA packets and bytes, HostLoss already confessed, other records (ctl). */
+static size_t as_records_(const struct cc_async_sink *k, size_t from, size_t end, size_t max, struct as_sd *d){
+    size_t p=from; memset(d,0,sizeof *d);
+    while(end-p>=sizeof(rec_hdr)){
+        rec_hdr h; as_peek_(k,p,&h,sizeof h);
+        size_t len=sizeof h+((h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0);
+        if(len>end-p || (p>from && p+len-from>max)) break;
+        int e=h.endpoint==CC_EP_AUDIO;
+        if(h.type==REC_DATA){ d->pk[e]++; d->by[e]+=h.actual_len; }
+        else if(h.type==REC_HOSTLOSS){ d->pk[e]+=h.req_len; d->by[e]+=h.actual_len; }
+        else d->ctl++;
+        p+=len;
+    }
+    return p-from;
+}
+/* The writer's chunk of spill: one segment read. 0 on failure (errno set). */
+static int as_spill_read_(struct cc_async_sink *k, const struct as_sd *d){
+    if(k->srfd<0 || k->srseg!=d->seg){
+        if(k->srfd>=0) close(k->srfd);
+        char nm[PATH_MAX]; as_seg_name_(k,d->seg,nm,sizeof nm);
+        k->srfd=open(nm,O_RDONLY); k->srseg=d->seg;
+        if(k->srfd<0) return 0;
+    }
+    size_t done=0;
+    while(done<d->len){
+        ssize_t r=cc_async_sink_test_spill_read?cc_async_sink_test_spill_read(k->srfd,k->bbuf+done,d->len-done,(off_t)(d->off+done))
+                                              :pread(k->srfd,k->bbuf+done,d->len-done,(off_t)(d->off+done));
+        if(r<0 && errno==EINTR) continue;
+        if(r<=0){ if(!r) errno=EIO; return 0; }
+        done+=(size_t)r;
+    }
+    return 1;
+}
+/* Spilled records the disk would not give back: in their place, HostLoss records with exactly what they held
+ * (their packets, and loss they had already confessed), so the file stays whole records and says what is missing
+ * there. The capture goes on (owner: "real time drops shouldn't crash a program"). */
+static void as_spill_lost_(struct cc_async_sink *k, const struct as_sd *d, uint64_t *last_done, uint64_t *since_sync){
+    atomic_fetch_add(&k->spill_read_errors,1); k->sdelta-=(int64_t)d->len;
+    for(int e=0;e<2;e++){
+        if(!d->pk[e] && !d->by[e]) continue;
+        atomic_fetch_add(&k->spill_read_lost_pk[e],d->pk[e]); atomic_fetch_add(&k->spill_read_lost_by[e],d->by[e]);
+        uint64_t by=d->by[e];
+        do { uint32_t b=(uint32_t)(by>0xffffffffu?0xffffffffu:by); by-=b;
+             rec_hdr h={REC_MAGIC,REC_HOSTLOSS,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)AS_PI_SPILL_LOSS,0,0,d->pk[e],b};
+             if(!k->io_errno){ as_dest_write_(k,(const uint8_t*)&h,sizeof h,last_done,since_sync); if(!k->io_errno) k->sdelta+=(int64_t)sizeof h; }
+             atomic_fetch_add(&k->records,1);
+        } while(by);
+    }
+    if(d->ctl) atomic_fetch_add(&k->control_dropped,d->ctl);
+}
+/* The spill manifest: the destination, and where the first undelivered spilled chunk starts. Locked (flock) by
+ * its writer for its life, so a free lock means the writer is gone and its leftovers can be recovered. */
+#define as_manifest cc_spill_manifest_s
+#define AS_MANIFEST_MAGIC CC_SPILL_MANIFEST_MAGIC
+static void as_manifest_next_(struct cc_async_sink *k, uint64_t seg, uint64_t off){
+    if(k->mfd<0) return;
+    int64_t v[3]={(int64_t)seg,(int64_t)off,k->sdelta};
+    if(k->mfd_stale) return;
+    /* a failed update leaves an earlier position: recovery then skips what the destination already has. The fd
+     * stays open: its lock says this writer is alive. */
+    if(pwrite(k->mfd,v,sizeof v,(off_t)offsetof(struct as_manifest,next_seg))!=(ssize_t)sizeof v) k->mfd_stale=1;
+}
+/* The writer: the only thread that touches the destination. It takes the oldest records, from the spill while the
+ * spill holds any, otherwise from memory, and writes them in stream order. A destination call that blocks for
+ * seconds holds only this thread and its private chunk; memory keeps draining into the spill meanwhile. */
 static void *as_writer_(void *arg){
     struct cc_async_sink *k=arg;
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
     uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
-    int idle=0, stuck=0;                 /* idle: the last pass found the ring empty (not thread start-up); stuck: a release failed, the tail stays where it is */
-    size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);   /* drained up to here; the published tail may lag by under a granule */
+    uint64_t since_sync=0;               /* bytes written since the last flush */
+    int idle=0;                          /* the last pass found nothing to write (not thread start-up) */
+    pthread_mutex_lock(&k->m);
     for(;;){
-        size_t avail=atomic_load_explicit(&k->head,memory_order_acquire)-tail;
-        if(!avail){
-            last_done=0; idle=1;
-            if(atomic_load(&k->stop)) break;
+        size_t n; struct as_sd d; int from_spill=0;
+        if(k->sd_r<k->sd_w){             /* the oldest records are on disk */
+            d=k->sdq[k->sd_r%AS_SD_CAP]; n=d.len; from_spill=1;
+        } else if(k->take_busy){         /* the spiller is moving the next records to disk; it signals when done */
+            as_wait_(&k->cv,&k->m,100000000ull); continue;
+        } else {
+            size_t head=atomic_load_explicit(&k->head,memory_order_acquire), avail=head-k->mpos;
+            if(!avail){
+                last_done=0; idle=1;
+                if(atomic_load(&k->stop)) break;
+                as_wait_(&k->cv,&k->m,100000000ull); continue;
+            }
+            /* What had built up while this thread was away in its idle wait: at device rate, how long it was not running.
+             * (max_ready_gap_ns cannot see that: it measures between writes, and an idle writer has no previous write.) */
+            if(idle){ idle=0; if(avail>atomic_load_explicit(&k->max_wake_backlog,memory_order_relaxed)) atomic_store_explicit(&k->max_wake_backlog,avail,memory_order_relaxed); }
+            size_t lo=k->mpos; n=as_records_(k,lo,head,k->chunk,&d);
+            k->mpos=lo+n; k->take_busy=1;
+            pthread_mutex_unlock(&k->m);
+            as_peek_(k,lo,k->bbuf,n);
             pthread_mutex_lock(&k->m);
-            if(atomic_load_explicit(&k->head,memory_order_acquire)==tail && !atomic_load(&k->stop)){
-                struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100000000;
-                if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
-                pthread_cond_timedwait(&k->cv,&k->m,&ts);   /* liveness backstop only */
-            }
-            pthread_mutex_unlock(&k->m); continue;
+            as_consumed_(k,lo+n); k->take_busy=0; pthread_cond_signal(&k->acv);
         }
-        /* What had built up while this thread was away in its idle wait: at device rate, how long it was not running.
-         * (max_ready_gap_ns cannot see that: it measures between writes, and an idle writer has no previous write.) */
-        if(idle){ idle=0; if(avail>atomic_load_explicit(&k->max_wake_backlog,memory_order_relaxed)) atomic_store_explicit(&k->max_wake_backlog,avail,memory_order_relaxed); }
-        size_t o=tail%k->cap, n=avail;
-        if(n>k->cap-o) n=k->cap-o;
-        if(n>k->chunk) n=k->chunk;
-        if(k->io_errno){ atomic_fetch_add_explicit(&k->discarded,n,memory_order_relaxed); }
-        else {
-            size_t done=0;
-            while(done<n){
-                uint64_t t0=as_now_();
-                if(last_done && t0-last_done>atomic_load_explicit(&k->max_ready_gap_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_ready_gap_ns,t0-last_done,memory_order_relaxed);
-                atomic_store_explicit(&k->write_started,t0,memory_order_relaxed);
-                ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,k->ring+o+done,n-done):write(k->fd,k->ring+o+done,n-done);
-                uint64_t t1=as_now_(), dt=t1-t0;
-                atomic_store_explicit(&k->write_started,0,memory_order_relaxed); last_done=t1;
-                atomic_fetch_add_explicit(&k->writes,1,memory_order_relaxed); atomic_fetch_add_explicit(&k->write_ns,dt,memory_order_relaxed);
-                if(dt>atomic_load_explicit(&k->max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_write_ns,dt,memory_order_relaxed);
-                if(dt>100000000ull) atomic_fetch_add_explicit(&k->slow_writes,1,memory_order_relaxed);
-                if(w<0 && errno==EINTR) continue;
-                if(w<=0){ k->io_errno=w<0?errno:EIO; break; }
-                if((size_t)w>atomic_load_explicit(&k->max_write,memory_order_relaxed)) atomic_store_explicit(&k->max_write,(size_t)w,memory_order_relaxed);
-                done+=(size_t)w;
-            }
-            atomic_fetch_add_explicit(&k->written,done,memory_order_relaxed);
-            if(done<n) atomic_fetch_add_explicit(&k->discarded,n-done,memory_order_relaxed);
+        pthread_mutex_unlock(&k->m);
+        if(k->io_errno) atomic_fetch_add_explicit(&k->discarded,n,memory_order_relaxed);
+        else if(from_spill && !as_spill_read_(k,&d)) as_spill_lost_(k,&d,&last_done,&since_sync);
+        else for(size_t w=0;w<n && !k->io_errno;){   /* destination writes never exceed the chunk */
+            size_t m=n-w<k->chunk?n-w:k->chunk; as_dest_write_(k,k->bbuf+w,m,&last_done,&since_sync); w+=m;
         }
-        tail+=n; atomic_store_explicit(&k->drained,tail,memory_order_relaxed);
-        size_t pub=k->granule?tail-tail%k->granule:tail, was=atomic_load_explicit(&k->tail,memory_order_relaxed);
-        /* A refused release may have left a hole in the ring. The tail is then never published past it: the producer
-         * cannot reach the hole, sees the ring fill, and drops with exact counts; close reports the failure. */
-        if(pub>was && !stuck){
-            if(k->granule && !as_release_(k,was,pub)) stuck=1;
-            else atomic_store_explicit(&k->tail,pub,memory_order_release);
+        pthread_mutex_lock(&k->m);
+        if(from_spill){
+            int last=k->sdq[k->sd_r%AS_SD_CAP].last;   /* re-read: the spiller may have closed this segment meanwhile */
+            k->sd_r++; k->sp_r+=d.len;
+            uint64_t ns=d.seg, no=(uint64_t)d.off+d.len;   /* the next chunk's header */
+            if(k->sd_r<k->sd_w){ ns=k->sdq[k->sd_r%AS_SD_CAP].seg; no=k->sdq[k->sd_r%AS_SD_CAP].off-sizeof(struct cc_spill_chunk_s); }
+            else if(last){ ns=d.seg+1; no=0; }
+            pthread_mutex_unlock(&k->m);
+            as_manifest_next_(k,ns,no);       /* the writer's own fd, outside the lock: after the bytes reached the destination */
+            pthread_mutex_lock(&k->m);
+            if(last){                    /* that segment is fully delivered: its disk space goes back now */
+                pthread_mutex_unlock(&k->m);
+                if(k->srfd>=0 && k->srseg==d.seg){ close(k->srfd); k->srfd=-1; }
+                char nm[PATH_MAX]; as_seg_name_(k,d.seg,nm,sizeof nm); unlink(nm);
+                pthread_mutex_lock(&k->m);
+                k->seg_lo=d.seg+1; k->floor_retry_ns=0; pthread_cond_signal(&k->acv);
+            }
         }
     }
+    pthread_mutex_unlock(&k->m);
     return NULL;
 }
-int cc_async_sink_open(cc_async_sink **out, const char *path, const char *note, size_t ring_bytes, size_t chunk){
+/* Free space as macOS counts it for work the user asked for: what is free plus what it will purge to make room (Time
+ * Machine local snapshots, caches). statfs/df leave the purgeable part out and read ~29 GB low on this Mac
+ * (2026-10-16: 34.0 GB against 62.8 GB); the owner's snapshot pruner counts the same important-usage figure. */
+static uint64_t as_free_bytes_(struct cc_async_sink *k){
+    if(cc_async_sink_test_free) return cc_async_sink_test_free(k->sdir);
+    uint64_t v=0; int got=0;
+    CFURLRef u=CFURLCreateFromFileSystemRepresentation(NULL,(const UInt8*)k->sdir,(CFIndex)strlen(k->sdir),true);
+    if(u){
+        CFNumberRef num=NULL;
+        if(CFURLCopyResourcePropertyForKey(u,kCFURLVolumeAvailableCapacityForImportantUsageKey,&num,NULL) && num){
+            int64_t x=0; if(CFNumberGetValue(num,kCFNumberSInt64Type,&x) && x>0){ v=(uint64_t)x; got=1; }
+        }
+        if(num) CFRelease(num);
+        CFRelease(u);
+    }
+    if(got) return v;
+    struct statfs s; if(statfs(k->sdir,&s)!=0) return 0;   /* unknown free space is no free space */
+    return (uint64_t)s.f_bavail*(uint64_t)s.f_bsize;
+}
+/* The spiller: when the memory backlog reaches safter bytes, it moves the oldest memory bytes to segment files on
+ * the local disk, so a destination that stalls for minutes costs local disk space instead of the capture. It
+ * leaves sfloor bytes free on that volume; past that, memory is the only buffer again and overflow is HostLoss.
+ * A spill write that fails returns its bytes to memory and turns the spill off: nothing is lost by that. */
+static void *as_spiller_(void *arg){
+    struct cc_async_sink *k=arg;
+    pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
+    pthread_mutex_lock(&k->m);
+    for(;;){
+        if(atomic_load(&k->stop) || k->io_errno) break;
+        size_t head=atomic_load_explicit(&k->head,memory_order_acquire), backlog=head-k->mpos;
+        if(k->take_busy || backlog<k->safter){
+            atomic_store_explicit(&k->a_wake_at,k->mpos+k->safter,memory_order_relaxed);
+            as_wait_(&k->acv,&k->m,100000000ull); continue;
+        }
+        uint64_t now=as_now_();
+        if(now<k->floor_retry_ns){ atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed); as_wait_(&k->acv,&k->m,k->floor_retry_ns-now); continue; }
+        if(k->sd_w-k->sd_r==AS_SD_CAP){      /* every chunk slot in use: memory is the buffer until one frees */
+            atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed); k->floor_retry_ns=as_now_()+100000000ull; continue;
+        }
+        struct as_sd d; size_t lo=k->mpos, n=as_records_(k,lo,head,k->chunk<AS_SPILL_CHUNK?k->chunk:AS_SPILL_CHUNK,&d);
+        const size_t ch=sizeof(struct cc_spill_chunk_s);
+        if(k->swfd<0 || k->swoff+ch+n>k->sseg){ /* a new segment: only with the floor still clear after it */
+            int ours=0; uint64_t old=k->swseg;
+            if(k->swfd>=0){                  /* the full one goes to whoever delivers its last chunk */
+                if(k->sd_w>k->sd_r) k->sdq[(k->sd_w-1)%AS_SD_CAP].last=1; else ours=1;
+            }
+            int oldfd=k->swfd; k->swfd=-1;
+            pthread_mutex_unlock(&k->m);
+            if(oldfd>=0) close(oldfd);
+            if(ours){ char nm[PATH_MAX]; as_seg_name_(k,old,nm,sizeof nm); unlink(nm); }
+            int fd=-1, err=0; uint64_t fr=as_free_bytes_(k), seg=k->segs_made;
+            if(fr>=k->sfloor+k->sseg){
+                char nm[PATH_MAX]; as_seg_name_(k,seg,nm,sizeof nm);
+                fd=open(nm,O_WRONLY|O_CREAT|O_EXCL,0600); if(fd<0) err=errno;
+            }
+            pthread_mutex_lock(&k->m);
+            if(ours){ k->seg_lo=old+1; }
+            if(fd<0 && !err){                /* the floor: retry when a segment is freed, or the volume gains space */
+                atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed);
+                k->floor_retry_ns=as_now_()+100000000ull; continue;
+            }
+            if(fd<0){ k->spill_error=err; break; }
+            k->swfd=fd; k->swseg=seg; k->segs_made=seg+1; k->swoff=0;
+            atomic_fetch_add_explicit(&k->spill_segments,1,memory_order_relaxed);
+            continue;                        /* state may have moved while unlocked */
+        }
+        uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
+        pthread_mutex_unlock(&k->m);
+        size_t done=0; int err=0; uint64_t t0=as_now_();
+        /* a chunk header (its stream position and length) so a recovery knows exactly where its records belong */
+        struct cc_spill_chunk_s chh={CC_SPILL_CHUNK_MAGIC,(uint32_t)n,(uint64_t)lo};
+        if(pwrite(k->swfd,&chh,ch,(off_t)at)!=(ssize_t)ch) err=errno?errno:EIO;
+        while(!err && done<n){               /* records may wrap the ring: at most two pieces */
+            size_t o=(lo+done)%k->cap, piece=n-done<k->cap-o?n-done:k->cap-o;
+            ssize_t w=cc_async_sink_test_spill_write?cc_async_sink_test_spill_write(k->swfd,k->ring+o,piece,(off_t)(at+ch+done))
+                                                    :pwrite(k->swfd,k->ring+o,piece,(off_t)(at+ch+done));
+            if(w<0 && errno==EINTR) continue;
+            if(w<=0){ err=w<0?errno:EIO; break; }
+            done+=(size_t)w;
+        }
+        uint64_t dt=as_now_()-t0;
+        if(dt>atomic_load_explicit(&k->spill_max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->spill_max_write_ns,dt,memory_order_relaxed);
+        pthread_mutex_lock(&k->m);
+        k->take_busy=0;
+        if(err){                             /* the records are still in memory; their partial copy must not stay in the segment */
+            if(ftruncate(k->swfd,(off_t)at)!=0){ char nm[PATH_MAX]; as_seg_name_(k,k->swseg,nm,sizeof nm); if(at==0) unlink(nm); }
+            k->mpos=lo; k->spill_error=err; pthread_cond_signal(&k->cv); break; }
+        d.seg=k->swseg; d.off=(uint32_t)(at+ch); d.len=(uint32_t)n; d.last=0;
+        k->sdq[k->sd_w%AS_SD_CAP]=d; k->sd_w++; k->swoff=at+ch+n; k->sp_w+=n; as_consumed_(k,lo+n);
+        atomic_fetch_add_explicit(&k->spill_bytes,n,memory_order_relaxed);
+        if(k->sp_w-k->sp_r>atomic_load_explicit(&k->spill_peak,memory_order_relaxed)) atomic_store_explicit(&k->spill_peak,k->sp_w-k->sp_r,memory_order_relaxed);
+        pthread_cond_signal(&k->cv);
+    }
+    k->spill_on=0; atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed);
+    pthread_mutex_unlock(&k->m);
+    return NULL;
+}
+/* ---- recovery of a crashed writer's spill (cc_spill_recover) ---- */
+static int rv_plausible_(const uint8_t *b){ rec_hdr h; memcpy(&h,b,sizeof h); return rec_plausible_(&h); }
+static size_t rv_len_(const uint8_t *b){ rec_hdr h; memcpy(&h,b,sizeof h); return sizeof h+((h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0); }
+static int rv_pread_(int fd, void *b, size_t n, off_t at){
+    size_t d=0; while(d<n){ ssize_t r=pread(fd,(uint8_t*)b+d,n-d,at+(off_t)d); if(r<0&&errno==EINTR) continue; if(r<=0) return 0; d+=(size_t)r; } return 1;
+}
+ssize_t (*cc_spill_recover_test_write)(int fd, const void *buf, size_t n, off_t off) = NULL;
+static int rv_write_(int fd, const void *b, size_t n, off_t at){
+    size_t d=0;
+    while(d<n){
+        ssize_t w=cc_spill_recover_test_write?cc_spill_recover_test_write(fd,(const uint8_t*)b+d,n-d,at+(off_t)d):pwrite(fd,(const uint8_t*)b+d,n-d,at+(off_t)d);
+        if(w<0&&errno==EINTR) continue; if(w<=0) return 0; d+=(size_t)w;
+    }
+    return 1;
+}
+/* Where the destination's whole records end, and its tail from its last DATA record on (a DATA record names its
+ * endpoint, transfer and packet, so that tail occurs once in the stream). Records are found from a boundary in the
+ * last 8 MiB whose chain of records runs to the end of the file (a header found inside a payload would not). A
+ * marker of an earlier recovery's end (CC_PI_UNCLOSED) at the very end is reported, not kept in the tail.
+ * 0: no boundary found. */
+static int rv_tail_(int fd, uint64_t size, uint64_t *cut, uint8_t **tail, size_t *tail_len, int *ended){
+    *cut=0; *tail=NULL; *tail_len=0; *ended=0;
+    if(!size) return 1;
+    size_t w=size<((uint64_t)8<<20)?(size_t)size:((size_t)8<<20); uint64_t base=size-w;
+    uint8_t *b=malloc(w); if(!b || !rv_pread_(fd,b,w,(off_t)base)){ free(b); return 0; }
+    for(size_t p=0;p+sizeof(rec_hdr)<=w;p++){
+        if(!rv_plausible_(b+p)) continue;
+        size_t q=p, lastdata=SIZE_MAX, lastrec=SIZE_MAX; int ok=1;
+        while(q<w){
+            if(w-q<sizeof(rec_hdr)) break;                     /* a cut header */
+            if(!rv_plausible_(b+q)){ ok=0; break; }
+            size_t len=rv_len_(b+q); if(len>w-q) break;        /* a cut record */
+            rec_hdr h; memcpy(&h,b+q,sizeof h);
+            if(h.type==REC_DATA) lastdata=q;
+            lastrec=q; q+=len;
+        }
+        if(!ok) continue;
+        size_t end=q;
+        if(lastrec!=SIZE_MAX){ rec_hdr h; memcpy(&h,b+lastrec,sizeof h);
+            if(h.type==REC_HOSTLOSS && h.pkt_index==CC_PI_UNCLOSED && lastrec+sizeof h==q){ *ended=1; end=lastrec; } }
+        *cut=base+end;
+        if(lastdata!=SIZE_MAX && lastdata<end){ *tail_len=end-lastdata; *tail=malloc(*tail_len); if(*tail) memcpy(*tail,b+lastdata,*tail_len); else *tail_len=0; }
+        free(b); return 1;
+    }
+    free(b); return 0;
+}
+static void rv_log_(void (*log)(void*,const char*), void *ctx, const char *line){ if(log) log(ctx,line); else fprintf(stderr,"%s\n",line); }
+static int rv_cmp_idx_(const void *a, const void *b){ uint64_t x=*(const uint64_t*)a, y=*(const uint64_t*)b; return x<y?-1:x>y; }
+/* A chunk's records form an exact chain of whole records filling its length. */
+static int rv_chain_(const uint8_t *b, size_t len){
+    size_t q=0; while(q<len){ if(len-q<sizeof(rec_hdr) || !rv_plausible_(b+q)) return 0; size_t l=rv_len_(b+q); if(l>len-q) return 0; q+=l; }
+    return 1;
+}
+#define RV_PIECE (AS_SPILL_CHUNK+((size_t)128<<10))   /* one spilled chunk: at most 1 MiB of records, one write each */
+/* Append buf[0,n) at *at: write, fsync, read back (a network volume can acknowledge a write and lose it). */
+static int rv_put_(int dfd, const uint8_t *buf, size_t n, uint64_t at, uint8_t *chk){
+    return rv_write_(dfd,buf,n,(off_t)at) && fsync(dfd)==0 && rv_pread_(dfd,chk,n,(off_t)at) && !memcmp(chk,buf,n);
+}
+/* One crashed writer, resumably and exactly. Every spilled chunk carries its stream position, and the manifest the
+ * difference between destination and stream bytes, so the first undelivered chunk belongs at a known destination
+ * offset E. A destination at least that long has everything before it complete: it is cut back to E (whatever is
+ * past it is that chunk partly written, or an earlier run's unverified piece). A shorter one stopped inside a chunk
+ * the writer was writing from memory, whose rest is gone: it is cut back to its whole records and the gap is
+ * confessed as a CC_PI_HOLE HostLoss of its bytes. Chunks are then appended one per write, each read back and
+ * recorded in the manifest as the resume point; a chunk whose records do not chain is confessed in place (its bytes,
+ * CC_PI_HOLE) and skipped, and only the newest segment may end in a chunk the crash cut. At the end a CC_PI_UNCLOSED
+ * HostLoss (what was in memory is lost, amount unknown); then the segments and manifest go. 1 done, 0 kept, -1 stopped. */
+static int rv_one_(const char *dir, const char *mname, int mfd, struct cc_spill_manifest_s *mf, void (*log)(void*,const char*), void *ctx,
+                   const _Atomic int *stop, _Atomic uint64_t *progress, cc_spill_recover_stats *st){
+    char line[PATH_MAX+256], prefix[PATH_MAX]; size_t pl=strlen(mname)-strlen(".manifest");
+    snprintf(prefix,sizeof prefix,"%.*s",(int)pl,mname);
+    uint64_t idx[4096]; int n=0;
+    DIR *d=opendir(dir); struct dirent *e;
+    if(d){ while((e=readdir(d)) && n<4096){
+        if(strncmp(e->d_name,prefix,pl) || strncmp(e->d_name+pl,".spill",6)) continue;
+        idx[n++]=strtoull(e->d_name+pl+6,NULL,10); } closedir(d); }
+    qsort(idx,(size_t)n,sizeof idx[0],rv_cmp_idx_);
+    int dfd=open(mf->dest,O_RDWR);
+    if(dfd<0){ snprintf(line,sizeof line,"capture_core: spill of a capture that ended without closing KEPT in %s: its destination %s cannot be opened (%s)",dir,mf->dest,strerror(errno));
+               rv_log_(log,ctx,line); st->kept++; return 0; }
+    struct stat ds; fstat(dfd,&ds); uint64_t size=(uint64_t)ds.st_size;
+    uint8_t *buf=malloc(RV_PIECE), *chk=malloc(RV_PIECE);
+    uint64_t at=0, appended=0, holes=0, hole_bytes=0; int bad=0, stopped=0, placed=0; const char *why="";
+    if(!buf || !chk){ bad=1; why="out of memory"; }
+    int64_t delta=mf->delta;
+    for(int i=0;i<n && !bad && !stopped;i++){
+        if(idx[i]<mf->next_seg) continue;              /* delivered before the crash */
+        char sn[PATH_MAX]; snprintf(sn,sizeof sn,"%s/%s.spill%06llu",dir,prefix,(unsigned long long)idx[i]);
+        int sfd=open(sn,O_RDONLY); struct stat ss;
+        if(sfd<0 || fstat(sfd,&ss)!=0){ bad=1; why="a segment cannot be read"; if(sfd>=0) close(sfd); break; }
+        uint64_t off=idx[i]==mf->next_seg?mf->next_off:0, end=(uint64_t)ss.st_size; int newest=i==n-1;
+        while(off<end && !bad){
+            if(stop && atomic_load(stop)){ stopped=1; break; }
+            if(newest && end-off<sizeof(struct cc_spill_chunk_s)) break;   /* a header the crash cut */
+            struct cc_spill_chunk_s c; int hok=end-off>=sizeof c && rv_pread_(sfd,&c,sizeof c,(off_t)off) && c.magic==CC_SPILL_CHUNK_MAGIC && c.len<=AS_SPILL_CHUNK;
+            uint64_t span=hok?sizeof c+(uint64_t)c.len:0;
+            if(hok && span>end-off){                   /* cut by the crash: still in memory then, so lost with it */
+                if(newest) break;
+                hok=0;
+            }
+            int ok=hok && rv_pread_(sfd,buf,c.len,(off_t)(off+sizeof c)) && rv_chain_(buf,c.len);
+            if(!placed){                               /* where this chunk belongs decides the destination's end */
+                int known=hok && delta!=INT64_MIN;     /* a readable header gives its place even if its records are damaged */
+                uint64_t E=known?(uint64_t)((int64_t)c.spos+delta):size;
+                placed=1;
+                if(!known || size>=E){ at=known?E:size; if(!known){ uint64_t cut; uint8_t *tl; size_t tll; int en;
+                        if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; break; } free(tl); at=cut; } }
+                else {                                 /* short: a chunk written from memory was cut, its rest lost */
+                    uint64_t cut; uint8_t *tl; size_t tll; int en;
+                    if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; break; }
+                    free(tl); at=cut;
+                }
+                if(ftruncate(dfd,(off_t)at)!=0 || fsync(dfd)!=0){ bad=1; why="the destination cannot be cut back"; break; }
+                if(known && at<E){
+                    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_HOLE,0,0,0,(uint32_t)(E-at>0xffffffffu?0xffffffffu:E-at)};
+                    if(!rv_put_(dfd,(const uint8_t*)&h,sizeof h,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
+                    holes++; hole_bytes+=E-at; at+=sizeof h;
+                }
+                if(hok) delta=(int64_t)at-(int64_t)c.spos;
+            }
+            if(!ok){                                   /* damaged: confessed where it was, then on to the next chunk */
+                uint64_t skip=hok?span:end-off;        /* its own length when its header is readable, else to the next header */
+                if(!hok) for(uint64_t r=off+1; r+sizeof c<=end; ){ /* scanned a block at a time */
+                    size_t w=end-r<RV_PIECE?(size_t)(end-r):RV_PIECE; if(!rv_pread_(sfd,chk,w,(off_t)r)) break;
+                    int found=0; for(size_t q=0;q+sizeof c<=w;q++){ struct cc_spill_chunk_s c2; memcpy(&c2,chk+q,sizeof c2);
+                        if(c2.magic==CC_SPILL_CHUNK_MAGIC && c2.len<=AS_SPILL_CHUNK){ skip=r+q-off; found=1; break; } }
+                    if(found || w<sizeof c) break; r+=w-(sizeof c-1);
+                }
+                rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_HOLE,0,0,0,(uint32_t)(skip>0xffffffffu?0xffffffffu:skip)};
+                if(!rv_put_(dfd,(const uint8_t*)&h,sizeof h,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
+                holes++; hole_bytes+=skip; at+=sizeof h; off+=skip;
+                /* where the next chunk goes: right after the damaged one's place when its header told it, else
+                 * unknown (the next chunk then goes straight after the marker) */
+                delta=hok?(int64_t)at-(int64_t)(c.spos+c.len):INT64_MIN;
+            } else {
+                if(delta==INT64_MIN) delta=(int64_t)at-(int64_t)c.spos;   /* placed straight after the marker */
+                if(!rv_put_(dfd,buf,c.len,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
+                at+=c.len; off+=span; appended+=c.len; if(progress) atomic_fetch_add(progress,c.len);
+                delta=(int64_t)at-(int64_t)(c.spos+c.len);
+            }
+            int64_t v[3]={(int64_t)idx[i],(int64_t)off,delta};   /* resume point: after this verified chunk */
+            if(pwrite(mfd,v,sizeof v,(off_t)offsetof(struct cc_spill_manifest_s,next_seg))!=(ssize_t)sizeof v){ bad=1; why="the manifest cannot be updated"; break; }
+            mf->next_seg=idx[i]; mf->next_off=off; mf->delta=delta;
+        }
+        close(sfd);
+    }
+    if(!placed && !bad && !stopped){                   /* nothing left in the spill: only the end to settle */
+        uint64_t cut; uint8_t *tl; size_t tll; int en;
+        if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; }
+        else { free(tl); at=cut; if(ftruncate(dfd,(off_t)at)!=0 || fsync(dfd)!=0){ bad=1; why="the destination cannot be cut back"; } }
+    }
+    free(buf); free(chk);
+    if(bad || stopped){                                /* whatever was not verified comes off again; the rest stays */
+        int cutback=!placed || (ftruncate(dfd,(off_t)at)==0 && fsync(dfd)==0); close(dfd);
+        if(stopped){ snprintf(line,sizeof line,"capture_core: spill recovery into %s paused at %.1f MB: it resumes at the next start",mf->dest,appended/1e6);
+                     rv_log_(log,ctx,line); st->kept++; return -1; }
+        snprintf(line,sizeof line,"capture_core: spill recovery into %s FAILED after %.1f MB (%s%s): the rest is kept in %s and resumes at the next start",
+                 mf->dest,appended/1e6,why,cutback?"":"; the destination could not be cut back",dir);
+        rv_log_(log,ctx,line); st->failed++; return 0;
+    }
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_UNCLOSED,0,0,0,0};
+    if(!rv_write_(dfd,&h,sizeof h,(off_t)at) || ftruncate(dfd,(off_t)(at+sizeof h))!=0 || fsync(dfd)!=0){
+        ftruncate(dfd,(off_t)at); close(dfd);
+        snprintf(line,sizeof line,"capture_core: spill recovery into %s FAILED writing its end marker: kept in %s",mf->dest,dir);
+        rv_log_(log,ctx,line); st->failed++; return 0; }
+    close(dfd);
+    for(int i=0;i<n;i++){ char sn[PATH_MAX]; snprintf(sn,sizeof sn,"%s/%s.spill%06llu",dir,prefix,(unsigned long long)idx[i]); unlink(sn); }
+    char mn[PATH_MAX]; snprintf(mn,sizeof mn,"%s/%s",dir,mname); unlink(mn);
+    snprintf(line,sizeof line,"capture_core: recovered %.1f MB of a capture that ended without closing into %s (%llu bytes missing in %llu places, each marked; marked as ended there)",
+             appended/1e6,mf->dest,(unsigned long long)hole_bytes,(unsigned long long)holes);
+    rv_log_(log,ctx,line); st->recovered++; st->bytes+=appended;
+    return 1;
+}
+int cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), void *ctx, const _Atomic int *stop,
+                     _Atomic uint64_t *progress, cc_spill_recover_stats *out){
+    cc_spill_recover_stats st={0};
+    struct stat ds; if(!dir || lstat(dir,&ds)!=0){ if(out) *out=st; return 0; }   /* no spill directory: nothing left over */
+    if(!S_ISDIR(ds.st_mode) || ds.st_uid!=getuid() || (ds.st_mode&077)){ if(out) *out=st; return -EPERM; }
+    char names[256][256]; int nm=0;
+    DIR *d=opendir(dir); struct dirent *e;
+    if(d){ while((e=readdir(d))){
+        size_t l=strlen(e->d_name);
+        if(l>9 && l<256 && !strcmp(e->d_name+l-9,".manifest") && nm<256) snprintf(names[nm++],256,"%s",e->d_name);
+        else if(l>13 && !strcmp(e->d_name+l-13,".manifest.new")){   /* a writer that died before its first segment */
+            char nn[PATH_MAX]; snprintf(nn,sizeof nn,"%s/%s",dir,e->d_name);
+            int fd=open(nn,O_RDONLY); if(fd>=0){ if(flock(fd,LOCK_EX|LOCK_NB)==0) unlink(nn); close(fd); }
+        } } closedir(d); }
+    for(int i=0;i<nm;i++){
+        if(stop && atomic_load(stop)) break;
+        char mn[PATH_MAX]; snprintf(mn,sizeof mn,"%s/%s",dir,names[i]);
+        int mfd=open(mn,O_RDWR); if(mfd<0) continue;
+        struct stat ms;
+        if(flock(mfd,LOCK_EX|LOCK_NB)!=0 || fstat(mfd,&ms)!=0 || ms.st_nlink==0){ close(mfd); continue; }   /* alive, or done by another run */
+        struct as_manifest mf;
+        if(!rv_pread_(mfd,&mf,sizeof mf,0) || memcmp(mf.magic,AS_MANIFEST_MAGIC,8) || mf.version!=2){
+            /* with no segment of its own it holds nothing: it goes; otherwise its segments are kept and said so */
+            size_t pl=strlen(names[i])-strlen(".manifest"); int segs=0; DIR *sd=opendir(dir); struct dirent *se;
+            if(sd){ while((se=readdir(sd))) if(!strncmp(se->d_name,names[i],pl) && !strncmp(se->d_name+pl,".spill",6)) segs++; closedir(sd); }
+            char line[PATH_MAX+128];
+            if(!segs){ unlink(mn); snprintf(line,sizeof line,"capture_core: removed spill manifest %s: unreadable or of an older format, and nothing spilled with it",mn); }
+            else { snprintf(line,sizeof line,"capture_core: spill manifest %s is unreadable: its %d segments are kept",mn,segs); st.kept++; }
+            rv_log_(log,ctx,line); close(mfd); continue; }
+        mf.dest[sizeof mf.dest-1]=0;
+        int r=rv_one_(dir,names[i],mfd,&mf,log,ctx,stop,progress,&st);
+        close(mfd);
+        if(r<0) break;
+    }
+    if(out) *out=st;
+    return 0;
+}
+/* Segments left by a process that is gone hold capture bytes that never reached their destination: cc_spill_recover
+ * puts them back; any still here are counted and named, never deleted here. */
+static void as_stale_scan_(struct cc_async_sink *k){
+    DIR *d=opendir(k->sdir); if(!d) return; struct dirent *e;
+    while((e=readdir(d))){
+        /* <base>.p<pid>.<8 hex>.spill<n>: the pid is the last ".p" field before the tag */
+        const char *sp=strstr(e->d_name,".spill"); if(!sp || sp-e->d_name<12 || sp[-9]!='.') continue;
+        const char *p=NULL; for(const char *q=e->d_name; q<sp-9; q++) if(q[0]=='.' && q[1]=='p') p=q;
+        if(!p) continue;
+        int pid=atoi(p+2); if(pid<=0 || pid==getpid()) continue;
+        if(kill(pid,0)==0 || errno!=ESRCH) continue;   /* its writer is alive (or not ours to judge) */
+        char nm[PATH_MAX]; struct stat st; snprintf(nm,sizeof nm,"%s/%s",k->sdir,e->d_name);
+        if(lstat(nm,&st)==0 && S_ISREG(st.st_mode)){ k->stale_files++; k->stale_bytes+=(uint64_t)st.st_blocks*512u; }
+    }
+    closedir(d);
+}
+int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *note, size_t ring_bytes, size_t chunk,
+                             const cc_async_sink_spill *sp){
     if(!out || !path || ring_bytes<(1u<<20) || !chunk) return CC_ERR_ARGS;
     cc_async_sink *k=calloc(1,sizeof *k); if(!k) return CC_ERR_NOMEM;
-    k->cap=ring_bytes; k->chunk=chunk; k->qos=cc_async_sink_writer_qos;
+    k->cap=ring_bytes; k->chunk=chunk; k->qos=cc_async_sink_writer_qos; k->swfd=k->srfd=-1; k->mfd=-1;
+    atomic_store(&k->a_wake_at,SIZE_MAX);
     size_t page=(size_t)getpagesize(), g=ring_bytes/64<(1u<<20)?ring_bytes/64:(1u<<20);
     k->granule=ring_bytes%page?0:g-g%page;                /* a ring that is not whole pages publishes exactly and keeps its memory */
-    k->ring=mmap(NULL,ring_bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);
-    if(k->ring==MAP_FAILED){ free(k); return CC_ERR_NOMEM; }
+    size_t nl=note?strlen(note):0;
+    k->bcap=chunk+((size_t)128<<10)+nl; k->bbuf=malloc(k->bcap);   /* a chunk, or one record larger than it (the session note too) */
+    k->ring=k->bbuf?mmap(NULL,ring_bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0):MAP_FAILED;
+    if(k->ring==MAP_FAILED){ free(k->bbuf); free(k); return CC_ERR_NOMEM; }
     k->fd=open(path,O_WRONLY|O_CREAT|O_EXCL,0644);
-    if(k->fd<0){ munmap(k->ring,k->cap); free(k); return CC_ERR_IO; }
-    pthread_mutex_init(&k->m,NULL); pthread_cond_init(&k->cv,NULL);
+    struct stat cs;   /* a character device (/dev/null) exists by nature: it is opened, never created */
+    if(k->fd<0 && errno==EEXIST && stat(path,&cs)==0 && S_ISCHR(cs.st_mode)) k->fd=open(path,O_WRONLY);
+    if(k->fd<0){ munmap(k->ring,k->cap); free(k->bbuf); free(k); return CC_ERR_IO; }
+    if(sp && sp->dir && *sp->dir){
+        struct stat ds, fs;
+        if(mkdir(sp->dir,0700)!=0 && errno!=EEXIST) k->spill_state=-errno;
+        else if(lstat(sp->dir,&ds)!=0) k->spill_state=-errno;
+        else if(!S_ISDIR(ds.st_mode)) k->spill_state=-ENOTDIR;   /* a symlink too: the spill is never redirected */
+        else if(ds.st_uid!=getuid() || (ds.st_mode&077)) k->spill_state=-EPERM;   /* private: nobody else may swap segments */
+        else if(fstat(k->fd,&fs)!=0) k->spill_state=-errno;
+        else if(!S_ISREG(fs.st_mode)) k->spill_state=0;   /* a device (/dev/null) or pipe: nothing a spill could be recovered into */
+        else if(fs.st_dev==ds.st_dev && !cc_async_sink_test_spill_any_volume) k->spill_state=0;   /* the destination is that disk already: a spill would only add a copy */
+        else {
+            const char *b=strrchr(path,'/');
+            k->sdir=strdup(sp->dir); k->sbase=strdup(b?b+1:path); k->stag=arc4random();
+            k->sfloor=sp->floor?sp->floor:32000000000ull;   /* 32 GB (owner's staging floor, decimal) */
+            k->sseg=sp->segment?sp->segment:(size_t)128<<20;
+            if(k->sseg<k->bcap) k->sseg=k->bcap;   /* a segment holds at least one take */
+            size_t def=ring_bytes/16; if(def<((size_t)8<<20)) def=(size_t)8<<20; if(def>((size_t)256<<20)) def=(size_t)256<<20;
+            k->safter=sp->after?sp->after:def;
+            k->sdq=mmap(NULL,AS_SD_CAP*sizeof *k->sdq,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);   /* touched as used */
+            if(k->sdq==MAP_FAILED) k->sdq=NULL;
+            k->spill_state=k->sdir && k->sbase && k->sdq?1:-ENOMEM; k->spill_on=k->spill_state==1;
+            if(k->spill_on){
+                uint64_t fr=as_free_bytes_(k); k->spill_room=(int64_t)fr-(int64_t)k->sfloor; as_stale_scan_(k);
+                struct as_manifest mf; memset(&mf,0,sizeof mf); memcpy(mf.magic,AS_MANIFEST_MAGIC,8); mf.version=2; mf.pid=(uint32_t)getpid();
+                if(!realpath(path,mf.dest)) snprintf(mf.dest,sizeof mf.dest,"%s",path);
+                /* locked and written under a temporary name, then renamed: a recovery never sees it unlocked */
+                char nm[PATH_MAX], tmp[PATH_MAX+8];
+                snprintf(nm,sizeof nm,"%s/%.96s.p%d.%08x.manifest",k->sdir,k->sbase,(int)getpid(),(unsigned)k->stag);
+                snprintf(tmp,sizeof tmp,"%s.new",nm);
+                k->mfd=open(tmp,O_RDWR|O_CREAT|O_EXCL,0600);
+                if(k->mfd>=0 && (flock(k->mfd,LOCK_EX|LOCK_NB)!=0 || write(k->mfd,&mf,sizeof mf)!=(ssize_t)sizeof mf || rename(tmp,nm)!=0)){ close(k->mfd); k->mfd=-1; unlink(tmp); }
+                if(k->mfd<0){ k->spill_on=0; k->spill_state=-EIO; }   /* no manifest, no spill: a crash would strand its bytes */
+            }
+        }
+    }
+    pthread_mutex_init(&k->m,NULL); pthread_cond_init(&k->cv,NULL); pthread_cond_init(&k->acv,NULL);
     if(note && *note){
         size_t len=strlen(note); rec_hdr h={REC_MAGIC,REC_SESSION,0,0,0,0,0,(uint32_t)len}; as_put_(k,&h,note,len);
     }
-    if(pthread_create(&k->thr,NULL,as_writer_,k)!=0){
-        close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); munmap(k->ring,k->cap); free(k); return CC_ERR_NOMEM;
+    int started=pthread_create(&k->thr,NULL,as_writer_,k)==0;
+    if(started && k->spill_on){
+        if(pthread_create(&k->sthr,NULL,as_spiller_,k)==0) k->spill_thread=1;
+        else { k->spill_on=0; k->spill_state=-EAGAIN; }
+    }
+    if(!started){
+        close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
+        munmap(k->ring,k->cap); free(k->bbuf); free(k->sdir); free(k->sbase); if(k->sdq) munmap(k->sdq,AS_SD_CAP*sizeof *k->sdq); free(k); return CC_ERR_NOMEM;
     }
     *out=k; return CC_OK;
 }
+int cc_async_sink_open(cc_async_sink **out, const char *path, const char *note, size_t ring_bytes, size_t chunk){
+    return cc_async_sink_open_spill(out,path,note,ring_bytes,chunk,NULL);
+}
+int cc_async_sink_spill_state(const cc_async_sink *k){ return k?k->spill_state:-EINVAL; }
+int64_t cc_async_sink_spill_room(const cc_async_sink *k){ return k?k->spill_room:0; }
+void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t *bytes){ *files=k?k->stale_files:0; *bytes=k?k->stale_bytes:0; }
+uint64_t cc_async_sink_progress(cc_async_sink *k){ return atomic_load(&k->written)+atomic_load(&k->discarded); }
 void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *o){
     memset(o,0,sizeof *o);
     o->on_packet=as_packet_; o->on_loss=as_loss_; o->on_error=as_error_;
-    o->on_tick=as_tick_; o->on_end=as_end_; o->ctx=k;
+    o->on_tick=as_tick_; o->on_end=as_end_; o->ctx=k; o->on_loss_ex=as_loss_ex_;
+}
+int cc_async_sink_finish(cc_async_sink *k){
+    if(!k) return CC_ERR_ARGS;
+    if(k->finished) return CC_OK;
+    pthread_mutex_lock(&k->m); atomic_store(&k->stop,1); pthread_cond_broadcast(&k->cv); pthread_cond_broadcast(&k->acv); pthread_mutex_unlock(&k->m);
+    if(k->spill_thread) pthread_join(k->sthr,NULL);
+    pthread_join(k->thr,NULL);             /* the writer has delivered memory and spill, or counted them discarded */
+    k->finished=1;
+    return CC_OK;
 }
 int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
     if(!k) return CC_ERR_ARGS;
-    atomic_store(&k->stop,1); as_wake_(k); pthread_join(k->thr,NULL);
+    cc_async_sink_finish(k);
+    if(k->swfd>=0) close(k->swfd);
+    if(k->srfd>=0) close(k->srfd);
+    if(k->sdir) for(uint64_t g=k->seg_lo; g<k->segs_made; g++){ char nm[PATH_MAX]; as_seg_name_(k,g,nm,sizeof nm); unlink(nm); }
+    if(k->mfd>=0){ char nm[PATH_MAX]; snprintf(nm,sizeof nm,"%s/%.96s.p%d.%08x.manifest",k->sdir,k->sbase,(int)getpid(),(unsigned)k->stag); unlink(nm); close(k->mfd); }
+    if(k->sdq) munmap(k->sdq,AS_SD_CAP*sizeof *k->sdq);
     /* A loss run still pending at the end: the writer has drained and gone, so its confession goes straight to the
      * file (the ring may have been full to the last packet). Only a file that already failed leaves it uncounted
      * in the stream, and then it is counted as a dropped control record. */
@@ -1216,9 +2371,15 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->loss_episodes=atomic_load(&k->loss_episodes); st->loss_in_write=atomic_load(&k->loss_in_write);
         st->max_in_write_at_loss_ns=atomic_load(&k->max_in_write_at_loss_ns);
         st->max_wake_backlog=atomic_load(&k->max_wake_backlog); st->released_bytes=atomic_load(&k->released_bytes); st->release_failures=atomic_load(&k->release_failures);
+        st->spill_state=k->spill_state; st->spill_error=k->spill_error; st->spill_bytes=atomic_load(&k->spill_bytes);
+        st->spill_peak=atomic_load(&k->spill_peak); st->spill_segments=atomic_load(&k->spill_segments);
+        st->spill_floor_refusals=atomic_load(&k->spill_floor_refusals); st->spill_max_write_ns=atomic_load(&k->spill_max_write_ns);
+        st->spill_read_errors=atomic_load(&k->spill_read_errors);
+        for(int e=0;e<2;e++){ st->spill_read_lost_packets[e]=atomic_load(&k->spill_read_lost_pk[e]); st->spill_read_lost_bytes[e]=atomic_load(&k->spill_read_lost_by[e]); }
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
-    pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv);
+    pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
+    free(k->bbuf); free(k->sdir); free(k->sbase);
     /* After a refused hand-back part of the ring's range may be unmapped and something else may have been mapped
      * there since; unmapping the whole range would take that with it. The address space is left to the process. */
     if(!atomic_load(&k->release_failures)) munmap(k->ring,k->cap);

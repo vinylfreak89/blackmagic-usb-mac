@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <time.h>
 #include "tests_obs_stubs.h"
 
@@ -18,18 +19,37 @@ const struct obs_source_info *stub_info;
 _Atomic int stub_started_signals, stub_ended_signals;
 _Atomic uint64_t stub_video_frames;
 int stub_verbose;
-struct obs_data { _Atomic(const char *) path; _Atomic int use_replay, restart_on_record; };   /* OBS's obs_data is thread-safe; so is this */
+struct obs_data { _Atomic(const char *) path; _Atomic(const char *) usb; _Atomic int use_replay, restart_on_record; };   /* OBS's obs_data is thread-safe; so is this */
 void *stub_data; obs_source_t *stub_source;
 static obs_frontend_event_cb g_event_cb; static void *g_event_param;
 void stub_fire_event(enum obs_frontend_event ev){ if (g_event_cb) g_event_cb(ev, g_event_param); }
 static struct obs_data g_settings;
 void stub_restart_on_record(int on){ atomic_store(&g_settings.restart_on_record, on); }
+void stub_usb_backend(const char *v){ atomic_store(&g_settings.usb, v); }
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
 _Atomic int stub_late_reports;
+/* Expected log lines: a test that drives a failure path names the lines it must cause (stub_expect); while
+ * named, matching lines are counted instead of printed, and the test asserts the count (stub_expect_end).
+ * Every other warning or error still prints, so a clean run shows only results. */
+#define STUB_EXPECT_MAX 8
+static _Atomic(const char *) g_expect[STUB_EXPECT_MAX];
+static _Atomic int g_expect_n[STUB_EXPECT_MAX];
+void stub_expect(const char *text){
+    for (int i = 0; i < STUB_EXPECT_MAX; i++) if (!atomic_load(&g_expect[i])){ atomic_store(&g_expect_n[i], 0); atomic_store(&g_expect[i], text); return; }
+    fprintf(stderr, "stub_expect: more than %d expected lines at once\n", STUB_EXPECT_MAX); abort();
+}
+int stub_expect_end(const char *text){
+    for (int i = 0; i < STUB_EXPECT_MAX; i++) if (atomic_load(&g_expect[i]) == text){ atomic_store(&g_expect[i], NULL); return atomic_load(&g_expect_n[i]); }
+    fprintf(stderr, "stub_expect_end: \"%s\" was not expected\n", text); abort();
+}
 void blog(int level, const char *fmt, ...){
     char line[2048]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
     if (strstr(line, "delivery timing: counter")) atomic_fetch_add(&stub_late_reports, 1);
+    for (int i = 0; i < STUB_EXPECT_MAX; i++){
+        const char *e = atomic_load(&g_expect[i]);
+        if (e && strstr(line, e)){ atomic_fetch_add(&g_expect_n[i], 1); if (!stub_verbose) return; }
+    }
     if (stub_verbose || level <= LOG_WARNING) fprintf(stderr, "%s\n", line);
 }
 void *bmalloc(size_t n){ return malloc(n ? n : 1); }
@@ -48,9 +68,11 @@ bool obs_data_get_bool(obs_data_t *d, const char *name){
     if (!strcmp(name, "use_replay")) return atomic_load(&d->use_replay);
     if (!strcmp(name, "replay_restart_on_record")) return atomic_load(&d->restart_on_record);
     if (!strcmp(name, "registration")) return true;
+    if (!strcmp(name, "setup_7_5_ire")) return true;   /* the device default: setup bit on */
     return false;   /* hretime, raw_tpc, restart/stop-on-record, sidecar: off */
 }
-const char *obs_data_get_string(obs_data_t *d, const char *name){ return !strcmp(name, "replay_path") ? atomic_load(&d->path) : !strcmp(name, "input") ? "svideo" : ""; }
+const char *obs_data_get_string(obs_data_t *d, const char *name){ const char *u;
+    return !strcmp(name, "replay_path") ? atomic_load(&d->path) : !strcmp(name, "input") ? "svideo" : !strcmp(name, "usb_backend") ? ((u = atomic_load(&d->usb)) ? u : "") : ""; }
 void obs_data_release(obs_data_t *d){ (void)d; }
 void obs_data_set_default_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
 void obs_data_set_default_string(obs_data_t *d, const char *n, const char *v){ (void)d; (void)n; (void)v; }
@@ -61,6 +83,22 @@ char *obs_frontend_get_last_recording(void){ return NULL; }
 obs_output_t *obs_frontend_get_recording_output(void){ return NULL; }
 bool obs_frontend_recording_active(void){ return false; }
 void obs_frontend_recording_stop(void){}
+/* streaming (the discard stream drives the same session logic as recording) */
+obs_output_t *obs_frontend_get_streaming_output(void){ return NULL; }
+bool obs_frontend_streaming_active(void){ return false; }
+void obs_frontend_streaming_stop(void){}
+config_t *obs_frontend_get_profile_config(void){ return NULL; }
+char *obs_frontend_get_current_record_output_path(void){ return NULL; }
+const char *config_get_string(config_t *c, const char *sec, const char *n){ (void)c; (void)sec; (void)n; return NULL; }
+bool config_get_bool(config_t *c, const char *sec, const char *n){ (void)c; (void)sec; (void)n; return false; }
+char *os_generate_formatted_filename(const char *ext, bool space, const char *fmt){ (void)ext; (void)space; (void)fmt; return NULL; }
+bool os_file_exists(const char *p){ return access(p, F_OK) == 0; }
+void dstr_copy(struct dstr *d, const char *a){ dstr_printf(d, "%s", a); }
+void dstr_ncopy(struct dstr *d, const char *a, const size_t n){ if (d->array) d->array[0] = 0; d->len = 0; dstr_ncat(d, a, n); }
+void discard_stream_register(void){}
+void tracking_meter_menu_register(void){}
+void tracking_meter_shutdown(void){}
+int discard_service_selected(void){ return 1; }
 void *obs_obj_get_data(void *o){ return o == stub_source ? stub_data : NULL; }
 bool obs_output_active(const obs_output_t *o){ (void)o; return false; }
 void obs_output_release(obs_output_t *o){ (void)o; }
@@ -79,8 +117,9 @@ void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_en
 /* What the plugin hands OBS: I210, byte linesizes 1440/720/720, contiguous Y/U/V planes, codes as 4c
  * (fixture_plain is Y16/C128 everywhere -> 64/512), range clamp opened, limited range kept. */
 _Atomic uint64_t stub_frame_errors;
+_Atomic uint64_t stub_blank_calls;
 void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){
-    (void)s; if (!f) return;
+    (void)s; if (!f){ atomic_fetch_add(&stub_blank_calls, 1); return; }
     atomic_fetch_add(&stub_video_frames, 1);
     const uint16_t *y = (const uint16_t *)f->data[0], *u = (const uint16_t *)f->data[1], *v = (const uint16_t *)f->data[2];
     int ok = f->format == VIDEO_FORMAT_I210 && f->width == 720 && f->height == 480 && !f->full_range &&

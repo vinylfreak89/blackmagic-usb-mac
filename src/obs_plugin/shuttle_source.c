@@ -6,10 +6,10 @@
 // OBS owns deinterlacing (per-source Deinterlacing menu; the plugin sets the TFF hint once) and
 // everything downstream (compositing, encoding, ProRes).
 //
-// Timestamps: video = unit counter * 1001/30000 s (frameserver pts); audio = the publisher's
-// sample-contiguous device pts, plus the correlation residual applied ONLY where it steps
-// (a device event that lost samples: advance audio time by the lost amount once, so sync is
-// restored with an honest gap) — never a continuous resample (CLAUDE.md §6, audio census).
+// Timestamps: audio is the clock (audio_timing.h). Audio blocks carry the publisher's sample-contiguous
+// device pts; a video frame carries the audio-clock time of its own unit. The unit counter is not time
+// (it runs several times too fast in search and drifts while a deck is stopped), so nothing is timed
+// from it and no audio is inserted or dropped to match it.
 // Both are converted to nanoseconds; OBS syncs audio to video by timestamp.
 //
 // Sidecar: the registration decision log is aligned to the RECORDING, not to the source's
@@ -40,6 +40,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <IOSurface/IOSurface.h>
+#include <IOKit/IOKitLib.h>
+#include <dispatch/dispatch.h>
 #include <util/dstr.h>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -65,19 +67,37 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_INPUT       "input"
 #define S_HRETIME     "hretime"
 #define S_REGISTRATION "registration"
+#define S_PARTIAL      "show_partial"
 #define S_TPC         "raw_tpc"
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
 #define S_REPLAY_RESTART "replay_restart_on_record"
 #define S_REPLAY_STOP    "replay_stop_at_end"
 #define S_SIDECAR     "sidecar_with_recording"
+#define S_USB         "usb_backend"      /* live capture USB stack: "libusb" (default) or "iousbhost" (opt-in; see capture_core README) */
+#define S_SETUP       "setup_7_5_ire"    /* the Shuttle's only input level setting: applied at start-up (a change restarts the session) */
 
+#if !defined(CC_WITH_IOUSBHOST) && !defined(SHUTTLE_TEST_HOOKS)
+#error "the plugin offers the IOUSBHost USB stack: build it (and capture_core.c with it) with -DCC_WITH_IOUSBHOST"
+#endif
+#ifdef SHUTTLE_TEST_HOOKS
+int shuttle_test_usb_backend = -1;   /* the last start's cc_config.usb_backend (tests: the setting reaches capture_core's config) */
+#endif
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
+#include "discard_stream.h"
+#include "tracking_meter_tap.h"
+#include "tracking_meter_window.h"
+#include <util/config-file.h>
+enum { KIND_RECORDING = 1, KIND_STREAMING = 2 };
 #include "frame_levels.h"
 
 #define MEDIA_QUEUE 32
-enum { ACT_PLAY, ACT_PAUSE, ACT_RESTART, ACT_STOP, ACT_SEEK };
+enum { ACT_PLAY, ACT_PAUSE, ACT_RESTART, ACT_STOP, ACT_SEEK, ACT_RECONNECT };
+#define RECONNECT_TRIES 30          /* after the Shuttle drops off USB: one start attempt per arrival, then one a second */
+#ifndef RECONNECT_INTERVAL_NS
+#define RECONNECT_INTERVAL_NS 1000000000ull
+#endif
 typedef struct {
     obs_source_t *source;
     frameserver *fs;
@@ -85,7 +105,8 @@ typedef struct {
     int32_t *abuf; uint32_t abuf_frames;   /* S32 interleaved stereo staging */
     float color_matrix[16], color_min[3], color_max[3];
     _Atomic uint64_t frames_out, audio_frames_out, audio_steps;
-    shuttle_audio_clock audio_clock; int64_t audio_skip_pending;   /* early-audio frames still to drop (audio worker only) */
+    shuttle_audio_clock audio_clock;                               /* audio worker only */
+    shuttle_video_clock video_clock; _Atomic uint64_t video_estimated;   /* video worker only; frames timed without an audio-clock time */
     _Atomic int ended; enum cc_end end_reason;
     pthread_mutex_t m;                      /* serializes session + sidecar transitions (frontend events, update, destroy) */
     int sidecar_enabled;                    /* property: attach the decision log to each OBS recording */
@@ -114,6 +135,11 @@ typedef struct {
      * has ticked STOP_TICKS frames: OBS stamps the stop when it is requested, and a frame handed
      * over but not yet rendered would otherwise fall outside the recording. */
     int replaying;                          /* this session reads a .tpc */
+    /* The frontend output whose session owns the raw file and sidecar: recording or streaming (owner,
+     * 2026-10-03: streaming to the discard service behaves exactly like recording, files included).
+     * While one owns them, the other's events are ignored. Atomic: the render thread reads it. */
+    _Atomic int session_kind;               /* 0 none, KIND_RECORDING, KIND_STREAMING */
+    int ignored_kind;                       /* the other output started meanwhile: its events are ignored until it stops */
     int restart_pending;                    /* stopped at RECORDING_STARTING, restart at RECORDING_STARTED */
     int record_gap;                         /* blank on purpose: from RECORDING_STARTING until RECORDING_STARTED/STOPPED, or until
                                                restart_check finds the start failed. Media controls wait it out. */
@@ -125,6 +151,11 @@ typedef struct {
      * network read. So a callback only queues the action; the control thread applies it under s->m.
      * OBS's controls poll state, time and duration from the UI thread: atomics only. */
     pthread_t ctl_thr, probe_thr; int ctl_running, probe_running;
+    /* Reconnect after the device drops off USB (reason DEVICE_GONE): wanted until a start succeeds, the user stops
+     * or restarts, or RECONNECT_TRIES attempts fail. An IOKit arrival notification triggers an attempt at once;
+     * failed attempts (another app briefly holding the device) retry once a second. */
+    _Atomic int reconnect_wanted; unsigned reconnect_tries; uint64_t reconnect_due_ns; _Atomic uint64_t gone_ns; _Atomic int arrival_reset;   /* due_ns: ctl_m; tries: s->m */
+    IONotificationPortRef usb_port; io_iterator_t usb_iter; dispatch_queue_t usb_q;
     pthread_mutex_t ctl_m; pthread_cond_t ctl_c;   /* guards the queue and the probe request only; never held while taking s->m */
     int ctl_quit;
     struct { int act; int64_t ms; } q[MEDIA_QUEUE]; unsigned q_head, q_n;
@@ -140,6 +171,9 @@ typedef struct {
     int tl_probing, tl_failed;                    /* under s->m: a probe for tl_gen is queued or running / found no length */
     int paused; int64_t pending_seek_ms;          /* under s->m: replay held; a seek chosen while held (-1 none) */
     uint64_t next_start_unit, next_start_offset;  /* under s->m: consumed by the next shuttle_start (0 = the file's start) */
+    int applied_setup;                            /* the running session's 7.5 IRE setup bit (recorded in the raw file's note) */
+    const char *input_name;                       /* "svideo", "composite" or "component": the running session's input */
+    int usb_iousbhost;                            /* the running live session reads through IOUSBHost (cc_config.usb_backend) */
     uint64_t session_start_unit;                  /* the running session's first unit, estimated: on_frame resolves counters from it */
     _Atomic int live_regrey;                      /* live: put OBS's controls back in their greyed restart state on the next tick */
     _Atomic int handoff_reset;                    /* resumed from a pause: the next frame's gap is the pause, not a stall */
@@ -154,9 +188,12 @@ static _Atomic int g_instances;
 static void report_late(void *ctx, const tr_event *e){
     (void)ctx; const fs_handoff_timing *h = &e->h;
     blog(LOG_WARNING, "[shuttle-source] delivery timing: counter %llu handed to OBS %.1f ms after the previous frame (%.1f unit periods); output call blocked %.1f ms"
-         " | worker since previous handoff %.1f ms: idle %.1f, classify %.1f, registration %.1f, h-retiming %.1f, sidecar write %.1f, other %.1f; %u items; this unit queued %.1f ms",
+         " | worker since previous handoff %.1f ms: idle %.1f, classify %.1f, registration %.1f, h-retiming %.1f, sidecar write %.1f, other %.1f; %u items; this unit queued %.1f ms"
+         " | worker CPU %.1f ms of %.1f ms not idle | upstream: this unit queued %.1f ms after the previous one, delivery thread CPU %.1f ms meanwhile, %.0f KB waiting in the capture ring",
          (unsigned long long)e->counter, e->gap_ns / 1e6, e->gap_ns / (1e9 * 1001 / 30000), e->call_ns / 1e6,
-         h->since_prev_ns / 1e6, h->idle_ns / 1e6, h->classify_ns / 1e6, h->geometry_ns / 1e6, h->hretime_ns / 1e6, h->log_ns / 1e6, h->other_ns / 1e6, h->items, h->queue_wait_ns / 1e6);
+         h->since_prev_ns / 1e6, h->idle_ns / 1e6, h->classify_ns / 1e6, h->geometry_ns / 1e6, h->hretime_ns / 1e6, h->log_ns / 1e6, h->other_ns / 1e6, h->items, h->queue_wait_ns / 1e6,
+         h->cpu_ns / 1e6, (h->since_prev_ns > h->idle_ns ? h->since_prev_ns - h->idle_ns : 0) / 1e6,
+         h->up_gap_ns / 1e6, h->up_cpu_ns / 1e6, h->up_ring_bytes / 1024.0);
 }
 
 /* While a session runs, ask macOS not to throttle this process: NSActivityUserInitiated (no App Nap,
@@ -192,12 +229,19 @@ static void on_frame(void *ctx, const fp_frame *fr){
     const uint8_t *base = IOSurfaceGetBaseAddress(fr->surface); size_t bpr = IOSurfaceGetBytesPerRow(fr->surface);
     uint16_t *py = s->vbuf, *pu = py + (size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT, *pv = pu + (size_t)FP_FRAME_WIDTH / 2 * FP_FRAME_HEIGHT;
     shuttle_uyvy_to_i210(base, bpr, FP_FRAME_WIDTH, FP_FRAME_HEIGHT, py, pu, pv);
+    tmt_offer(base, bpr, fr->transport == FP_TRANSPORT_COMPLETE);                 /* tracking meter: nothing unless its window is open (tracking_meter_tap.h) */
     IOSurfaceUnlock(fr->surface, kIOSurfaceLockReadOnly, NULL);
     struct obs_source_frame f; memset(&f, 0, sizeof f);
     f.data[0] = (uint8_t *)py; f.data[1] = (uint8_t *)pu; f.data[2] = (uint8_t *)pv;
     f.linesize[0] = FP_FRAME_WIDTH * 2; f.linesize[1] = f.linesize[2] = FP_FRAME_WIDTH;
     f.width = FP_FRAME_WIDTH; f.height = FP_FRAME_HEIGHT; f.format = VIDEO_FORMAT_I210;
-    f.timestamp = (uint64_t)((__uint128_t)fr->pts_num * 1000000000ull / fr->pts_den);
+    /* The frame's time on the audio clock (audio_timing.h): the counter is not time. Without it, one nominal period
+     * (half for a single-field search frame) after the previous frame; the counter only for a session's first. */
+    int estimated; uint64_t vt = shuttle_video_time(&s->video_clock, fr->audio_pts_known, fr->audio_pts_num,
+                                                    fr->transport == FP_TRANSPORT_SHORT ? AP_TICKS_PER_UNIT / 2 : AP_TICKS_PER_UNIT,
+                                                    (uint64_t)((__uint128_t)fr->pts_num * AP_PTS_DEN / fr->pts_den), &estimated);
+    if (estimated) atomic_fetch_add(&s->video_estimated, 1);
+    f.timestamp = AP_TICKS_TO_NS(vt);
     memcpy(f.color_matrix, s->color_matrix, sizeof f.color_matrix);
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
     f.full_range = false;
@@ -227,41 +271,35 @@ static void on_frame(void *ctx, const fp_frame *fr){
 static void on_audio(void *ctx, const ap_block *b){
     shuttle_src *s = ctx;
     if (b->n_frames > s->abuf_frames) return;             /* cannot happen: publisher capacity == staging capacity */
-    uint64_t ticks; int64_t step = 0;
-    int stepped = shuttle_audio_time_step(&s->audio_clock, b, &ticks, &step);
-    if (stepped < 0) return;                             /* no device time yet */
-    if (stepped) atomic_fetch_add(&s->audio_steps, 1);
+    uint64_t ticks;
+    if (shuttle_audio_time(&s->audio_clock, b, &ticks) < 0) return;   /* no device time yet */
+    atomic_store(&s->audio_steps, s->audio_clock.residual_steps);     /* counted for the log; nothing is inserted or dropped */
     struct obs_source_audio a; memset(&a, 0, sizeof a);
     a.speakers = SPEAKERS_STEREO; a.format = AUDIO_FORMAT_32BIT; a.samples_per_sec = AP_SAMPLE_RATE;
-    /* Device lost samples: deliver the gap as real silence ending exactly where this block starts,
-     * so OBS sees contiguous audio (a bare timestamp jump is mishandled by OBS). */
-    if (step > 0){
-        memset(s->abuf, 0, (size_t)s->abuf_frames * 2 * sizeof(int32_t));
-        uint64_t t0 = ticks - (uint64_t)step * AP_TICKS_PER_FRAME;
-        for (int64_t done = 0; done < step; ){
-            uint32_t n = (uint32_t)(step - done < s->abuf_frames ? step - done : s->abuf_frames);
-            a.data[0] = (const uint8_t *)s->abuf; a.frames = n; a.timestamp = AP_TICKS_TO_NS(t0 + (uint64_t)done * AP_TICKS_PER_FRAME);
-            obs_source_output_audio(s->source, &a); done += n;
-        }
-    }
-    /* Device sent audio early (negative step): drop the overlap from the start of this and, if it is
-     * shorter than the overlap, the following blocks. A break or a later gap cancels what is left. */
-    int64_t gap_unused; uint32_t skip;
-    shuttle_audio_plan(step, (b->flags & AP_FLAG_DISCONTINUITY_BEFORE) != 0, b->n_frames, &s->audio_skip_pending, &gap_unused, &skip);
-    if (skip == b->n_frames) return;
-    const uint8_t *p = b->s24le + (size_t)skip * AP_BYTES_PER_FRAME;
-    for (uint32_t i = 0; i < b->n_frames - skip; i++){
+    const uint8_t *p = b->s24le;
+    for (uint32_t i = 0; i < b->n_frames; i++){
         int32_t l = (int32_t)((uint32_t)p[0] << 8 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 24);
         int32_t r = (int32_t)((uint32_t)p[3] << 8 | (uint32_t)p[4] << 16 | (uint32_t)p[5] << 24);
         s->abuf[2 * i] = l; s->abuf[2 * i + 1] = r; p += AP_BYTES_PER_FRAME;
     }
-    a.data[0] = (const uint8_t *)s->abuf; a.frames = b->n_frames - skip;
-    a.timestamp = AP_TICKS_TO_NS(ticks + (uint64_t)skip * AP_TICKS_PER_FRAME);
+    a.data[0] = (const uint8_t *)s->abuf; a.frames = b->n_frames;
+    a.timestamp = AP_TICKS_TO_NS(ticks);
     obs_source_output_audio(s->source, &a);
-    atomic_fetch_add(&s->audio_frames_out, b->n_frames - skip);
+    atomic_fetch_add(&s->audio_frames_out, b->n_frames);
 }
 
+static void media_post(shuttle_src *s, int act, int64_t ms);
 static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reason = r; atomic_store(&s->ended, 1);
+    if ((r == CC_END_DEVICE_GONE || r == CC_END_TRANSFER_FAILED) && !atomic_load(&s->replay_mode)){
+        /* The Shuttle dropped off USB. Blank the source, so neither the preview nor a recording shows the last frame
+         * as if the tape were still playing, and wait for it to come back. */
+        obs_source_output_video(s->source, NULL);
+        atomic_store(&s->gone_ns, os_gettime_ns());
+        if (!atomic_exchange(&s->reconnect_wanted, 1))
+            blog(LOG_WARNING, "[shuttle-source] the Shuttle %s: picture blanked; reconnecting when it comes back",
+                 r == CC_END_DEVICE_GONE ? "disconnected (USB connection lost)" : "stopped answering (transfers failed)");
+        media_post(s, ACT_RECONNECT, 0);
+    }
     if (r == CC_END_REPLAY_EOF && atomic_load(&s->stop_on_eof)) atomic_store(&s->stop_ticks, STOP_TICKS);   /* every frame and audio block is already delivered */
     /* Any end the plugin did not request (end of file, a read error, a lost device) leaves nothing to
      * pause or seek within: OBS's controls switch to restart. A stop the plugin requested ends with
@@ -276,7 +314,12 @@ static void shuttle_video_tick(void *data, float seconds){
      * enables the seek bar and shows a pause button. Same thread, after it: grey them out again. */
     if (atomic_exchange(&s->live_regrey, 0) && !atomic_load(&s->replay_mode)) obs_source_media_ended(s->source);
     if (atomic_load(&s->stop_ticks) > 0 && atomic_fetch_sub(&s->stop_ticks, 1) == 1 && atomic_exchange(&s->stop_on_eof, 0)){
-        if (obs_frontend_recording_active()){
+        if (atomic_load(&s->session_kind) == KIND_STREAMING){
+            if (obs_frontend_streaming_active()){
+                blog(LOG_INFO, "[shuttle-source] replay reached the end of the file: stopping the stream");
+                obs_frontend_streaming_stop();
+            }
+        } else if (obs_frontend_recording_active()){
             blog(LOG_INFO, "[shuttle-source] replay reached the end of the file: stopping the recording");
             obs_frontend_recording_stop();
         }
@@ -301,6 +344,56 @@ static int recording_path(shuttle_src *s){
     char *p = obs_frontend_get_last_recording();
     if (!p || !*p){ bfree(p); return -1; }
     s->sidecar_base = p; return 0;
+}
+/* A stream has no recording file, so its raw file and sidecar take the name a recording started now
+ * would get: OBS's recording folder, file-name format, spacing and container extension from the
+ * profile, as GetOutputFilename/FindBestFilename build it (frontend/OBSApp.cpp, OBS 32.2.2). Nothing
+ * writes that recording file itself; a name already used by an earlier run's raw file or sidecar gets
+ * OBS's " (2)" / "_2" suffix. */
+static const char *format_ext(const char *container){
+    if (!container || !*container) return "mkv";
+    if (!strcmp(container, "fragmented_mp4") || !strcmp(container, "hybrid_mp4")) return "mp4";
+    if (!strcmp(container, "fragmented_mov") || !strcmp(container, "hybrid_mov")) return "mov";
+    if (!strcmp(container, "hls")) return "m3u8";
+    if (!strcmp(container, "mpegts")) return "ts";
+    return container;
+}
+static int name_taken(const char *base){
+    struct dstr t = {0}; int taken = os_file_exists(base);
+    dstr_printf(&t, "%s.raw.tpc", base); taken |= os_file_exists(t.array);
+    dstr_printf(&t, "%s.registration.csv", base); taken |= os_file_exists(t.array);
+    dstr_free(&t); return taken;
+}
+static int stream_path(shuttle_src *s){
+    bfree(s->sidecar_base); s->sidecar_base = NULL;
+    config_t *cfg = obs_frontend_get_profile_config();
+    char *dir = obs_frontend_get_current_record_output_path();
+    if (!cfg || !dir || !*dir){ bfree(dir); return -1; }
+    const char *mode = config_get_string(cfg, "Output", "Mode");
+    int adv = mode && !strcmp(mode, "Advanced");
+    const char *container = config_get_string(cfg, adv ? "AdvOut" : "SimpleOutput", "RecFormat2");
+    int no_space = config_get_bool(cfg, adv ? "AdvOut" : "SimpleOutput", adv ? "RecFileNameWithoutSpace" : "FileNameWithoutSpace");
+    const char *fmt = config_get_string(cfg, "Output", "FilenameFormatting");
+    char *name = os_generate_formatted_filename(format_ext(container), !no_space, fmt && *fmt ? fmt : "%CCYY-%MM-%DD %hh-%mm-%ss");
+    struct dstr base = {0}; dstr_copy(&base, dir);
+    if (base.len && base.array[base.len - 1] != '/') dstr_cat(&base, "/");
+    dstr_cat(&base, name); bfree(name); bfree(dir);
+    if (name_taken(base.array)){
+        const char *dot = strrchr(base.array, '.'); size_t at = dot ? (size_t)(dot - base.array) : base.len;
+        for (int n = 2; n < 10000; n++){
+            struct dstr t = {0}; dstr_ncopy(&t, base.array, at);
+            if (no_space) dstr_catf(&t, "_%d", n); else dstr_catf(&t, " (%d)", n);
+            dstr_cat(&t, base.array + at);
+            if (!name_taken(t.array)){ dstr_free(&base); base = t; break; }
+            dstr_free(&t);
+        }
+    }
+    s->sidecar_base = bstrdup(base.array); dstr_free(&base); return 0;
+}
+/* The output that owns the session is running (a capture restarted mid-session continues its files). */
+static int session_output_active(const shuttle_src *s){
+    int k = atomic_load(&s->session_kind);
+    return k == KIND_STREAMING ? obs_frontend_streaming_active() : k == KIND_RECORDING ? obs_frontend_recording_active() : 0;
 }
 static void sidecar_final_name(struct dstr *fin, const shuttle_src *s, unsigned dup){
     dstr_free(fin);
@@ -405,15 +498,22 @@ typedef struct { shuttle_src *s; cc_async_sink *k; char *path; } tpc_close_job;
 static void *tpc_closer(void *arg){
     tpc_close_job *j = arg; cc_async_sink_stats st;
     int rc = cc_async_sink_close(j->k, &st);
-    uint64_t lost = st.lost_packets[0] + st.lost_packets[1];
+    uint64_t lost = st.lost_packets[0] + st.lost_packets[1] + st.spill_read_lost_packets[0] + st.spill_read_lost_packets[1];
+    if (st.spill_read_errors)
+        blog(LOG_ERROR, "[shuttle-source] raw .tpc: the local spill could not give back %llu chunks: %llu video / %llu audio packets lost there, confessed in the file in their place; the capture went on",
+             (unsigned long long)st.spill_read_errors, (unsigned long long)st.spill_read_lost_packets[0], (unsigned long long)st.spill_read_lost_packets[1]);
     blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
-         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals%s%s",
+         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals | local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s%s%s",
          rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,
          (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
          (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write,
          (unsigned long long)st.writes, st.writes ? st.write_ns / 1e6 / (double)st.writes : 0.0, st.max_write_ns / 1e6, (unsigned long long)st.slow_writes, st.max_ready_gap_ns / 1e6,
          (unsigned long long)st.loss_episodes, (unsigned long long)st.loss_in_write, st.max_in_write_at_loss_ns / 1e6, st.max_wake_backlog / 1e6,
-         st.released_bytes / 1e6, (unsigned long long)st.release_failures, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
+         st.released_bytes / 1e6, (unsigned long long)st.release_failures,
+         st.spill_state == 1 ? "on" : st.spill_state == 0 ? "off (same volume)" : "UNUSABLE", st.spill_bytes / 1e6, st.spill_peak / 1e6,
+         (unsigned long long)st.spill_segments, (unsigned long long)st.spill_floor_refusals, st.spill_max_write_ns / 1e6,
+         st.spill_error ? ", spill turned off by: " : "", st.spill_error ? strerror(st.spill_error) : "",
+         st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
     shuttle_src *s = j->s; bfree(j->path); bfree(j);
     pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
     return NULL;
@@ -436,10 +536,30 @@ static void tpc_attach(shuttle_src *s){
     if (++s->tpc_part == 1) dstr_printf(&path, "%s.raw.tpc", s->sidecar_base);
     else dstr_printf(&path, "%s.raw.part%u.tpc", s->sidecar_base, s->tpc_part);
     struct dstr note = {0}; char *b = bstrdup(s->sidecar_base); char base[PATH_MAX];
-    dstr_printf(&note, "shuttle-source tee v1 input=svideo recording=%s part=%u", basename_r(b, base) ? base : "?", s->tpc_part); bfree(b);
-    if (fs_tee_start(s->fs, path.array, note.array, TPC_RING_BYTES) == 0){
+    uint32_t mw = 0;
+    int have = fs_device_start_info(s->fs, &mw) == 0;
+    /* usb= names the stack, so a replay of this file words its unread-slot counts as exact or estimated (capture_core) */
+    /* usb= comes before the recording's name, which is the user's text and could contain anything */
+    if (have) dstr_printf(&note, "shuttle-source tee v1 usb=%s input=%s setup=%s mode=0x%08x part=%u recording=%s",
+                          s->usb_iousbhost ? "iousbhost" : "libusb", s->input_name ? s->input_name : "?", s->applied_setup ? "on" : "off", mw,
+                          s->tpc_part, basename_r(b, base) ? base : "?");
+    else dstr_printf(&note, "shuttle-source tee v1 usb=%s input=%s setup=%s mode=not reported part=%u recording=%s",
+                     s->usb_iousbhost ? "iousbhost" : "libusb", s->input_name ? s->input_name : "?", s->applied_setup ? "on" : "off",
+                     s->tpc_part, basename_r(b, base) ? base : "?");
+    bfree(b);
+    /* The backlog goes to local scratch when the destination (a network volume) falls behind; see cc_async_sink_open_spill. */
+    char spill[64]; snprintf(spill, sizeof spill, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
+    if (fs_tee_start(s->fs, path.array, note.array, TPC_RING_BYTES, spill) == 0){
         s->tpc_path = bstrdup(path.array);
-        blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s", path.array);
+        int ss = fs_tee_spill_state(s->fs);
+        if (ss < 0) blog(LOG_ERROR, "[shuttle-source] raw .tpc started: %s — local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind", path.array, spill, strerror(-ss));
+        else blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s — local spill %s", path.array, ss ? spill : "off (destination is on the local disk)");
+        int64_t room = 0; uint64_t sf = 0, sb = 0;
+        if (fs_tee_spill_info(s->fs, &room, &sf, &sb) == 0){
+            if (ss == 1 && room < (int64_t)(128 << 20))
+                blog(LOG_ERROR, "[shuttle-source] local spill %s has NO ROOM now (%.1f GB above its 32 GB free-space floor): memory is the only buffer until space is freed", spill, room / 1e9);
+            if (sf) blog(LOG_WARNING, "[shuttle-source] local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone and not yet recovered (see the spill recovery lines at load; left in place)", spill, (unsigned long long)sf, sb / 1e6);
+        }
     } else blog(LOG_ERROR, "[shuttle-source] raw .tpc could not be started (exists? volume writable?): %s", path.array);
     dstr_free(&path); dstr_free(&note);
 }
@@ -497,8 +617,30 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
     if (!atomic_load(&s->replay_mode)){
         /* Live: the tape is the transport. Restart and stop act on the capture session; pause and seek
          * have nothing to act on (holding delivery would only discard what the deck keeps playing). */
-        if (act == ACT_RESTART){ shuttle_stop(s); if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
-        else if (act == ACT_STOP) shuttle_stop(s);
+        if (act == ACT_RECONNECT){
+            if (atomic_load(&s->reconnect_wanted)){
+                if (atomic_exchange(&s->arrival_reset, 0)) s->reconnect_tries = 0;
+                shuttle_stop(s);
+                if (shuttle_start(s, settings) == 0){
+                    atomic_store(&s->reconnect_wanted, 0);
+                    blog(LOG_INFO, "[shuttle-source] reconnected to the Shuttle %.1f s after it disconnected (attempt %u)",
+                         (os_gettime_ns() - atomic_load(&s->gone_ns)) / 1e9, s->reconnect_tries + 1);
+                    s->reconnect_tries = 0;
+                } else if (++s->reconnect_tries == RECONNECT_TRIES){
+                    /* stop retrying on a timer, but keep listening: the next arrival of the device still reconnects */
+                    blog(LOG_ERROR, "[shuttle-source] could not reconnect to the Shuttle after %d attempts (another app holding it, or not plugged in): "
+                         "waiting for it to be plugged in again; or restart the source", RECONNECT_TRIES);
+                } else if (s->reconnect_tries < RECONNECT_TRIES){
+                    pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = os_gettime_ns() + RECONNECT_INTERVAL_NS; pthread_mutex_unlock(&s->ctl_m);
+                }
+                if (!s->fs) atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
+            }
+            obs_data_release(settings); return;
+        }
+        /* The user takes over: cancel reconnecting AFTER the stop, since a session ending in a disconnect reports it
+         * from inside shuttle_stop and would otherwise re-arm reconnecting against the user's stop. */
+        if (act == ACT_RESTART){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
+        else if (act == ACT_STOP){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; }
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
         obs_data_release(settings); return;
     }
@@ -547,7 +689,18 @@ static void *media_thread(void *arg){
     pthread_setname_np("shuttle-media");
     pthread_mutex_lock(&s->ctl_m);
     for (;;){
-        while (!s->ctl_quit && !s->q_n) pthread_cond_wait(&s->ctl_c, &s->ctl_m);
+        while (!s->ctl_quit && !s->q_n){
+            if (s->reconnect_due_ns){                       /* a failed reconnect attempt: try again when due */
+                uint64_t now = os_gettime_ns();
+                if (now >= s->reconnect_due_ns){
+                    if (s->q_n < MEDIA_QUEUE){ s->reconnect_due_ns = 0; unsigned i = (s->q_head + s->q_n) % MEDIA_QUEUE; s->q[i].act = ACT_RECONNECT; s->q[i].ms = 0; s->q_n++; }
+                    continue;   /* a full queue keeps the retry due: it goes in once the queue drains */
+                }
+                uint64_t d = s->reconnect_due_ns - now;
+                struct timespec ts = { (time_t)(d / 1000000000ull), (long)(d % 1000000000ull) };
+                pthread_cond_timedwait_relative_np(&s->ctl_c, &s->ctl_m, &ts);
+            } else pthread_cond_wait(&s->ctl_c, &s->ctl_m);
+        }
         if (s->ctl_quit) break;
         int act = s->q[s->q_head].act; int64_t ms = s->q[s->q_head].ms;
         s->q_head = (s->q_head + 1) % MEDIA_QUEUE; s->q_n--;
@@ -629,63 +782,94 @@ static void restart_check(void *param){
     obs_source_t *src = obs_weak_source_get_source(w); obs_weak_source_release(w);
     if (!src) return;   /* the source was destroyed meanwhile */
     shuttle_src *s = obs_obj_get_data(src);
-    obs_output_t *out = obs_frontend_get_recording_output();
+    if (!s){ obs_source_release(src); return; }
+    obs_output_t *out = atomic_load(&s->session_kind) == KIND_STREAMING ? obs_frontend_get_streaming_output() : obs_frontend_get_recording_output();
     int active = out && obs_output_active(out); obs_output_release(out);
     if (s){
         pthread_mutex_lock(&s->m);
         if (s->restart_pending && !active) s->record_gap = 0;   /* the start failed: the gap is over, whatever resumes */
         if (s->restart_pending && !s->fs && !active){
             obs_data_t *st = obs_source_get_settings(src);
-            if (shuttle_start(s, st) == 0) blog(LOG_WARNING, "[shuttle-source] the recording output is not active after the record press (start failed?): replay resumed; it restarts from the beginning if the recording does start");
+            if (shuttle_start(s, st) == 0) blog(LOG_WARNING, "[shuttle-source] the %s output is not active after the press (start failed?): replay resumed; it restarts from the beginning if it does start", atomic_load(&s->session_kind) == KIND_STREAMING ? "streaming" : "recording");
             obs_data_release(st);
         }
         pthread_mutex_unlock(&s->m);
     }
     obs_source_release(src);
 }
+/* Recording and streaming drive the same session logic (owner, 2026-10-03: streaming to the discard
+ * service should behave exactly like recording): raw .tpc and sidecar, the replay restarting from the
+ * beginning of its file, and the replay ending the session at end of file. Whichever output starts
+ * first owns the session; the other's events are ignored until it stops. */
+enum { OP_STARTING, OP_STARTED, OP_STOPPING, OP_STOPPED };
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
-    pthread_mutex_lock(&s->m);
-    obs_data_t *settings = obs_source_get_settings(s->source);
+    int kind = 0, op = 0;
     switch (ev){
-    case OBS_FRONTEND_EVENT_RECORDING_STARTING:
+    case OBS_FRONTEND_EVENT_RECORDING_STARTING: kind = KIND_RECORDING; op = OP_STARTING; break;
+    case OBS_FRONTEND_EVENT_RECORDING_STARTED:  kind = KIND_RECORDING; op = OP_STARTED; break;
+    case OBS_FRONTEND_EVENT_RECORDING_STOPPING: kind = KIND_RECORDING; op = OP_STOPPING; break;
+    case OBS_FRONTEND_EVENT_RECORDING_STOPPED:  kind = KIND_RECORDING; op = OP_STOPPED; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STARTING: kind = KIND_STREAMING; op = OP_STARTING; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STARTED:  kind = KIND_STREAMING; op = OP_STARTED; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STOPPING: kind = KIND_STREAMING; op = OP_STOPPING; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STOPPED:  kind = KIND_STREAMING; op = OP_STOPPED; break;
+    default: return;
+    }
+    const char *what = kind == KIND_STREAMING ? "stream" : "recording";
+    pthread_mutex_lock(&s->m);
+    int owner = atomic_load(&s->session_kind);
+    if (op == OP_STARTING && !owner){ atomic_store(&s->session_kind, kind); owner = kind; }
+    if (owner != kind){
+        if (op == OP_STARTING || op == OP_STARTED){
+            if (s->ignored_kind != kind) blog(LOG_WARNING, "[shuttle-source] %s started while the %s owns the raw file and sidecar: this %s gets none", what, owner == KIND_STREAMING ? "stream" : "recording", what);
+            s->ignored_kind = kind;
+        } else if (op == OP_STOPPED && s->ignored_kind == kind) s->ignored_kind = 0;
+        pthread_mutex_unlock(&s->m); return;
+    }
+    obs_data_t *settings = obs_source_get_settings(s->source);
+    switch (op){
+    case OP_STARTING:
         atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         if (s->replaying && obs_data_get_bool(settings, S_REPLAY_RESTART)){
             shuttle_stop(s);
-            obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording */
+            obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording or stream */
             s->restart_pending = 1; s->record_gap = 1;
-            blog(LOG_INFO, "[shuttle-source] recording starting: replay stopped; it restarts from the beginning of the file once the recording has started");
+            blog(LOG_INFO, "[shuttle-source] %s starting: replay stopped; it restarts from the beginning of the file once the %s has started", what, what);
             dispatch_async_f(dispatch_get_main_queue(), obs_source_get_weak_source(s->source), restart_check);
         }
         break;
-    case OBS_FRONTEND_EVENT_RECORDING_STARTED:
-        if (recording_path(s) != 0) blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar");
-        else { s->sidecar_part = 0; s->tpc_part = 0; }
+    case OP_STARTED:
+        if ((kind == KIND_STREAMING ? stream_path(s) : recording_path(s)) != 0) blog(LOG_WARNING, "[shuttle-source] %s started but no file name could be made; no sidecar or raw file", what);
+        else {
+            s->sidecar_part = 0; s->tpc_part = 0;
+            if (kind == KIND_STREAMING) blog(LOG_INFO, "[shuttle-source] stream started%s: raw file and sidecar named as a recording would be: %s", discard_service_selected() ? " (discard service)" : "", s->sidecar_base);
+        }
         s->record_gap = 0;
         if (s->restart_pending){
             s->restart_pending = 0;
             shuttle_stop(s);   /* running if restart_check resumed it or a settings change started it */
             atomic_store(&s->stop_on_eof, obs_data_get_bool(settings, S_REPLAY_STOP) ? 1 : 0);   /* armed before the session can end */
             if (shuttle_start(s, settings) != 0) atomic_store(&s->stop_on_eof, 0);
-            else {   /* shuttle_start attached the sidecar itself: the recording is active */
-                blog(LOG_INFO, "[shuttle-source] replay restarted from the beginning of the file%s", atomic_load(&s->stop_on_eof) ? "; the recording stops when it ends" : "");
+            else {   /* shuttle_start attached the sidecar itself: the recording or stream is active */
+                blog(LOG_INFO, "[shuttle-source] replay restarted from the beginning of the file%s", atomic_load(&s->stop_on_eof) ? (kind == KIND_STREAMING ? "; the stream stops when it ends" : "; the recording stops when it ends") : "");
             }
             break;
         }
         if (!s->sidecar_base) break;
-        if (!s->fs) blog(LOG_WARNING, "[shuttle-source] recording started while the capture is not running; sidecar starts when it does");
+        if (!s->fs) blog(LOG_WARNING, "[shuttle-source] %s started while the capture is not running; sidecar starts when it does", what);
         sidecar_attach(s); tpc_attach(s);
         break;
-    case OBS_FRONTEND_EVENT_RECORDING_STOPPING:
-        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);   /* a second stop request would force-stop (StopRecording(recordingStopping)) */
+    case OP_STOPPING:
+        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);   /* a second stop request would force-stop */
         break;
-    case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
+    case OP_STOPPED:
         atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         tpc_detach(s); sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
         s->record_gap = 0;
-        if (s->restart_pending){ s->restart_pending = 0; if (!s->fs) shuttle_start(s, settings); }   /* the recording never started: resume the replay */
+        if (s->restart_pending){ s->restart_pending = 0; if (!s->fs) shuttle_start(s, settings); }   /* it never started: resume the replay */
+        atomic_store(&s->session_kind, 0);
         break;
-    default: break;
     }
     obs_data_release(settings);
     pthread_mutex_unlock(&s->m);
@@ -703,10 +887,22 @@ static void shuttle_stop(shuttle_src *s){
         if (st.log_last_file_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write/close errors in this file); left unpublished at %s", (unsigned long long)st.log_last_file_errors, s->sidecar_partial);
         else sidecar_publish(s);
     }
-    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu",
+    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, counter-against-audio steps seen (none applied) %llu, search frames shown %llu (not shown, no free slot: %llu), frames timed without an audio time %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
-         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps));
+         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)st.partial_not_shown, (unsigned long long)atomic_load(&s->video_estimated));
+    if (!s->replaying && s->usb_iousbhost)
+        blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO,
+             "[shuttle-source] USB (IOUSBHost): %llu unread-slot events, exact (gaps and too-old runs; %llu video / %llu audio packets never read)",
+             (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1]);
+    else if (!s->replaying)
+        blog(st.unscheduled_events || st.schedule_shifts || !st.rt_event_thread || st.rt_priority_min < 97 ? LOG_ERROR : LOG_INFO,
+             "[shuttle-source] USB: %llu unread-slot events (%llu found late; %llu video / %llu audio packets never read), %llu unexplained schedule shifts; real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up%s), libusb %d",
+             (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_late, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
+             (unsigned long long)st.schedule_shifts, st.rt_event_thread ? "yes" : "NO", st.rt_priority_min, st.rt_priority_at_stop,
+             !st.rt_event_thread || st.rt_priority_min < 97 ? ": REAL TIME LOST" : "", st.rt_libusb_threads);
+    if (!s->replaying && st.capture_teardown_incomplete)
+        blog(LOG_ERROR, "[shuttle-source] USB: the capture's stop could not confirm its USB callbacks finished; that session's memory is kept (leaked, by design) rather than freed under them");
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
@@ -721,6 +917,20 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     /* NULL geometry_config selects the approved per-engine defaults, with no environment reads. */
     const char *input = obs_data_get_string(settings, S_INPUT);
     cfg.capture.input = !strcmp(input, "composite") ? CC_INPUT_COMPOSITE : !strcmp(input, "component") ? CC_INPUT_COMPONENT : CC_INPUT_SVIDEO;
+    s->input_name = cfg.capture.input == CC_INPUT_COMPOSITE ? "composite" : cfg.capture.input == CC_INPUT_COMPONENT ? "component" : "svideo";
+    cfg.capture.setup_off = !obs_data_get_bool(settings, S_SETUP);
+    s->applied_setup = !cfg.capture.setup_off;
+    const char *usb = obs_data_get_string(settings, S_USB);
+    cfg.capture.usb_backend = usb && !strcmp(usb, "iousbhost") ? CC_USB_IOUSBHOST : CC_USB_LIBUSB;   /* ignored by a replay */
+    if (usb && *usb && strcmp(usb, "iousbhost") && strcmp(usb, "libusb"))
+        blog(LOG_WARNING, "[shuttle-source] USB stack setting \"%s\" not recognised: using libusb", usb);
+    s->usb_iousbhost = cfg.capture.usb_backend == CC_USB_IOUSBHOST && !obs_data_get_bool(settings, S_USE_REPLAY);
+#ifdef SHUTTLE_TEST_HOOKS
+    shuttle_test_usb_backend = (int)cfg.capture.usb_backend;
+#endif
+    if (!obs_data_get_bool(settings, S_USE_REPLAY))
+        blog(LOG_INFO, "[shuttle-source] input %s, 7.5 IRE setup %s, USB stack %s", s->input_name, cfg.capture.setup_off ? "off (0 IRE black, NTSC-J)" : "on (NTSC-M)",
+             s->usb_iousbhost ? "IOUSBHost (opt-in)" : "libusb");
     uint64_t start_unit = s->next_start_unit, start_offset = s->next_start_offset;
     s->next_start_unit = s->next_start_offset = 0;   /* every other start begins the file */
     s->pending_seek_ms = -1; s->paused = 0;
@@ -737,29 +947,37 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
         cfg.capture.replay_start_offset = start_offset;                     /* a seek: aligned forward to a whole transfer */
         timeline_track(s, rp);
-        cfg.capture.replay_diag = 1; cfg.capture.diag_log = diag_to_obs;     /* stall diagnosis into the OBS log at session end */
+        cfg.capture.replay_diag = 1;                                        /* stall diagnosis into the OBS log at session end */
     }
+    cfg.capture.diag_log = diag_to_obs;   /* live too: real-time status at start, unread-USB-slot HostLoss as it happens */
     s->replaying = cfg.capture.replay_path != NULL;
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
     cfg.registration_off = obs_data_get_bool(settings, S_REGISTRATION) ? 0 : 1;   /* per-tape: off publishes the nominal (0,0) placement */
+    cfg.show_partial = obs_data_get_bool(settings, S_PARTIAL) ? 1 : 0;            /* search and unlocked picture: units that are not whole, stretched */
     cfg.pool_units = 0; cfg.surface_pool = 6;   /* pool sized from the capture ring (frameserver default) */
     cfg.sink.on_frame = on_frame; cfg.sink.ctx = s;
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
     cfg.audio_block_frames = s->abuf_frames;
     cfg.on_end = on_end; cfg.end_ctx = s;
-    atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->audio_skip_pending = 0;
+    atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->video_clock = (shuttle_video_clock){0}; atomic_store(&s->video_estimated, 0);
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
     if (!s->replaying && was_replay) atomic_store(&s->live_regrey, 1);   /* from replay to live: OBS's controls still show the replay's bar; grey them */
-    if (fs_open(&s->fs, &cfg) != 0){
+#ifdef SHUTTLE_TEST_HOOKS
+    /* Tests never open real hardware: a Shuttle plugged in while they run must not change their outcome. */
+    int test_refuse = !cfg.capture.replay_path;
+#else
+    int test_refuse = 0;
+#endif
+    if (test_refuse || fs_open(&s->fs, &cfg) != 0){
         blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL;
         if (s->replaying) obs_source_media_ended(s->source);   /* nothing plays: OBS's controls show restart */
         return -1;
     }
     /* attach before fs_start, so a session started for a recording logs its first unit */
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
-    if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
+    if (s->sidecar_enabled && session_output_active(s) && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording or mid-stream: continue as the next part */
     /* PLAYING before the session runs: an end that arrives at once (a seek to the last units) then
      * overwrites it with ENDED, never the other way round. */
     if (s->replaying){ atomic_store(&s->media_state, OBS_MEDIA_STATE_PLAYING); obs_source_media_started(s->source); }
@@ -776,9 +994,50 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
     s->tpc_enabled = obs_data_get_bool(settings, S_TPC) && !s->replaying;
     if (obs_data_get_bool(settings, S_TPC) && s->replaying) blog(LOG_INFO, "[shuttle-source] raw .tpc is not written while replaying a .tpc");
-    if (obs_frontend_recording_active() && s->sidecar_base) tpc_attach(s);
+    if (session_output_active(s) && s->sidecar_base) tpc_attach(s);
     return 0;
 }
+
+/* IOKit, on usb_q: a Shuttle appeared on USB. Draining the iterator re-arms the notification. */
+static void usb_arrived(void *ctx, io_iterator_t it){
+    shuttle_src *s = ctx; io_object_t o; int any = 0;
+    while ((o = IOIteratorNext(it))){ IOObjectRelease(o); any = 1; }
+    if (any && atomic_load(&s->reconnect_wanted)){
+        pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = 0; pthread_mutex_unlock(&s->ctl_m);
+        atomic_store(&s->arrival_reset, 1);   /* a fresh arrival: the media thread restarts the attempt count */
+        media_post(s, ACT_RECONNECT, 0);
+    }
+}
+static void usb_watch_start(shuttle_src *s){
+    CFMutableDictionaryRef m = IOServiceMatching("IOUSBHostDevice");
+    if (!m) return;
+    int vid = 0x1EDB, pid = 0xBD3B;
+    CFNumberRef v = CFNumberCreate(NULL, kCFNumberIntType, &vid), p = CFNumberCreate(NULL, kCFNumberIntType, &pid);
+    CFDictionarySetValue(m, CFSTR("idVendor"), v); CFDictionarySetValue(m, CFSTR("idProduct"), p); CFRelease(v); CFRelease(p);
+    s->usb_q = dispatch_queue_create("shuttle-usb-arrival", DISPATCH_QUEUE_SERIAL);
+    s->usb_port = IONotificationPortCreate(kIOMainPortDefault);
+    if (!s->usb_q || !s->usb_port){ CFRelease(m); blog(LOG_WARNING, "[shuttle-source] no USB arrival notifications: a disconnected Shuttle is retried once a second instead"); return; }
+    IONotificationPortSetDispatchQueue(s->usb_port, s->usb_q);
+    if (IOServiceAddMatchingNotification(s->usb_port, kIOFirstMatchNotification, m, usb_arrived, s, &s->usb_iter) != KERN_SUCCESS){   /* consumes m */
+        s->usb_iter = 0; blog(LOG_WARNING, "[shuttle-source] no USB arrival notifications: a disconnected Shuttle is retried once a second instead"); return;
+    }
+    io_object_t o; while ((o = IOIteratorNext(s->usb_iter))) IOObjectRelease(o);   /* devices already present; arms the notification */
+}
+static void usb_watch_noop(void *x){ (void)x; }
+static void usb_watch_stop(shuttle_src *s){
+    if (s->usb_port) IONotificationPortSetDispatchQueue(s->usb_port, NULL);
+    if (s->usb_q) dispatch_sync_f(s->usb_q, NULL, usb_watch_noop);   /* a callback already running finishes before s goes */
+    if (s->usb_iter){ IOObjectRelease(s->usb_iter); s->usb_iter = 0; }
+    if (s->usb_port){ IONotificationPortDestroy(s->usb_port); s->usb_port = NULL; }
+    if (s->usb_q){ dispatch_release(s->usb_q); s->usb_q = NULL; }
+}
+
+#ifdef SHUTTLE_TEST_HOOKS
+/* Tests: a disconnect as the capture core reports it, and the reconnect state. */
+void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
+int shuttle_test_reconnect_wanted(void *d){ return atomic_load(&((shuttle_src *)d)->reconnect_wanted); }
+unsigned shuttle_test_reconnect_tries(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); unsigned t = s->reconnect_tries; pthread_mutex_unlock(&s->m); return t; }
+#endif
 
 static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     if (atomic_fetch_add(&g_instances, 1) != 0){
@@ -812,6 +1071,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     s->pending_seek_ms = -1; atomic_store(&s->seek_shown_ms, -1); atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
     if (pthread_create(&s->ctl_thr, NULL, media_thread, s) == 0) s->ctl_running = 1;
     else blog(LOG_ERROR, "[shuttle-source] could not start the media-control thread (%s): the play/pause, stop and seek controls will do nothing", strerror(errno));
+    usb_watch_start(s);
     if (pthread_create(&s->probe_thr, NULL, probe_thread, s) == 0) s->probe_running = 1;
     else blog(LOG_ERROR, "[shuttle-source] could not start the replay-length probe thread (%s): no seek bar", strerror(errno));
     if (tr_open(&s->reports, 256, report_late, s) != 0){ s->reports = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the delivery-timing reporter (%s): late handoffs are counted in the stop summary only", strerror(errno)); }
@@ -823,7 +1083,13 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
      * so no already-dispatched event can enter after it returns. */
     obs_frontend_add_event_callback(frontend_event, s);
     pthread_mutex_lock(&s->m);
-    if (obs_frontend_recording_active() && recording_path(s) == 0) s->sidecar_part = 0;   /* created during a recording */
+    if (obs_frontend_recording_active()){   /* created during a recording */
+        atomic_store(&s->session_kind, KIND_RECORDING);
+        if (recording_path(s) == 0) s->sidecar_part = 0;
+    } else if (obs_frontend_streaming_active()){   /* created during a stream: files named as a recording started now */
+        atomic_store(&s->session_kind, KIND_STREAMING);
+        if (stream_path(s) == 0) s->sidecar_part = 0;
+    }
     if (shuttle_start(s, settings) != 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
     pthread_mutex_unlock(&s->m);
     return s;
@@ -832,6 +1098,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
 static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
+    usb_watch_stop(s);                       /* no arrival callback can post to the media thread after this */
     if (s->ctl_running){   /* the render thread no longer calls in (the source is being destroyed); finish the action under way */
         pthread_mutex_lock(&s->ctl_m); s->ctl_quit = 1; atomic_store(&s->probe_abort, 1); pthread_cond_broadcast(&s->ctl_c); pthread_mutex_unlock(&s->ctl_m);
         pthread_join(s->ctl_thr, NULL);
@@ -854,6 +1121,7 @@ static void shuttle_update(void *data, obs_data_t *settings){
     pthread_mutex_lock(&s->m);
     s->restart_pending = 0; s->record_gap = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
     shuttle_stop(s);
+    atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;   /* a settings change starts the device itself (after the stop: see ACT_STOP) */
     /* the end-of-file stop follows the current settings; a restart here begins the file again */
     if (atomic_load(&s->stop_on_eof) && !(obs_data_get_bool(settings, S_REPLAY_RESTART) && obs_data_get_bool(settings, S_REPLAY_STOP))) atomic_store(&s->stop_on_eof, 0);
     shuttle_start(s, settings);
@@ -867,9 +1135,12 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_SIDECAR, true);
     obs_data_set_default_bool(settings, S_HRETIME, false);
     obs_data_set_default_bool(settings, S_REGISTRATION, true);
+    obs_data_set_default_bool(settings, S_PARTIAL, true);
     obs_data_set_default_bool(settings, S_TPC, false);
     obs_data_set_default_bool(settings, S_REPLAY_RESTART, false);
     obs_data_set_default_bool(settings, S_REPLAY_STOP, false);
+    obs_data_set_default_bool(settings, S_SETUP, true);
+    obs_data_set_default_string(settings, S_USB, "libusb");
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -879,13 +1150,18 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(in, "S-Video", "svideo");
     obs_property_list_add_string(in, "Composite", "composite");
     obs_property_list_add_string(in, "Component", "component");
+    obs_property_t *usb = obs_properties_add_list(p, S_USB, "USB stack (live capture)", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    obs_property_list_add_string(usb, "libusb (default)", "libusb");
+    obs_property_list_add_string(usb, "Apple IOUSBHost (opt-in, under test): skipped USB frames counted exactly", "iousbhost");
+    obs_properties_add_bool(p, S_SETUP, "7.5 IRE setup: on = NTSC-M, US tapes (black at code 16); off = 0 IRE, NTSC-J (black lifted). Applied at start-up: a change restarts the capture");
     obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
+    obs_properties_add_bool(p, S_PARTIAL, "Search picture: also show units that are not whole (fast-forward, rewind, unlocked signal), stretched to the frame");
     obs_properties_add_bool(p, S_TPC, "Raw capture: save a .tpc beside each recording (about 85 GB per hour)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);
-    obs_properties_add_bool(p, S_REPLAY_RESTART, "Replay: restart the file from the beginning when recording starts");
-    obs_properties_add_bool(p, S_REPLAY_STOP, "Replay: stop the recording when the file ends (with the option above)");
+    obs_properties_add_bool(p, S_REPLAY_RESTART, "Replay: restart the file from the beginning when recording or streaming starts");
+    obs_properties_add_bool(p, S_REPLAY_STOP, "Replay: stop the recording or stream when the file ends (with the option above)");
     obs_properties_add_bool(p, S_SIDECAR, "Write the registration sidecar (<recording>.registration.csv) with each OBS recording");
     return p;
 }
@@ -916,9 +1192,23 @@ static struct obs_source_info shuttle_info = {
     .media_get_state = media_get_state,
 };
 
+/* A capture that ended without closing (an OBS crash) left its undelivered raw .tpc spill in scratch: it is put
+ * into its .tpc on a background thread at load, never on the UI thread (cc_spill_recover). */
+static pthread_t spill_recover_thr; static int spill_recover_started; static _Atomic int spill_recover_stop;
+static void spill_recover_log(void *ctx, const char *line){ (void)ctx; blog(strstr(line, "recovered") ? LOG_WARNING : LOG_ERROR, "[shuttle-source] %s", line); }
+static void *spill_recover_main(void *arg){
+    (void)arg; char dir[64]; snprintf(dir, sizeof dir, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
+    if (getenv("SHUTTLE_SOURCE_NO_SPILL_RECOVERY")) return NULL;   /* tests: never touch this user's real leftovers */
+    cc_spill_recover_stats rs; int rc = cc_spill_recover(dir, spill_recover_log, NULL, &spill_recover_stop, NULL, &rs);
+    if (rc != 0) blog(LOG_ERROR, "[shuttle-source] spill recovery: %s is not a private directory of this user; nothing recovered", dir);
+    return NULL;
+}
 bool obs_module_load(void){
+    spill_recover_started = pthread_create(&spill_recover_thr, NULL, spill_recover_main, NULL) == 0;
     obs_register_source(&shuttle_info);
+    discard_stream_register();
+    tracking_meter_menu_register();
     blog(LOG_INFO, "[shuttle-source] loaded (libobs API %u.%u.%u)", LIBOBS_API_MAJOR_VER, LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
     return true;
 }
-void obs_module_unload(void){}
+void obs_module_unload(void){ tracking_meter_shutdown(); if (spill_recover_started){ atomic_store(&spill_recover_stop, 1); pthread_join(spill_recover_thr, NULL); } }   /* a paused recovery resumes at the next load */

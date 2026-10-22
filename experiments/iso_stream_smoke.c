@@ -69,12 +69,13 @@ static int vout(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
 int main(int argc,char**argv){
   const char*in = argc>1?argv[1]:"svideo";
   uint32_t vsel, asel=0x10000000; // analog audio
-  if(!strcmp(in,"component")) vsel=0x02000000;
-  else if(!strcmp(in,"composite")) vsel=0x04000000;
-  else if(!strcmp(in,"svideo")) vsel=0x06000000;
-  else if(!strcmp(in,"hdmi")){ vsel=0x00000000; asel=0x00000000; }
+  /* input select as the vendor driver writes it (capture_core.c: S-Video 0x04, composite 0x02, component 0x00, HDMI 0x01) */
+  if(!strcmp(in,"component")) vsel=0x00000000;
+  else if(!strcmp(in,"composite")) vsel=0x02000000;
+  else if(!strcmp(in,"svideo")) vsel=0x04000000;
+  else if(!strcmp(in,"hdmi")){ vsel=0x01000000; asel=0x00000000; }
   else { printf("unknown input '%s' (component|svideo|composite|hdmi)\n",in); return 9; }
-  uint32_t mode = 0x09000000 | vsel | asel | 0x20000000; // + 8-bit
+  uint32_t mode = 0x08000000 | vsel | asel | 0x20000000; // + 8-bit
   printf("input=%s  mode word=0x%08x\n", in, mode);
 
   libusb_context *ctx=NULL;
