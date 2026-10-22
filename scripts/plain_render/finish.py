@@ -21,10 +21,11 @@ v = [s for s in st if s.get('codec_type') == 'video']; a = [s for s in st if s.g
 if len(v) != 1 or len(a) != 1: refuse('expected one video and one audio track, found %d and %d' % (len(v), len(a)))
 vf = int(v[0].get('nb_frames', -1))
 if vf not in (2 * slots, 2 * slots - 1): refuse('the render has %d frames, expected %d' % (vf, 2 * slots))
-print('video %d frames (%.2f s, %d slots); audio %d samples streamed (%.2f s), %s s in the file; audio discontinuities %d, %d at transport holes; '
-      'silence inserted at holes (counter, samples): %s; re-anchors earlier than the audio (counter, samples, left contiguous): %s' % (
-      vf, vf * 1001 / 60000, slots, au['samples'], au['samples'] / 48000, a[0].get('duration'), au['discontinuities'], au['holes'],
-      au['silence_inserted'], au['reanchors_earlier']))
+print('video %d frames (%.2f s, %d slots); audio %d samples streamed (%.2f s), %s s in the file; audio breaks %d; '
+      'silence inserted (counter, samples): %s; re-anchors earlier than the audio (counter, samples, left contiguous): %s; '
+      'untrusted anchors (counter, implied samples, left contiguous): %s' % (
+      vf, vf * 1001 / 60000, slots, au['samples'], au['samples'] / 48000, a[0].get('duration'), au['discontinuities'],
+      au['silence_inserted'], au['reanchors_earlier'], au['untrusted_breaks']))
 size = os.path.getsize(PART); ino = os.stat(truth(PART)).st_ino
 if os.path.exists(OUT): os.remove(OUT)
 os.rename(PART, OUT)

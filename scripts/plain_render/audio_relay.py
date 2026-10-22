@@ -3,11 +3,16 @@
 delivered, against the video timeline relay.py builds on the audio clock (D/a0.json, published by relay.py at its first frame).
 Placement (as mux.py's was): the first block goes where its audio-clock time falls against a0, trimmed (across as many
 blocks as that takes) or led by silence, and every later block follows the previous one with no gap: the device's samples
-are continuous unless the transport lost some. Silence is inserted only across a transport hole: a block flagged
-DISCONTINUITY_BEFORE and HOLE_BEFORE ends the run, the next anchored block's time says how many samples are missing, and
-the unanchored blocks before it are held and written after the silence. Other discontinuities (unframed data, an epoch
-change) are counted and the audio stays contiguous. (mux.py judged this by the whole replay's hole count, so in a file with
-any hole every discontinuity was treated as one; the hole flag judges each break by its own cause.)
+are continuous unless a break says otherwise. At every break (DISCONTINUITY_BEFORE: a transport hole, unframed data or an
+epoch change alike) the audio goes where the next anchored block's time puts it, because relay.py places the video by that
+same anchor: silence fills the gap when the anchor is later than the samples so far, and when it is earlier the audio stays
+contiguous and the overlap is recorded. The unanchored blocks between are held and written after the silence.
+That holds only for an anchor that can be trusted. A resync counter that is not running at the video rate (the Shuttle's
+other-format modes step it ~50-70 times a second; 2026-10-21 such anchors put ~41 s of silence into continuous audio) gives
+an anchor whose time is wrong. So the anchored block and the next few are read before deciding: the anchor is trusted only
+when every complete resync interval among them holds TRUST_LO..TRUST_HI samples (1601.6 at 48 kHz, 29.97 fps) and the
+counter steps by exactly one. An untrusted break keeps the audio contiguous and is recorded by name (counter, implied gap).
+(mux.py filled every break only if the replay had a hole anywhere, and never otherwise.)
 Reads D/timing.csv (its A lines) and D/a.s24 as the replay writes them, waiting (kqueue) on the file it needs to grow and on
 D itself, whose change wakes it the moment a0.json or replay.done appears; a 1 s ceiling only covers a missed event. The
 replay's exit (D/replay.done) ends the stream. Writes D/audio.json: samples
@@ -15,7 +20,8 @@ written, silence inserted (counter, samples), discontinuities, re-anchors earlie
 before the first frame or the replay ended without the files the log promised."""
 import json, os, select, sys
 D, FIFO = sys.argv[1], sys.argv[2]
-DISC, UNANCHORED, HOLE = 1, 4, 32
+DISC, UNANCHORED, COUNTER_GAP = 1, 4, 8
+TRUST_LO, TRUST_HI, TRUST_INTERVALS = 1594, 1609, 3         # samples per resync interval; intervals needed after the anchor
 logp, pcmp, a0p, donep = (os.path.join(D, n) for n in ('timing.csv', 'a.s24', 'a0.json', 'replay.done'))
 kq = select.kqueue(); dir_fd = os.open(D, os.O_RDONLY)
 
@@ -69,10 +75,33 @@ def samples(n):
         wait_for(pcm.fileno() if pcm else None)
     return bytes(got)
 
-pos = 0; ins = []; discs = 0; holes = 0; overlaps = []; held = []; waiting = False; skip = 0
+pos = 0; ins = []; discs = 0; overlaps = []; untrusted = []; skip = 0
 def put(data):
     global pos
     out.write(data); pos += len(data) // 6
+
+def trusted(blocks):
+    """the anchor (blocks[0]) is trusted: the resync intervals that start at it and after it, as far as the blocks reach
+    complete ones, hold TRUST_LO..TRUST_HI samples each, the counter steps by one, and TRUST_INTERVALS of them are seen"""
+    groups = []                                     # [counter, samples] per resync, in order
+    for b in blocks:
+        if b['flags'] & COUNTER_GAP and groups: return False
+        if groups and b['ctr'] == groups[-1][0]: groups[-1][1] += b['n']
+        elif groups and b['ctr'] != groups[-1][0] + 1: return False
+        else: groups.append([b['ctr'], b['n']])
+    complete = groups[:-1]                          # the last interval may still be growing
+    return len(complete) >= TRUST_INTERVALS and all(TRUST_LO <= n <= TRUST_HI for _, n in complete)
+
+def settle(held, look):
+    """a break's held unanchored blocks, then its anchored block and lookahead: placed by the anchor if it is trusted"""
+    if look:
+        a = look[0]; at = round((a['pnum'] - a0) / 5); before = pos + sum(len(h['data']) // 6 for h in held)
+        if not trusted(look): untrusted.append((a['ctr'], at - before))
+        elif at > before: put(b'\0' * ((at - before) * 6)); ins.append((a['ctr'], at - before))
+        elif at < before: overlaps.append((a['ctr'], before - at))
+    for b in held + look: put(b['data'])
+
+held = None; look = None                            # a break in progress: unanchored blocks, then anchored ones
 for k, (ordinal, pnum, pden, n, flags, ctr, res) in enumerate(a_lines()):
     if pden != 240000: fail('unexpected audio timebase %d' % pden)
     data = samples(n)
@@ -84,20 +113,18 @@ for k, (ordinal, pnum, pden, n, flags, ctr, res) in enumerate(a_lines()):
         d = min(skip, len(data) // 6); data = data[d * 6:]; skip -= d
         if not data: continue
     if k == 0: put(data); continue
+    b = dict(pnum=pnum, n=len(data) // 6, flags=flags, ctr=ctr, data=data)
     if flags & DISC:
         discs += 1
-        if flags & HOLE: holes += 1; waiting = True
-    if waiting:
-        if flags & UNANCHORED: held.append(data); continue
-        at = round((pnum - a0) / 5); before = pos + sum(len(h) // 6 for h in held)
-        if at > before: put(b'\0' * ((at - before) * 6)); ins.append((ctr, at - before))
-        elif at < before: overlaps.append((ctr, before - at))
-        for h in held: put(h)
-        held = []; waiting = False
-    put(data)
-for h in held: put(h)
+        if held is not None: settle(held, look)     # the previous break, settled with what it had
+        held, look = [], []
+    if held is None: put(data); continue
+    if not look and flags & UNANCHORED: held.append(b); continue
+    look.append(b)
+    if len(look) >= TRUST_INTERVALS + 1: settle(held, look); held = look = None
+if held is not None: settle(held, look)
 out.close()
 if skip: fail('the audio ended %d samples before the first frame' % skip)
-json.dump(dict(samples=pos, discontinuities=discs, holes=holes, silence_inserted=ins, reanchors_earlier=overlaps), open(os.path.join(D, 'audio.json'), 'w'))
-print('audio_relay: %d samples (%.2f s); %d audio discontinuities, %d at transport holes; silence inserted at holes (counter, samples): %s; '
-      're-anchors earlier than the audio (counter, samples, left contiguous): %s' % (pos, pos / 48000, discs, holes, ins, overlaps), file=sys.stderr)
+json.dump(dict(samples=pos, discontinuities=discs, silence_inserted=ins, reanchors_earlier=overlaps, untrusted_breaks=untrusted), open(os.path.join(D, 'audio.json'), 'w'))
+print('audio_relay: %d samples (%.2f s); %d audio breaks; silence inserted (counter, samples): %s; re-anchors earlier than the audio '
+      '(counter, samples, left contiguous): %s; untrusted anchors (counter, implied samples, left contiguous): %s' % (pos, pos / 48000, discs, ins, overlaps, untrusted), file=sys.stderr)
