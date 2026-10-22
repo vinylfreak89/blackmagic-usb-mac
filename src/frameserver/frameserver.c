@@ -591,11 +591,12 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
     f->ht.log_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tl;
 }
-/* Registration off: publish the nominal aperture. The engine's own evaluation
- * (comb, votes, census) stays in its decision fields for the sidecar. */
+/* Registration off: publish the nominal aperture, or the first lines the configuration names. The engine's own
+ * evaluation (comb, votes, census) stays in its decision fields for the sidecar. */
 static void placement_override(const frameserver *f,ge_decision *out,unsigned n) {
     if(!f->cfg.registration_off)return;
-    for(unsigned i=0;i<n;i++)out[i].d1=out[i].d2=out[i].frame_d1=out[i].frame_d2=0;
+    int o1=f->cfg.first_line_f1?f->cfg.first_line_f1-23:0,o2=f->cfg.first_line_f2?f->cfg.first_line_f2-286:0;
+    for(unsigned i=0;i<n;i++){out[i].d1=out[i].frame_d1=o1;out[i].d2=out[i].frame_d2=o2;}
 }
 static void geometry_flush(frameserver *f) {
     if(f->retime_work)hrt_reset(f->retime_work);
@@ -776,6 +777,12 @@ int fs_open(frameserver **out, const fs_config *cfg){
         fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
     if(cfg->offline_backpressure && !cfg->capture.replay_path) return -1;   // a live device cannot wait for its consumer
+    if(cfg->first_line_f1 || cfg->first_line_f2) {
+        if(!cfg->registration_off){fprintf(stderr,"first line: only with registration off (the engine places the fields)\n");return -1;}
+        if(cfg->first_line_f1<19 || cfg->first_line_f1>27 || cfg->first_line_f2<282 || cfg->first_line_f2>290) {
+            fprintf(stderr,"first line: %d / %d outside 19..27 / 282..290\n",cfg->first_line_f1,cfg->first_line_f2);return -1;
+        }
+    }
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->cfg = *cfg;
     f->bp_m=(pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; f->bp_c=(pthread_cond_t)PTHREAD_COND_INITIALIZER;
