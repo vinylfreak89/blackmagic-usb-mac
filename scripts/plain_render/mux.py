@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mux.py D VIDEO_ONLY OUT -- the audio exactly as the device delivered it, against the video timeline relay.py built on the audio
+"""mux.py D VIDEO_ONLY OUT [--replace] -- (--replace: an existing OUT is emptied in place and rewritten) the audio exactly as the device delivered it, against the video timeline relay.py built on the audio
 clock (D/schedule.json: a0 and the slot count); then video + audio muxed in ONE pass with the index reserved at the front at its
 exact size. Checks the frame count; prints RESULT.
 Audio placement: the first block goes where its audio-clock time falls against a0 (trimmed or led by silence), and every later
@@ -14,8 +14,8 @@ top-level atoms with the mdat payload left as a hole, so the index size comes fr
 final pass reads the media (on a cloud volume each full read is a download; 2026-10-21 three reads of a 65 GB render helped
 exhaust the account's daily download cap). The reservation is the exact size, so the output has no padding beyond ffmpeg's own."""
 import os, re, subprocess, sys, json
-D=sys.argv[1]; VOUT=sys.argv[2]; OUT=sys.argv[3]
-if os.path.exists(OUT): print("RESULT REFUSED: output exists"); sys.exit(2)
+D=sys.argv[1]; VOUT=sys.argv[2]; OUT=sys.argv[3]; REPLACE=sys.argv[4:5]==["--replace"]
+if os.path.exists(OUT) and not REPLACE: print("RESULT REFUSED: output exists"); sys.exit(2)
 sched=json.load(open(f"{D}/schedule.json")); frames=sched["slots"]; a0=sched["a0_ticks"]
 m=re.search(r"\bhole (\d+)", open(f"{D}/replay.log").read())
 if not m: print("RESULT REFUSED: replay.log has no hole count"); sys.exit(1)

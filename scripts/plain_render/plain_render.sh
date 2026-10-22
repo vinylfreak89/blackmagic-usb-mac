@@ -1,5 +1,5 @@
 #!/bin/bash
-# plain_render.sh CAPTURE.tpc OUT.mov [WORKDIR]
+# plain_render.sh [--replace] CAPTURE.tpc OUT.mov [WORKDIR]
 #
 # The plain review render: no overlays, no registration, no H-retiming. Used for the one-play tape
 # (2026-10-17 13-48-05) and for test recordings.
@@ -36,12 +36,16 @@ set -u
 # Run as plain lines, bash reads the file as it goes, so an edit during a render makes the running render execute
 # the new file from the old byte offset (2026-10-21: an edit mid-render ended one with "unexpected EOF").
 main() {
-SRC=${1:?usage: plain_render.sh CAPTURE.tpc OUT.mov [WORKDIR]}; OUT=${2:?usage: plain_render.sh CAPTURE.tpc OUT.mov [WORKDIR]}
+REPLACE=""; [ "${1:-}" = "--replace" ] && { REPLACE=--replace; shift; }
+SRC=${1:?usage: plain_render.sh [--replace] CAPTURE.tpc OUT.mov [WORKDIR]}; OUT=${2:?usage: plain_render.sh [--replace] CAPTURE.tpc OUT.mov [WORKDIR]}
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
 RP="$REPO/src/frameserver/frameserver_replay"
 D=${3:-$(mktemp -d "${TMPDIR:-/tmp}/plain_render.XXXXXX")}; mkdir -p "$D"
 VOUT="$(dirname "$OUT")/.$(basename "$OUT" .mov).video-only.mov"
-[ -e "$OUT" ] && { echo "REFUSE: output exists: $OUT"; exit 2; }
+# An existing output is never touched unless --replace is given; then it stays intact until the mux, which empties it in place
+# and writes the new render into it (on JuiceMount safer than deleting and recreating it, see empty_in_place below).
+[ -e "$OUT" ] && [ -z "$REPLACE" ] && { echo "REFUSE: output exists: $OUT (add --replace to overwrite it)"; exit 2; }
+[ -e "$OUT" ] && [ ! -f "$OUT" ] && { echo "REFUSE: output exists and is not a file: $OUT"; exit 2; }
 DLOG=${PLAIN_RENDER_DECISION_LOG:-}
 [ -n "$DLOG" ] && [ -e "$DLOG" ] && { echo "REFUSE: decision log exists: $DLOG"; exit 2; }
 [ -x "$RP" ] || { echo "REFUSE: build $RP first (make -C src/frameserver frameserver_replay)"; exit 2; }
@@ -108,7 +112,7 @@ wait $PL; FRC=$?; rm -f "$D/v.fifo"; date
 echo "replay exit $RC, encode exit $FRC"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log"
 if [ "$CRC" != 0 ]; then echo "CHECKED READ FAILED (exit $CRC): the capture was not proven intact; see $D/checked_read.log and $D/checked_read.json. Render not finished."; exit 1; fi
 if [ $RC -ne 0 ] || [ $FRC -ne 0 ]; then echo "STAGE 1 FAILED: logs in $D, video-only kept at $VOUT"; exit 1; fi
-python3 "$HERE/mux.py" "$D" "$VOUT" "$OUT" || { echo "MUX FAILED: logs in $D, video-only kept at $VOUT"; exit 1; }
+python3 "$HERE/mux.py" "$D" "$VOUT" "$OUT" $REPLACE || { echo "MUX FAILED: logs in $D, video-only kept at $VOUT"; exit 1; }
 rm -f "$VOUT"; [ -z "${3:-}" ] && rm -rf "$D"
 date; echo ALL DONE
 }
