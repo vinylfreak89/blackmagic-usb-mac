@@ -276,7 +276,7 @@ static void aq_enqueue(void *ctx, const ap_block *b){
     if (h - t >= f->aq_slots || b->n_frames > f->aq_cap_frames){
         atomic_fetch_add(&f->aq_dropped_blocks, 1); atomic_fetch_add(&f->aq_dropped_frames, b->n_frames);
         fs_test_audio_drop();
-        f->aq_drop_flags |= b->flags & (AP_FLAG_DISCONTINUITY_BEFORE | AP_FLAG_HOLE_BEFORE);   // a dropped block's break, and its cause
+        f->aq_drop_flags |= b->flags & AP_FLAG_DISCONTINUITY_BEFORE;
         f->aq_drops_pending++; return;      // consumer too slow: shed HERE, never upstream
     }
     unsigned i = h % f->aq_slots;

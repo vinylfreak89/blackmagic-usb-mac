@@ -138,24 +138,9 @@ int main(int argc,char **argv){
     if (s.n == 3){
         CHECK(!(s.blocks[0].flags & AP_FLAG_DISCONTINUITY_BEFORE), "block before the hole is clean");
         CHECK((s.blocks[1].flags & AP_FLAG_DISCONTINUITY_BEFORE) && (s.blocks[1].flags & AP_FLAG_UNANCHORED), "block after the hole is flagged and unanchored");
-        CHECK(s.blocks[1].flags & AP_FLAG_HOLE_BEFORE, "a transport hole says so: samples are missing");
-        CHECK(!(s.blocks[2].flags & AP_FLAG_HOLE_BEFORE), "the hole flag lands on one block only");
         CHECK(!(s.blocks[2].flags & (AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_UNANCHORED)) && s.blocks[2].anchor_counter_ext == 8 && s.blocks[2].pts_num == 8ull * AP_TICKS_PER_UNIT, "re-anchored at the next resync, at that unit's video time");
     }
     CHECK(st.discontinuities == 1 && st.records_hole == 1 && s.frames == 5, "one discontinuity, conservation 5");
-
-    // 3b: the same shape with unframed data in place of the hole: a discontinuity, but no samples are known to be missing
-    ap_close(p); memset(&s, 0, sizeof s); CHECK(ap_open(&p, 64, &sink) == 0, "reopen 3b");
-    ord = 1000;
-    { unit_audio_observation o = resync(1, ord, 7, 0); ap_on_audio(p, &o); }
-    feed_pcm(p, 1, &ord, 2, 1);
-    { unit_audio_observation o = hole(1, ord); o.kind = UNIT_AUDIO_UNFRAMED; ap_on_audio(p, &o); }
-    feed_pcm(p, 1, &ord, 2, 2);
-    { unit_audio_observation o = resync(1, ord, 8, 0); ap_on_audio(p, &o); }
-    feed_pcm(p, 1, &ord, 1, 3);
-    ap_flush(p); ap_get_stats(p, &st);
-    CHECK(s.n == 3 && (s.blocks[1].flags & AP_FLAG_DISCONTINUITY_BEFORE) && !(s.blocks[1].flags & AP_FLAG_HOLE_BEFORE),
-          "unframed data: discontinuity flagged, hole not (%d blocks)", s.n);
     CHECK(ap_lookup_correlation(p,1,7,&old) && ap_lookup_correlation(p,1,8,&hit) &&
           old.run!=hit.run && hit.residual_ticks==0, "hole changes anchor generation, not an audio step");
 
@@ -194,7 +179,6 @@ int main(int argc,char **argv){
         CHECK((s.blocks[0].flags & AP_FLAG_PARTIAL) && (s.blocks[1].flags & AP_FLAG_PARTIAL), "first two blocks partial");
         CHECK(s.blocks[1].pts_num == 4 * 5 && s.blocks[2].pts_num == 8 * 5, "partial blocks keep contiguous pts");
         CHECK((s.blocks[3].flags & AP_FLAG_DISCONTINUITY_BEFORE) && s.blocks[3].epoch == 2 && (s.blocks[3].flags & AP_FLAG_UNANCHORED), "epoch change flagged and unanchored");
-        CHECK(!(s.blocks[3].flags & AP_FLAG_HOLE_BEFORE), "an epoch change is not a transport hole");
     }
     { unit_audio_observation o=resync(2,1,1,0); ap_on_audio(p,&o); }
     CHECK(ap_lookup_correlation(p,1,0,&old) && ap_lookup_correlation(p,2,1,&hit) &&

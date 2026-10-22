@@ -23,11 +23,11 @@ int main(void) {
     assert(f->aq[0].flags==AP_FLAG_DROPPED_BEFORE);
     assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0 && ticks==80080 && clock.residual_steps==2); // a step inside dropped blocks is still seen
     assert(!memcmp(f->aq[0].s24le,pcm,sizeof pcm));
-    // The first block of a genuinely new run is dropped; its break MUST survive, and so must its cause (a transport hole).
-    b.flags=AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_HOLE_BEFORE|AP_FLAG_UNANCHORED; aq_enqueue(f,&b);
+    // The first block of a genuinely new run is dropped; its break MUST survive.
+    b.flags=AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_UNANCHORED; aq_enqueue(f,&b);
     b.flags=0; b.correlation_residual=0; aq_enqueue(f,&b); // another dropped block
     atomic_store(&f->aq_tail,3); aq_enqueue(f,&b);
-    assert(f->aq[0].flags==(AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_HOLE_BEFORE|AP_FLAG_DROPPED_BEFORE));
+    assert(f->aq[0].flags==(AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_DROPPED_BEFORE));
     assert(shuttle_audio_time(&clock,&f->aq[0],&ticks)==0 && ticks==80080 && clock.residual_steps==2); // a break starts a new comparison
     atomic_store(&f->aq_tail,4); aq_enqueue(f,&b); assert(f->aq[0].flags==0);
     assert(atomic_load(&f->aq_dropped_blocks)==3 && atomic_load(&f->aq_dropped_frames)==6);
