@@ -80,6 +80,11 @@ open(sys.argv[2], 'w').write(''.join('%d\n' % c for c in lost)); print('lost uni
 PY
   LOST="$D/lost_counters.txt"
 else echo "no sidecar beside the capture: single-slot holds are off"; fi
+# The first picture line of each field, for the crop: PLAIN_RENDER_FIRST_LINE=F1,F2 (e.g. 21,284), or measured from the
+# capture's first 15 s of picture by measure_first_line.py (the engine's waveform top scan, searching from line 21).
+if [ -n "${PLAIN_RENDER_FIRST_LINE:-}" ]; then FL="$PLAIN_RENDER_FIRST_LINE"; echo "first picture line: $FL (PLAIN_RENDER_FIRST_LINE)"
+else FL=$(python3 "$HERE/measure_first_line.py" "$SRC" "$D" 2>"$D/first_line.log") || { echo "REFUSE: could not measure the first picture line; see $D/first_line.log"; exit 2; }
+  cat "$D/first_line.log"; fi
 python3 "$HERE/audio_relay.py" "$D" "$D/a.fifo" 2>"$D/audio_relay.log" & AP=$!
 python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
   -thread_queue_size 64 -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
@@ -104,7 +109,7 @@ case "$CHK" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; 
 try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
 except OSError: pass' "$D/cap.fifo"; } & CRP=$!
 fi;; esac
-FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
+FS_FIRST_LINE="$FL" FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
 RC=$?; touch "$D/replay.done"
 CRC=0; if [ -n "$CRP" ]; then wait $CRP; CRC=$(cat "$D/checked_read.rc" 2>/dev/null || echo 9); rm -f "$D/cap.fifo"; tail -1 "$D/checked_read.log"; fi
 # A replay that died before opening the FIFO leaves the relay blocked opening it: open the write end once without
