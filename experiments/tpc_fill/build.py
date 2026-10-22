@@ -161,7 +161,10 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             q1 += 1; nb += S.vstats(q1)[1]; n_old += S.vstats(q1)[0]
         ns = assemble(q1); assert len(ns) == nb, (len(ns), nb)
         assert best, 'no whole number of video transfers fits'
-        kv, f, P, rem = best; n_long, odd = divmod(rem, 32)
+        k, f, P, rem = best; n_long, odd = divmod(rem, 32)
+        # transfers added = the rebuilt window's count minus the original's; it is k only when the original window's packets
+        # filled whole transfers (partial transfers either side of a host loss make it one or more fewer)
+        kv = P // S.vnpk - (q1 - q0 + 1)
         sizes = [2848 if b else 2816 for b in spread(n_long, P)]
         if odd: sizes[-1] += odd if sizes[-1] == 2816 else odd - 32 if False else odd
         assert sum(sizes) == len(ns), (sum(sizes), len(ns))
@@ -303,7 +306,8 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         Rn = len(out); assert Rn == r_old + inserted, (Rn, r_old, inserted)
         best = best_fit(n_old, Rn)
         assert best, 'no whole number of audio transfers fits'
-        ka, f, P, eights = best; odd = Rn - 4 * P - 4 * eights
+        k, f, P, eights = best; odd = Rn - 4 * P - 4 * eights
+        ka = P // S.anpk - (p1 - p0 + 1)          # as for video: the rebuilt count minus the original's
         prev_al = R.recs[R.tx[(0x84, p0 - 1)][1]][7]
         flags = spread(eights, P)
         if abs(f - 0.5) < 0.02 and flags[0] == (prev_al == 192): flags = flags[1:] + flags[:1]      # keep the 192/96 alternation going across the window start
