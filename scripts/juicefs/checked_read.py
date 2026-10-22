@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""checked_read.py FILE [--out PATH] [--report JSON]
+"""checked_read.py FILE [--out PATH] [--report JSON] [--bytes-from COPY]
 
 Reads FILE from a JuiceFS volume sequentially and writes it to --out (default stdout, e.g. a FIFO a replay reads), passing
 on each piece only after its bytes are proven to be the stored block's bytes. Exit 0 when every byte was proven; exit 3
@@ -16,6 +16,8 @@ So the proof is made at read time, against the store:
   - A read that does not match is re-read up to 3 times, bypassing the kernel page cache (the bad bytes stick there);
     every mismatch is reported, never hidden.
 FILE is read through JuiceFS's own FUSE mount, so the bytes checked are exactly what JuiceFS returned.
+--bytes-from COPY reads the bytes from a local copy of FILE instead (same size), still proving each piece against FILE's layout
+and the store's listing: a render from the copy needs no downloads, and the copy itself is proven identical to the stored file.
 
 Environment: CHECKED_READ_MOUNT (default ~/.juicemount/fuse-internal), JFS_META (default redis://127.0.0.1:6379/1),
 CHECKED_READ_RCLONE (rclone remote for the volume's bucket, default "backblaze"; the bucket and the volume prefix come
@@ -124,9 +126,11 @@ def main():
     r = Redis(os.environ.get('JFS_META', 'redis://127.0.0.1:6379/1'))
     lay = layout(r, ino, size); plan = list(pieces(lay, bs))
     if sum(p[1] for p in plan) != size: die('layout covers %d of %d bytes' % (sum(p[1] for p in plan), size))
-    fd = os.open(src, os.O_RDONLY); fcntl.fcntl(fd, F_NOCACHE, 1)
+    data_src = opt.get('--bytes-from', src)
+    if data_src != src and os.path.getsize(data_src) != size: die('%s is %d bytes, %s is %d' % (data_src, os.path.getsize(data_src), a[0], size))
+    fd = os.open(data_src, os.O_RDONLY); fcntl.fcntl(fd, F_NOCACHE, 1)
     out = open(opt['--out'], 'wb', buffering=0) if '--out' in opt else sys.stdout.buffer
-    stats = dict(file=a[0], inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0,
+    stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0,
                  holes=0, retried=0, mismatches=[], bytes_written=0, started=time.strftime('%F %T'))
     t0 = time.time(); last = t0
     try:

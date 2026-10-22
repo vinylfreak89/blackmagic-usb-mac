@@ -24,6 +24,8 @@
 # A capture on the JuiceFS share (/Volumes/zpool) is read through scripts/juicefs/checked_read.py, which passes the replay each
 # piece only after proving it against the SHA-1 the object store lists (JuiceFS 1.4.1 can hand back another block's data as a
 # successful read: juicedata/juicefs#7499); a piece that never matches fails the render. PLAIN_RENDER_CHECKED_READ=0 turns this off.
+# PLAIN_RENDER_CHECK_AGAINST=/Volumes/zpool/<capture> renders a local copy of that capture (CAPTURE.tpc) the same way: the copy's
+# bytes are proven against the share file's blocks, so nothing is downloaded and the copy itself is proven intact.
 # The mux pass still reads the video-only file directly: that read is not checked yet.
 # CAPTURE.tpc may be a FIFO (the replay reads it as a stream). PLAIN_RENDER_DECISION_LOG=FILE also writes the replay's
 # decision log (the sidecar's schema) from the same pass; it is not overwritten if it exists.
@@ -80,9 +82,10 @@ python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | 
 # The replay's input: the capture itself, or a FIFO fed by the checked reader. If the checked reader ends without opening the
 # FIFO (a setup error), the write end is opened once without blocking so the replay sees end of file instead of waiting forever.
 RSRC="$SRC"; CRP=""
-case "$SRC" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; then
+CHK="$SRC"; CRARGS=(); [ -n "${PLAIN_RENDER_CHECK_AGAINST:-}" ] && { CHK="$PLAIN_RENDER_CHECK_AGAINST"; CRARGS=(--bytes-from "$SRC"); }
+case "$CHK" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; then
   mkfifo "$D/cap.fifo"; RSRC="$D/cap.fifo"
-  { python3 "$REPO/scripts/juicefs/checked_read.py" "$SRC" --out "$D/cap.fifo" --report "$D/checked_read.json" 2>"$D/checked_read.log"
+  { python3 "$REPO/scripts/juicefs/checked_read.py" "$CHK" ${CRARGS[@]+"${CRARGS[@]}"} --out "$D/cap.fifo" --report "$D/checked_read.json" 2>"$D/checked_read.log"
     echo $? > "$D/checked_read.rc"
     python3 -c 'import os, sys
 try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
