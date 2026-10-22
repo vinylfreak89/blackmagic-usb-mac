@@ -56,6 +56,8 @@ enum ap_flags {
     AP_FLAG_UNANCHORED           = 1u << 2,  // no resync yet in this run: pts is ordinal-only
     AP_FLAG_COUNTER_GAP          = 1u << 3,  // the last resync's counter was not previous + 1
     AP_FLAG_DROPPED_BEFORE       = 1u << 4,  // downstream queue omitted blocks; does NOT re-anchor audio
+    AP_FLAG_HOLE_BEFORE          = 1u << 5,  // with DISCONTINUITY_BEFORE: the cause was a transport hole, so samples are
+                                             // missing (unframed data or an epoch change set DISCONTINUITY_BEFORE alone)
 };
 
 typedef struct {

@@ -206,7 +206,7 @@ void ap_on_audio(audio_publisher *p, const unit_audio_observation *o){
         corr_record_(p, o->counter_extended, o->sample_ordinal, pts_of_(p, o->sample_ordinal), 1);
         break; }
     case UNIT_AUDIO_HOLE:
-        p->st.records_hole++; discontinuity_(p); break;
+        p->st.records_hole++; discontinuity_(p); p->pending_flags |= AP_FLAG_HOLE_BEFORE; break;
     case UNIT_AUDIO_UNFRAMED:
         p->st.records_unframed++; discontinuity_(p); break;
     }
