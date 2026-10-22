@@ -73,4 +73,20 @@ assert zero_runs(got) == [] and [x[0] for x in j['untrusted_breaks']] == [15], j
 got, j = run(0, run1 + [held] + after(15) + [(0, 200, DISC | UNANCHORED, 0)] + after(25))
 gap2 = round(25 * U / T) - (round(15 * U / T) + sum(n_at(c) for c in range(15, 21)) + 200)
 assert [g for _, g in zero_runs(got)] == [gap, gap2] and j['discontinuities'] == 2, (zero_runs(got), gap, gap2)
+# 10. ffmpeg stops reading when the video ends (-shortest): the relay ends cleanly and says so
+import threading
+d = tempfile.mkdtemp(); v = 1; ordinal = 0
+with open(os.path.join(d, 'timing.csv'), 'w') as log, open(os.path.join(d, 'a.s24'), 'wb') as pcm:
+    log.write('kind,...\n')
+    for pts, n, flags, ctr in [unit(c) for c in range(200)]:          # ~6.7 s of audio, far more than a pipe holds
+        log.write('A,%d,%d,240000,%d,%d,%d,0\n' % (ordinal, pts, n, flags, ctr)); ordinal += n; pcm.write(b'\1' * 6 * n)
+json.dump(dict(a0_ticks=0), open(os.path.join(d, 'a0.json'), 'w')); open(os.path.join(d, 'replay.done'), 'w').close()
+fifo = os.path.join(d, 'a.fifo'); os.mkfifo(fifo); took = []
+def reader():
+    with open(fifo, 'rb') as f: took.append(len(f.read(6 * 48000)))   # one second, then the reader goes away
+t = threading.Thread(target=reader); t.start()
+r = subprocess.run([sys.executable, os.path.join(HERE, 'audio_relay.py'), d, fifo], capture_output=True, text=True, timeout=60); t.join()
+j = json.load(open(os.path.join(d, 'audio.json'))); shutil.rmtree(d)
+assert r.returncode == 0 and 'Broken pipe' not in r.stderr and 'Exception ignored' not in r.stderr, r.stderr
+assert j['ended_by_reader'] and j['samples'] >= 48000 and took == [6 * 48000], (j, took)
 print('audio_relay: all tests passed')

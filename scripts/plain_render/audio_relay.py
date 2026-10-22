@@ -102,29 +102,38 @@ def settle(held, look):
     for b in held + look: put(b['data'])
 
 held = None; look = None                            # a break in progress: unanchored blocks, then anchored ones
-for k, (ordinal, pnum, pden, n, flags, ctr, res) in enumerate(a_lines()):
-    if pden != 240000: fail('unexpected audio timebase %d' % pden)
-    data = samples(n)
-    if k == 0:
-        at = round((pnum - a0) / 5)                 # 5 ticks per sample
-        if at > 0: put(b'\0' * (at * 6))
-        else: skip = -at                            # audio from before the first frame: dropped, across as many blocks as it spans
-    if skip:
-        d = min(skip, len(data) // 6); data = data[d * 6:]; skip -= d
-        if not data: continue
-    if k == 0: put(data); continue
-    b = dict(pnum=pnum, n=len(data) // 6, flags=flags, ctr=ctr, data=data)
-    if flags & DISC:
-        discs += 1
-        if held is not None: settle(held, look)     # the previous break, settled with what it had
-        held, look = [], []
-    if held is None: put(data); continue
-    if not look and flags & UNANCHORED: held.append(b); continue
-    look.append(b)
-    if len(look) >= TRUST_INTERVALS + 1: settle(held, look); held = look = None
-if held is not None: settle(held, look)
+reader_closed = False
+try:
+    for k, (ordinal, pnum, pden, n, flags, ctr, res) in enumerate(a_lines()):
+        if pden != 240000: fail('unexpected audio timebase %d' % pden)
+        data = samples(n)
+        if k == 0:
+            at = round((pnum - a0) / 5)                 # 5 ticks per sample
+            if at > 0: put(b'\0' * (at * 6))
+            else: skip = -at                            # audio from before the first frame: dropped, across as many blocks as it spans
+        if skip:
+            d = min(skip, len(data) // 6); data = data[d * 6:]; skip -= d
+            if not data: continue
+        if k == 0: put(data); continue
+        b = dict(pnum=pnum, n=len(data) // 6, flags=flags, ctr=ctr, data=data)
+        if flags & DISC:
+            discs += 1
+            if held is not None: settle(held, look)     # the previous break, settled with what it had
+            held, look = [], []
+        if held is None: put(data); continue
+        if not look and flags & UNANCHORED: held.append(b); continue
+        look.append(b)
+        if len(look) >= TRUST_INTERVALS + 1: settle(held, look); held = look = None
+    if held is not None: settle(held, look)
+except BrokenPipeError:
+    # ffmpeg stops reading at the end of the shorter stream (-shortest): the video ended first and the rest of the audio
+    # has nowhere to go. That is the end of the render's audio, not a failure; ffmpeg's own exit says whether it was well.
+    reader_closed = True
+    os.dup2(os.open(os.devnull, os.O_WRONLY), out.fileno())          # the buffered tail goes nowhere instead of erroring at exit
 out.close()
 if skip: fail('the audio ended %d samples before the first frame' % skip)
-json.dump(dict(samples=pos, discontinuities=discs, silence_inserted=ins, reanchors_earlier=overlaps, untrusted_breaks=untrusted), open(os.path.join(D, 'audio.json'), 'w'))
-print('audio_relay: %d samples (%.2f s); %d audio breaks; silence inserted (counter, samples): %s; re-anchors earlier than the audio '
-      '(counter, samples, left contiguous): %s; untrusted anchors (counter, implied samples, left contiguous): %s' % (pos, pos / 48000, discs, ins, overlaps, untrusted), file=sys.stderr)
+json.dump(dict(samples=pos, discontinuities=discs, silence_inserted=ins, reanchors_earlier=overlaps, untrusted_breaks=untrusted,
+               ended_by_reader=reader_closed), open(os.path.join(D, 'audio.json'), 'w'))
+print('audio_relay: %d samples (%.2f s)%s; %d audio breaks; silence inserted (counter, samples): %s; re-anchors earlier than the audio '
+      '(counter, samples, left contiguous): %s; untrusted anchors (counter, implied samples, left contiguous): %s' % (pos, pos / 48000,
+      ', the rest not taken by ffmpeg (the video ended first)' if reader_closed else '', discs, ins, overlaps, untrusted), file=sys.stderr)
