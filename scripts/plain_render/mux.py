@@ -24,7 +24,7 @@ A=[]
 for line in open(f"{D}/timing.csv"):
     f=line.rstrip("\n").split(",")
     if f[0]=="A": A.append([int(x) for x in f[1:]])
-pcm=open(f"{D}/a.s24","rb"); out=open(f"{D}/a_sync.s24","wb"); pos=0; ins=[]; discs=0; overlaps=[]; held=[]; waiting=False
+pcm=open(f"{D}/a.s24","rb"); out=open(f"{D}/a_sync.s24","wb"); pos=0; ins=[]; discs=0; overlaps=[]; held=[]; waiting=False; skip=0
 def put(data):
     global pos
     out.write(data); pos+=len(data)//6
@@ -33,9 +33,12 @@ for k,(ordinal,pnum,pden,n,flags,ctr,res) in enumerate(A):
     data=pcm.read(n*6); assert len(data)==n*6, ("audio dump shorter than its log", ordinal)
     if k==0:
         at=round((pnum-a0)/5)                       # 5 ticks per sample
-        if at<0: data=data[min(-at,n)*6:]
-        elif at>0: put(b"\0"*(at*6))
-        put(data); continue
+        if at>0: put(b"\0"*(at*6))
+        else: skip=-at                              # audio from before the first frame: drop it, across as many blocks as it spans
+    if skip:
+        d=min(skip,len(data)//6); data=data[d*6:]; skip-=d   # (until 2026-10-22 only the first block was trimmed: a 0.43 s
+        if not data: continue                                #  lead-in of pre-picture audio played under the start, all early)
+    if k==0: put(data); continue
     if flags & DISC:
         discs+=1
         if holes: waiting=True
@@ -49,6 +52,7 @@ for k,(ordinal,pnum,pden,n,flags,ctr,res) in enumerate(A):
     put(data)
 for h in held: put(h)
 out.close()
+if skip: print(f"RESULT REFUSED: the audio ended {skip} samples before the first frame"); sys.exit(1)
 print(f"video {frames} frames ({frames*1001/30000:.2f} s); audio {pos} samples ({pos/48000:.2f} s); replay holes {holes}; audio discontinuities {discs}; "
       f"silence inserted at holes (counter, samples): {ins}; re-anchors earlier than the audio (counter, samples, left contiguous): {overlaps}")
 import struct
