@@ -628,6 +628,11 @@ HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in o
   extension they pushed the video counter ahead for good and video units stopped finding their audio. Unit
   numbers logged for tape 1 by builds before this are one too high (a start-up `0x0800` unit); those quoted
   in §9 (494/495/497/500/518, 848) are in that old numbering.
+- **Across a no-signal stretch the picture counter is not time (measured 2026-10-23, `Aaron_1yr_to_3yr`, 4:07).**
+  Two signal losses mid-tape (13 then 8 `0x0800` units, no USB gaps): the picture counter advanced 33 from unit 10763 to
+  10796 while 7,107 video iso packets passed, 26.6 unit periods at the measured 266.93 packets per normal unit. The audio
+  sample count said about 26. The USB packet count is the real-time ruler; a render that keeps the audio contiguous there
+  is right, and one that fills the counter's extra 213 ms with silence is not.
 - **Iso packets shrink to ~2,848 B** (every packet "short" vs the 15,360 B request) while the byte
   rate stays ≈22.6 MB/s: packet length is a scheduling artefact, never a unit-validity signal.
 - Parser + classifier handled all of it without a fixed-raster consumer ever seeing a wrong-size
