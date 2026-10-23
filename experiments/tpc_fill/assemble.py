@@ -77,7 +77,9 @@ def put(b):
                 raise SystemExit('STOPPED: resume mismatch at byte %d: the partial file is not this stream' % (at + i))
             done = k
         while done < len(chunk): done += os.write(fd, chunk[done:])
-        if proof: proof.wrote(chunk)
+        if proof:
+            try: proof.wrote(chunk)
+            except write_proof.Failed as e: raise SystemExit('STOPPED: the output cannot be proven stored as written: %s' % e)
         if tee is not None: to_tee(chunk)
     sha.update(b); written += len(b)
 STAGING_MAX = float(os.environ.get('ASSEMBLE_STAGING_MAX_GB', '6')) * (1 << 30)
@@ -180,7 +182,9 @@ os.close(fd)
 proven = None
 if proof:
     try: proven = proof.finish()
-    except write_proof.Failed as e: raise SystemExit('STOPPED: the output is not proven stored as written: %s' % e)
+    except write_proof.Failed as e:
+        raise SystemExit('STOPPED: the output is not proven stored as written: %s (the file is kept; rerun with --resume-defer-check and '
+                         'ASSEMBLE_WRITE_PROOF=1 to prove it again without rewriting it)' % e)
 res = dict(write_proof=proven, source=src, destination=dst, resumed_from=resume_len, source_bytes=size - base, bytes=written, sha256=sha.hexdigest(), records=nrec, fills=len(mods), video_transfers_added=ov, audio_transfers_added=oa, seconds=time.time() - t0, segments=segs)
 json.dump(res, open(os.environ.get('ASSEMBLY_JSON', 'ev/test_assembly.json' if base else dst.split('/')[-1] + '.assembly.json'), 'w'), indent=1)
 print('done: %d bytes, sha256 %s, %d records, %d fills, +%d video and +%d audio transfers, %.0f s' % (written, sha.hexdigest(), nrec, len(mods), ov, oa, time.time() - t0), file=sys.stderr)

@@ -36,7 +36,7 @@ ran with either on fails the decision-column gate, by name, rather than getting 
 """
 import hashlib, json, os, re, signal, subprocess, sys, threading, time
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
-sys.path.insert(0, HERE)
+sys.path.insert(0, HERE); sys.path.insert(1, os.path.join(REPO, 'scripts', 'juicefs'))
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
 KINDS = {'tpc': '.mov.raw.tpc', 'csv': '.mov.registration.csv', 'mov': '.mov'}
 DONOR_MAX = 4 << 30
@@ -80,11 +80,8 @@ def busy(paths):
     out += sorted({l[1:] for l in p.stdout.splitlines() if l.startswith('n')})
     fp = {truth(x): x for x in paths if on_share(x)}
     if fp:
-        for pid in subprocess.run(['pgrep', '-x', 'JuiceMount'], capture_output=True, text=True).stdout.split():
-            mode = None
-            for l in subprocess.run(['lsof', '-a', '-p', pid, '-Fan'], capture_output=True, text=True).stdout.splitlines():
-                if l.startswith('a'): mode = l[1:]
-                elif l.startswith('n') and l[1:] in fp and mode in ('w', 'u'): out.append(fp[l[1:]] + ' (JuiceMount write handle)')
+        from write_proof import juicemount_write_handles
+        out += [fp[f] + ' (JuiceMount write handle)' for f in sorted(juicemount_write_handles(fp))]
     return out
 
 # ------------------------------------------------------------------ 1. line up
@@ -177,27 +174,35 @@ def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL, assembler=None):
     rout = os.path.join(W, 'render.out')
     rp = subprocess.Popen(['/bin/bash', os.path.join(REPO, 'scripts/plain_render/plain_render.sh'), fb, RENDER, os.path.join(W, 'render')],
                           env=env, stdout=open(rout, 'w'), stderr=subprocess.STDOUT, start_new_session=True)
+    def unblock(path, flags):      # a FIFO whose other end will never open: open it ourselves, so the blocked side sees EOF
+        try: os.close(os.open(path, flags | os.O_NONBLOCK))
+        except OSError: pass
+    def killpg(sig):
+        try: os.killpg(rp.pid, sig)
+        except (ProcessLookupError, PermissionError): pass
     try:
         while True:              # the render's exit, or the read-back's failure, ends the wait
             try: rp.wait(timeout=30); break
             except subprocess.TimeoutExpired: pass
             if not th.is_alive() and rd['err']:
-                log('read-back failed (%s); stopping the render' % rd['err']); os.killpg(rp.pid, signal.SIGTERM)
+                log('read-back failed (%s); stopping the render' % rd['err']); killpg(signal.SIGTERM)
                 try: rp.wait(timeout=60)
-                except subprocess.TimeoutExpired: os.killpg(rp.pid, signal.SIGKILL); rp.wait()
+                except subprocess.TimeoutExpired: killpg(signal.SIGKILL); rp.wait()
                 break
+            if cr and cr.poll() is not None and th.is_alive() and src == fa:
+                unblock(fa, os.O_WRONLY)       # the source exited, perhaps before it opened the FIFO: the read-back ends
+        if th.is_alive():            # the render ended without draining its FIFO: a broken pipe ends the read-back
+            unblock(fb, os.O_RDONLY)
+        th.join(120)
+        if th.is_alive() and src == fa: unblock(fa, os.O_WRONLY); th.join(60)
+        if assembler: cr.wait()          # its write proof waits for the uploads, bounded by WRITE_PROOF_UPLOAD_S
+        elif cr:
+            try: cr.wait(timeout=120)
+            except subprocess.TimeoutExpired: cr.kill(); cr.wait()
     except BaseException:
-        os.killpg(rp.pid, signal.SIGTERM)
-        if assembler: cr.terminate()
+        killpg(signal.SIGTERM)
+        if cr and cr.poll() is None: cr.terminate(); cr.wait()
         raise
-    if th.is_alive():            # the render ended without draining its FIFO: a broken pipe ends the read-back
-        try: os.close(os.open(fb, os.O_RDONLY | os.O_NONBLOCK))
-        except OSError: pass
-    th.join(120)
-    if assembler: cr.wait()          # its write proof waits for the uploads, bounded by WRITE_PROOF_UPLOAD_S
-    elif cr:
-        try: cr.wait(timeout=120)
-        except subprocess.TimeoutExpired: cr.kill(); cr.wait()
     for f in (fa, fb): os.remove(f)
     out = open(rout).read()
     if assembler and cr.returncode != 0: fail('assemble.py failed (exit %d); the partial %s is left for inspection' % (cr.returncode, PATCHED))
@@ -309,7 +314,7 @@ def run(T, ats, joins_d, W):
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
     for x in donors:
         if os.path.getsize(x) > DONOR_MAX: fail('the donor %s is %.1f GB; a recapture of the passages is expected (at most %.0f GB)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
-    st = lambda p: [os.path.getsize(p), int(os.stat(p).st_mtime)]
+    st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
     inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, donors={x: st(x) for x in donors})
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
     # 0. the joins: measured, then the parts read as one capture (VT) with one live sidecar (LIVE)
@@ -384,21 +389,23 @@ def run(T, ats, joins_d, W):
         else:
             r = subprocess.run(argv, cwd=HERE, env=env)
             if r.returncode != 0: fail('assemble.py failed (exit %d); the partial %s is left for inspection' % (r.returncode, PATCH['tpc']))
-        A = json.load(open(aj))
+        try: A = json.load(open(aj))
+        except ValueError as e: fail('the assembly record %s is unreadable (%s); the patched capture is not proven' % (aj, e))
         if A['bytes'] != expect or os.path.getsize(PATCH['tpc']) != expect: fail('patched capture: %d bytes written, %d on disk, %d expected' % (A['bytes'], os.path.getsize(PATCH['tpc']), expect))
         if on_share(PATCH['tpc']) and not (A.get('write_proof') or {}).get('complete'): fail('the patched capture has no write proof')
         if rendered and rendered != A['sha256']: fail('the stream the render read (SHA-256 %s) is not the assembled capture (%s)' % (rendered, A['sha256']))
-        return dict(bytes=A['bytes'], sha256=A['sha256'], mtime=int(os.stat(PATCH['tpc']).st_mtime), ino=os.stat(truth(PATCH['tpc'])).st_ino,
+        return dict(bytes=A['bytes'], sha256=A['sha256'], mtime=int(os.stat(truth(PATCH['tpc'])).st_mtime), ino=os.stat(truth(PATCH['tpc'])).st_ino,
                     write_proof=A.get('write_proof'), rendered=bool(rendered))
     A = stage(W, 'assemble', dict(inputs, plan=pl), assemble)
     if made.get('render_error'): fail('%s (the patched capture is assembled and proven stored; the next run renders it from a checked read)' % made['render_error'])
-    if os.path.getsize(PATCH['tpc']) != expect or int(os.stat(PATCH['tpc']).st_mtime) != A['mtime']: fail('the patched capture changed after it was assembled')
+    if os.path.getsize(truth(PATCH['tpc'])) != expect or int(os.stat(truth(PATCH['tpc'])).st_mtime) != A['mtime']: fail('the patched capture changed after it was assembled')
     log('assembled %s: %d bytes, SHA-256 %s%s' % (PATCH['tpc'], A['bytes'], A['sha256'], ', proven stored as written (%d objects, %d downloaded)' % (
         A['write_proof']['objects'], A['write_proof']['downloaded_blocks']) if A.get('write_proof') else ''))
     # 4
     if A.get('rendered'):
         for x in (PATCH['mov'], NEWLOG):
-            if not os.path.exists(x): fail('the render made with the assembly is missing: %s' % x)
+            if not os.path.exists(x): fail('the render made with the assembly is missing: %s (remove %s to render the patched capture again from a checked read)' % (
+                x, os.path.join(W, 'assemble.json')))
         log('render: %s, made from the assembler\'s stream' % PATCH['mov'])
     else:
         for x in (PATCH['mov'], NEWLOG):
@@ -419,15 +426,15 @@ def swap(W):
     R = json.load(open(os.path.join(W, 'result.json')))
     if R['state'] != 'verified': fail('result.json says %s, not verified' % R['state'])
     O, P = R['original'], R['patched']
-    st = os.stat(P['tpc'])
-    if st.st_size != R['bytes'] or int(st.st_mtime) != R['patched_mtime'] or os.stat(truth(P['tpc'])).st_ino != R['patched_ino']: fail('the patched capture changed since the read-back')
+    st = os.stat(truth(P['tpc']))
+    if st.st_size != R['bytes'] or int(st.st_mtime) != R['patched_mtime'] or st.st_ino != R['patched_ino']: fail('the patched capture changed since the read-back')
     if digests(truth(P['tpc']), R['bytes']) != (R['head'], R['tail']): fail('the patched capture\'s first or last 4 MiB changed since the read-back')
     if hashlib.sha256(open(R['sidecar'], 'rb').read()).hexdigest() != R['sidecar_sha256']: fail('the verified sidecar changed')
     if not os.path.exists(P['mov']): fail('the patched render is missing: %s' % P['mov'])
     b = busy([O['tpc'], O['csv'], O['mov'], P['tpc'], P['mov']] + R.get('replaced', []))
     for x, (size, mtime) in R.get('input_stats', {}).items():   # a part still growing, or rewritten, is not the one patched
-        if not os.path.exists(x) or os.path.getsize(x) != size or int(os.stat(x).st_mtime) != mtime:
-            fail('%s is not as the run read it (%s bytes, then %d): nothing deleted' % (x, os.path.getsize(x) if os.path.exists(x) else 'gone', size))
+        if not os.path.exists(truth(x)) or os.path.getsize(truth(x)) != size or int(os.stat(truth(x)).st_mtime) != mtime:
+            fail('%s is not as the run read it (%s bytes, then %d): nothing deleted' % (x, os.path.getsize(truth(x)) if os.path.exists(truth(x)) else 'gone', size))
     if b: fail('in use: %s' % '; '.join(b))
     sc = open(R['sidecar'], 'rb').read(); step = 'start'
     try:
