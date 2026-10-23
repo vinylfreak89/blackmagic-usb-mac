@@ -3,10 +3,11 @@ import struct, sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))      # experiments/tpc_slice.py
 from tpc_slice import find_boundary
+from joined import open_capture, capture_size       # a plain .tpc, or a NAME.join.json read as one capture
 H=struct.Struct('<IBBHIIII'); MAGIC=0x31504143; UNIT=756048; SYNC=b'DeckLinkAudioResyncT'; MARK=b'\x00\x00\xff\xff'
 def read_region(path,start,nbytes):
     """bytes of [first record boundary >= start, ... about nbytes], ending on a record boundary; returns (file offset, bytes)"""
-    f=open(path,'rb'); p0=find_boundary(f,int(start)) if start else 0; f.seek(p0); b=f.read(int(nbytes)+(1<<20)); f.close()
+    f=open_capture(path); p0=find_boundary(f,int(start)) if start else 0; f.seek(p0); b=f.read(int(nbytes)+(1<<20)); f.close()
     p=0; end=0
     while p+24<=len(b) and p<nbytes:
         m,t,ep,pi,seq,st,req,al=H.unpack_from(b,p)

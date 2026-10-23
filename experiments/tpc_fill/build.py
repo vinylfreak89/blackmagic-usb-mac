@@ -44,12 +44,16 @@ class Stretch:
     # ---- helpers on the target's region
     def vseq_of_stream(self, off): return self.R.recs[self.R.vpk[self.R.vrec_of(off)][1]][4]
     def aseq_of_rec(self, ri): return self.R.recs[self.R.apk[self.R.arec_of(ri)][1]][4]
+    # A transfer number with no DATA records is a transfer that delivered nothing: one that failed (only TransferError records
+    # are left of it, as before a Shuttle disconnect) or a number a join left unused. Its statistics are zero packets.
     def vstats(self, seq):
+        if (0x83, seq) not in self.R.tx: return (0, 0, 0, 0)
         if ('v', seq) not in self.cache:
             k0, k1, _ = self.R.tx[(0x83, seq)]; ls = [self.R.recs[k][7] for k in range(k0, k1 + 1)]
             self.cache[('v', seq)] = (len(ls), sum(ls), sum(1 for x in ls if x == 2848), sum(1 for x in ls if x not in (2816, 2848)))
         return self.cache[('v', seq)]
     def astats(self, seq):
+        if (0x84, seq) not in self.R.tx: return (0, 0, 0)
         if ('a', seq) not in self.cache:
             k0, k1, _ = self.R.tx[(0x84, seq)]; ls = [self.R.recs[k][7] for k in range(k0, k1 + 1)]
             self.cache[('a', seq)] = (len(ls), sum(ls), sum(1 for x in ls if x not in (96, 192)))
@@ -179,6 +183,8 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         res_un = {R.resyncs[j][0]: cs_un[j] for j in range(len(cs_un))}
         r_first = ags[0]['r1']; r_last = ags[-1]['r2']
         p0 = S.aseq_of_rec(r_first) - 1; p1 = S.aseq_of_rec(r_last) + 1
+        while (0x84, p0) not in R.tx and p0 > S.aseqs[0]: p0 -= 1     # window edges on transfers that delivered something
+        while (0x84, p1) not in R.tx and p1 < S.aseqs[-1]: p1 += 1
         assert p0 > S.aseqs[1] and p1 < S.aseqs[-2], 'audio gap too close to the edge of the saved stretch'
         for _ in range(2):
             while p0 - 1 in S.aseqs[2:] and any(S.astats(s)[1] not in (11520, 11616) or S.astats(s)[2] for s in range(max(S.aseqs[2], p0 - 3), p0)): p0 -= 1
@@ -308,7 +314,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         assert best, 'no whole number of audio transfers fits'
         k, f, P, eights = best; odd = Rn - 4 * P - 4 * eights
         ka = P // S.anpk - (p1 - p0 + 1)          # as for video: the rebuilt count minus the original's
-        prev_al = R.recs[R.tx[(0x84, p0 - 1)][1]][7]
+        prev_al = R.recs[R.tx[(0x84, max(s for s in S.aseqs if s < p0))][1]][7]
         flags = spread(eights, P)
         if abs(f - 0.5) < 0.02 and flags[0] == (prev_al == 192): flags = flags[1:] + flags[:1]      # keep the 192/96 alternation going across the window start
         sizes = [8 if b else 4 for b in flags]
@@ -359,9 +365,11 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     # ticks and other notes keep their place by the share of data records before them
     # a host-loss record names slots that were never read; inside a range whose gap on that endpoint is now filled it no longer describes the file
     filled_eps = ({0x83} if vwin else set()) | ({0x84} if awin else set())
-    dropped = [R.recs[k] for k in range(k_lo, k_hi + 1) if R.recs[k][1] == 1 and R.recs[k][2] in filled_eps]
-    rep['host_loss_records_removed'] = [dict(ep=r[2], seq=r[4], slots=r[6]) for r in dropped]
-    notes = [(k, R.recs[k]) for k in range(k_lo, k_hi + 1) if R.recs[k][1] != 0 and not (R.recs[k][1] == 1 and R.recs[k][2] in filled_eps)]
+    # so does a transfer-error record: the transfer it describes (before a disconnect, one that delivered nothing) is replaced
+    dropped = [R.recs[k] for k in range(k_lo, k_hi + 1) if R.recs[k][1] in (1, 2) and R.recs[k][2] in filled_eps]
+    rep['host_loss_records_removed'] = [dict(ep=r[2], seq=r[4], slots=r[6]) for r in dropped if r[1] == 1]
+    rep['transfer_error_records_removed'] = len([r for r in dropped if r[1] == 2])
+    notes = [(k, R.recs[k]) for k in range(k_lo, k_hi + 1) if R.recs[k][1] != 0 and not (R.recs[k][1] in (1, 2) and R.recs[k][2] in filled_eps)]
     n_data = (k_hi - k_lo + 1) - len(notes); done_frac = []
     for k, r in notes: done_frac.append(((k - k_lo - sum(1 for kk, _ in notes if kk < k)) / max(1, n_data), bytes(R.b[r[0] - R.p0:r[0] - R.p0 + 24 + (r[7] if r[1] == 3 else 0)])))
     out = bytearray(); total_new = sum(len(x) for x in VT) + sum(len(x) for x in AT); ni = 0; first_ep = R.blocks[b_lo][0]

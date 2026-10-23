@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
-"""capture_patch.py run TARGET DONOR --at TIME [--at TIME ...] --work DIR
+"""capture_patch.py run TARGET --work DIR [--at TIME DONOR ...] [--join DONOR ...]
+   capture_patch.py run TARGET DONOR --at TIME [--at TIME ...] --work DIR        (one donor for every --at)
    capture_patch.py swap DIR
+
+A capture split at Shuttle disconnects (NAME.mov.raw.tpc, NAME.mov.raw.part2.tpc, ... with NAME.mov.registration.csv,
+NAME.mov.registration.part2.csv, ...) needs one --join DONOR per disconnect, in order: a recapture cued at least 15 s before
+the disconnect and run 15 s past where the Shuttle locked again. Each join is measured first (joins.py: the donor lined up
+with both sides, checked against the capture's own clock), the parts are read as one capture renumbered into part 1's
+numbering (joined.py), each disconnect is patched from its donor like any other gap, and the result is ONE capture and ONE
+sidecar; `swap` then deletes every part and part sidecar it replaces.
 
 Patches gaps in a capture (TARGET: NAME.mov.raw.tpc, its live NAME.mov.registration.csv beside it) with the same moments
 from a recapture of those passages (DONOR: a .raw.tpc of at most 4 GB, cued at least 15 s before and run 15 s past each
@@ -82,7 +90,8 @@ def lineup(T, D, grp, rows_per_byte):
     from region import load, Region, UNIT
     from tpc import read_region
     from stretches import stretch_range
-    size = os.path.getsize(T)
+    from joined import capture_size
+    size = capture_size(T)
     lo, hi = stretch_range(grp, rows_per_byte, size)
     R = load(T, lo, hi - lo)
     if os.path.getsize(D) > DONOR_MAX: fail('the donor is %.1f GB; a recapture of the passages to patch is expected (at most %.0f GB)' % (os.path.getsize(D) / 1e9, DONOR_MAX / 1e9))
@@ -266,49 +275,80 @@ def stage(W, name, inputs, fn):
         if j.get('inputs') == inputs: log('%s: done in an earlier run, reused' % name); return j['result']
     r = fn(); json.dump(dict(inputs=inputs, result=r), open(p + '.new', 'w'), indent=1); os.replace(p + '.new', p); return r
 
-def run(T, D, ats, W):
+def run(T, ats, joins_d, W):
+    """ats: [(TIME, DONOR)] gaps inside the capture; joins_d: [DONOR] one per disconnect between its parts"""
     from stretches import event_groups
-    T = os.path.abspath(T); D = os.path.abspath(D); os.makedirs(W, exist_ok=True)
+    import joins as J
+    from joined import capture_size
+    T = os.path.abspath(T); W = os.path.abspath(W); os.makedirs(W, exist_ok=True)
+    ats = [(t, os.path.abspath(d)) for t, d in ats]; joins_d = [os.path.abspath(d) for d in joins_d]
     if not T.endswith(KINDS['tpc']): fail('the target must be a %s file' % KINDS['tpc'])
     d, name = os.path.dirname(T), os.path.basename(T)[:-len(KINDS['tpc'])]
     ORIG = {k: os.path.join(d, name + v) for k, v in KINDS.items()}; PATCH = {k: os.path.join(d, name + ' patched' + v) for k, v in KINDS.items()}
-    if not os.path.exists(ORIG['csv']): fail('no live sidecar %s' % ORIG['csv'])
-    for x in (T, ORIG['csv'], D):
+    parts = J.parts_of(T)
+    if len(joins_d) != len(parts) - 1: fail('%s has %d parts, so %d --join donors are needed (one per disconnect), not %d' % (name, len(parts), len(parts) - 1, len(joins_d)))
+    if not ats and not joins_d: fail('nothing to patch: give --at TIME DONOR or --join DONOR')
+    for tp, csv in parts:
+        if not os.path.exists(csv): fail('no live sidecar %s' % csv)
+    donors = sorted({x for _, x in ats} | set(joins_d))
+    for x in [p for pc in parts for p in pc] + donors:
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
+    for x in donors:
+        if os.path.getsize(x) > DONOR_MAX: fail('the donor %s is %.1f GB; a recapture of the passages is expected (at most %.0f GB)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
     st = lambda p: [os.path.getsize(p), int(os.stat(p).st_mtime)]
-    inputs = dict(target=T, donor=D, target_stat=st(T), sidecar_stat=st(ORIG['csv']), donor_stat=st(D), at=ats)
+    inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, donors={x: st(x) for x in donors})
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
-    groups, nrows = event_groups(ORIG['csv']); size = os.path.getsize(T); per = size / nrows
-    chosen = []
-    for a in ats:
+    # 0. the joins: measured, then the parts read as one capture (VT) with one live sidecar (LIVE)
+    VT, LIVE, part_rows, part_at = T, ORIG['csv'], [0], [0]
+    if joins_d:
+        meas = []
+        for k, D in enumerate(joins_d):
+            def m(k=k, D=D):
+                try: return J.measure_join(parts[k][0], parts[k + 1][0], D, J.donor_fields(D), log)
+                except ValueError as e: fail('join %d (%s): %s' % (k + 1, os.path.basename(parts[k + 1][0]), e))
+            meas.append(stage(W, 'join-%d' % (k + 1), inputs, m))
+        VT = os.path.join(W, name + '.join.json'); LIVE = os.path.join(W, name + '.join.registration.csv')
+        specs, notes, nrows_j = J.spec_and_sidecar(parts, meas, VT, LIVE, joins_d)
+        for n in notes: log(n)
+        part_rows = [0]; part_at = [0]
+        from joined import note_record
+        for k, (tp, csv) in enumerate(parts[:-1]):
+            part_rows.append(part_rows[-1] + sum(1 for l in open(csv) if not l.startswith('#')) - 1)
+            part_at.append(part_at[-1] + specs[k]['size'] + len(note_record(notes[k])))
+        log('joined: %d parts read as one capture of %d bytes, sidecar of %d rows (%s)' % (len(parts), capture_size(VT), nrows_j, VT))
+    groups, nrows = event_groups(LIVE); size = capture_size(VT); per = size / nrows
+    # 1. which event each gap is, and how its donor lines up
+    events = []                       # (group, donor, pairing, off, byte range or None)
+    for a, D in ats:
         t = parse_time(a); g = min(range(len(groups)), key=lambda i: abs(groups[i][0] / 29.97 - t)) if groups else None
-        near = ', '.join('%d:%02d' % (x[0] / 29.97 // 60, x[0] / 29.97 % 60) for x in groups[:40])
-        if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar (events at: %s)' % (a, near or 'none'))
-        chosen.append(g); log('%s: the event at %d:%02d (sidecar rows %d-%d)' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, groups[g][0], groups[g][-1]))
-    if len(set(chosen)) != len(chosen): fail('two --at times name the same event')
-    # 1
-    lu = {}
-    for g in chosen:
-        lu[g] = stage(W, 'lineup-%d' % g, inputs, lambda: lineup(T, D, groups[g], per))
-        log('line-up of the event at %d:%02d: pairing %s, FILL_OFF %d' % (groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, lu[g]['pairing'], lu[g]['off']))
-    if len({(x['pairing'], x['off']) for x in lu.values()}) != 1: fail('the events line up differently: %s' % {g: (x['pairing'], x['off']) for g, x in lu.items()})
-    pairing, off = lu[chosen[0]]['pairing'], lu[chosen[0]]['off']
+        if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
+        lu = stage(W, 'lineup-%d' % g, dict(inputs, donor=D), lambda: lineup(VT, D, groups[g], per))
+        log('%s: the event at %d:%02d, donor %s: pairing %s, FILL_OFF %d' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), lu['pairing'], lu['off']))
+        events.append((g, D, lu['pairing'], lu['off'], None))
+    for k, D in enumerate(joins_d):
+        r0 = part_rows[k + 1]
+        g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] + 400 else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
+        j = meas[k]; off = ((j['off_before'] - specs[k]['counter_delta']) + 32768) % 65536 - 32768
+        rng = (max(0, part_at[k + 1] - 150_000_000), min(size, part_at[k + 1] + 300_000_000))
+        log('join %d: the event at sidecar rows %d-%d, donor %s: pairing %s, FILL_OFF %d, read from byte %d' % (k + 1, groups[g][0], groups[g][-1], os.path.basename(D), j['pairing'], off, rng[0]))
+        events.append((g, D, j['pairing'], off, rng))
+    if len({e[0] for e in events}) != len(events): fail('two gaps name the same event: %s' % [e[0] for e in events])
     FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
-    # 2
-    env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
+    # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
-        for g in chosen:
-            r = subprocess.run([sys.executable, 'plan.py', T, ORIG['csv'], work, str(g), str(g)], cwd=HERE, env=env)
+        for g, D, pairing, off, rng in events:
+            env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
+            r = subprocess.run([sys.executable, 'plan.py', VT, LIVE, work, str(g), str(g)] + ([str(rng[0]), str(rng[1])] if rng else []), cwd=HERE, env=env)
             if r.returncode != 0: fail('plan.py failed on the event at row %d (exit %d)' % (groups[g][0], r.returncode))
         P = json.load(open(os.path.join(work, 'plan.json')))
-        ents = [e for g in chosen for e in P.get(str(g), [])]
+        ents = [e for g, *_ in events for e in P.get(str(g), [])]
         if not ents: fail('the planner found nothing to fill at the chosen events')
         bad = [e['name'] + ': ' + e.get('error', 'structure check failed') for e in ents if not e.get('filled') or not e.get('structure_ok')]
         if bad: fail('not every gap could be filled: %s' % '; '.join(bad))
         return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka')} | dict(units=e['rep'].get('video_units_filled', [])) for e in ents])
-    pl = stage(W, 'plan', dict(inputs, pairing=pairing, off=off), plan)
+    pl = stage(W, 'plan', dict(inputs, events=events), plan)
     expect = size + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in pl['entries'])
     log('plan: %d gaps filled, units %s; the patched capture will be %d bytes' % (len(pl['entries']), [u for e in pl['entries'] for u in e['units']], expect))
     # 3
@@ -316,7 +356,7 @@ def run(T, D, ats, W):
         for x in (PATCH['tpc'], PATCH['mov']):
             if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
         aj = os.path.join(W, 'assembly.json')
-        r = subprocess.run([sys.executable, 'assemble.py', T, PATCH['tpc'], work], cwd=HERE, env=dict(env, ASSEMBLY_JSON=aj))
+        r = subprocess.run([sys.executable, 'assemble.py', VT, PATCH['tpc'], work], cwd=HERE, env=dict(os.environ, ASSEMBLY_JSON=aj))
         if r.returncode != 0: fail('assemble.py failed (exit %d); the partial %s is left for inspection' % (r.returncode, PATCH['tpc']))
         A = json.load(open(aj))
         if A['bytes'] != expect or os.path.getsize(PATCH['tpc']) != expect: fail('patched capture: %d bytes written, %d on disk, %d expected' % (A['bytes'], os.path.getsize(PATCH['tpc']), expect))
@@ -329,12 +369,14 @@ def run(T, D, ats, W):
     for x in (PATCH['mov'], NEWLOG):
         if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
     read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
-    sc_sha, spans = sidecar_gate(ORIG['csv'], NEWLOG, [(u[0], u[1]) for e in pl['entries'] for u in e['units']], OUTCSV)
+    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1]) for e in pl['entries'] for u in e['units']], OUTCSV)
     hd, tl = digests(truth(PATCH['tpc']), expect)
-    res = dict(state='verified', name=name, dir=d, original=ORIG, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
-               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, pairing=pairing, fill_off=off, spans=spans, verified_at=time.time())
+    replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
+    res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=replaced, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
+               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, pairing=events[0][2], fill_off=events[0][3], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3]) for e in events], spans=spans,
+               joins=(json.load(open(VT)) if joins_d else None), verified_at=time.time())
     json.dump(res, open(os.path.join(W, 'result.json'), 'w'), indent=1)
-    log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)' % (PATCH['tpc'], PATCH['mov'], W))
+    log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)%s' % (PATCH['tpc'], PATCH['mov'], W, '; swap also removes %s' % ', '.join(os.path.basename(x) for x in replaced) if replaced else ''))
 
 # ------------------------------------------------------------------ swap
 def swap(W):
@@ -346,14 +388,16 @@ def swap(W):
     if digests(truth(P['tpc']), R['bytes']) != (R['head'], R['tail']): fail('the patched capture\'s first or last 4 MiB changed since the read-back')
     if hashlib.sha256(open(R['sidecar'], 'rb').read()).hexdigest() != R['sidecar_sha256']: fail('the verified sidecar changed')
     if not os.path.exists(P['mov']): fail('the patched render is missing: %s' % P['mov'])
-    b = busy([O['tpc'], O['csv'], O['mov'], P['tpc'], P['mov']])
+    b = busy([O['tpc'], O['csv'], O['mov'], P['tpc'], P['mov']] + R.get('replaced', []))
     if b: fail('in use: %s' % '; '.join(b))
     sc = open(R['sidecar'], 'rb').read(); step = 'start'
     try:
         step = 'delete the originals'
         for k in ('tpc', 'csv', 'mov'):
             if os.path.exists(O[k]): os.remove(O[k]); log('deleted %s' % O[k])
-        if any(os.path.exists(truth(O[k])) for k in O): fail('an original name still exists after the delete')
+        for x in R.get('replaced', []):                 # the later parts of a split capture, now inside the patched one
+            if os.path.exists(x): os.remove(x); log('deleted %s' % x)
+        if any(os.path.exists(truth(O[k])) for k in O) or any(os.path.exists(truth(x)) for x in R.get('replaced', [])): fail('an original name still exists after the delete')
         step = 'rename the patched capture'; os.rename(P['tpc'], O['tpc']); log('renamed the patched capture to %s' % O['tpc'])
         step = 'rename the patched render'; os.rename(P['mov'], O['mov']); log('renamed the patched render to %s' % O['mov'])
         step = 'write the new sidecar'
@@ -386,11 +430,23 @@ def main():
     a = sys.argv[1:]
     try:
         if a[:1] == ['run']:
-            ats = [a[i + 1] for i, x in enumerate(a) if x == '--at']; W = a[a.index('--work') + 1] if '--work' in a else None
-            pos = [x for i, x in enumerate(a[1:], 1) if not x.startswith('--') and a[i - 1] not in ('--at', '--work')]
-            if len(pos) != 2 or not ats or not W: print(__doc__.split('\n')[0]); sys.exit(2)
-            for t in ats: parse_time(t)
-            run(pos[0], pos[1], ats, W)
+            target = shared = W = None; ats, joins_d = [], []; b = a[1:]; i = 0
+            while i < len(b):
+                x = b[i]
+                if x in ('--work', '--join') and i + 1 < len(b):
+                    if x == '--work': W = b[i + 1]
+                    else: joins_d.append(b[i + 1])
+                    i += 2
+                elif x == '--at' and i + 1 < len(b):
+                    dn = b[i + 2] if i + 2 < len(b) and b[i + 2].endswith('.tpc') else None    # a donor of its own, or the shared one
+                    ats.append((b[i + 1], dn)); i += 3 if dn else 2
+                elif not x.startswith('--') and target is None: target = x; i += 1
+                elif not x.startswith('--') and shared is None: shared = x; i += 1
+                else: raise ValueError('unexpected %r' % x)
+            ats = [(t, dn or shared) for t, dn in ats]
+            if not target or not W or any(dn is None for _, dn in ats): print(__doc__.split('\n\n')[0]); sys.exit(2)
+            for t, _ in ats: parse_time(t)
+            run(target, ats, joins_d, W)
         elif a[:1] == ['swap'] and len(a) == 2: swap(a[1])
         else: print(__doc__.split('\n\n')[0]); sys.exit(2)
     except Failed as e: log('FAILED: %s' % e); sys.exit(1)

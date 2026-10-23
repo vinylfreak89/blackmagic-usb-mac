@@ -12,6 +12,8 @@
 # server pools that handle until it has been idle for 2 minutes (checked every 30 s), so touching the file sooner keeps the
 # error alive (measured 2026-10-20: 30 s retries failed for 30 min; after 3 idle minutes the same reads succeeded).
 import sys, os, struct, pickle, hashlib, json, time, subprocess
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from joined import open_capture, capture_size       # the source may be a NAME.join.json: the parts read as one capture
 H = struct.Struct('<IBBHIIII'); MAGIC = 0x31504143; U32 = struct.Struct('<I')
 defer = '--resume-defer-check' in sys.argv; resume = defer or '--resume' in sys.argv
 sys.argv = [a for a in sys.argv if a not in ('--resume', '--resume-defer-check')]
@@ -31,9 +33,9 @@ def data_of(m):
     assert len(d) == m['bytes'] and hashlib.sha256(d).hexdigest() == m['sha256'], ('work file does not read back as written', m['file'])
     return d
 for a, b in zip(mods, mods[1:]): assert a['file_to'] <= b['file_from'], 'overlapping ranges'
-size = min(os.path.getsize(src), int(os.environ.get('LIMIT_BYTES', 1 << 62))) + base      # LIMIT_BYTES: stop after this much of the source (tests); cut at the last whole record
+size = min(capture_size(src), int(os.environ.get('LIMIT_BYTES', 1 << 62))) + base      # LIMIT_BYTES: stop after this much of the source (tests); cut at the last whole record
 mods = [m for m in mods if m['file_to'] <= size]      # with a limit, ranges beyond it are left out (without this the limit was ignored and the whole file was copied)
-fin = open(src, 'rb', buffering=0); resume_len = 0; vfd = None
+fin = open_capture(src); resume_len = 0; vfd = None
 if resume:
     assert dst != '-', '--resume needs a file'
     fd = os.open(dst, os.O_WRONLY); resume_len = os.fstat(fd).st_size; os.lseek(fd, resume_len, os.SEEK_SET); vfd = None if defer else os.open(dst, os.O_RDONLY)
@@ -114,7 +116,7 @@ def read_retry(at, n):
             if t_first is None: t_first = time.time()
             if time.time() - t_first > RETRY_S: raise SystemExit('STOPPED: source read at %d still failing after %.0f s: %r' % (at, RETRY_S, e))
             print('source read at %d failed (%r); closing it, retrying in %.0f s' % (at, e, RETRY_WAIT_S), file=sys.stderr, flush=True)
-            fin.close(); time.sleep(RETRY_WAIT_S); fin = open(src, 'rb', buffering=0)
+            fin.close(); time.sleep(RETRY_WAIT_S); fin = open_capture(src)
 def copy(a, b, ov, oa):
     """source bytes [a, b) (file offsets, record aligned) to the output"""
     global nrec, last_report

@@ -1,11 +1,14 @@
 # Plan the fill of one capture: for every event stretch in the live sidecar, read the stretch into memory, build each gap's rebuilt
 # file range, check it, and store it in a work folder on the capture volume (never on the local disk). The assembler reads the plan.
-# usage: plan.py <capture.raw.tpc> <live sidecar csv> <work folder on the capture volume> [first group] [last group]
+# usage: plan.py <capture.raw.tpc | NAME.join.json> <live sidecar csv> <work folder> [first group] [last group] [stretch from] [stretch to]
+#   stretch from/to: the byte range read for the group(s), when the caller knows it (a join's exact place in a joined capture);
+#   otherwise it is estimated from the group's rows.
 import sys, os, json, time, hashlib, bisect, resource, gc
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build import *
 T, SIDECAR, WORK = sys.argv[1], sys.argv[2], sys.argv[3]
 g_first = int(sys.argv[4]) if len(sys.argv) > 4 else 1; g_last = int(sys.argv[5]) if len(sys.argv) > 5 else 10 ** 6
+RANGE = (int(sys.argv[6]), int(sys.argv[7])) if len(sys.argv) > 7 else None
 RSS_LIMIT = 3 << 30
 os.makedirs(WORK, exist_ok=True)
 def rss(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -16,13 +19,13 @@ def put_file(path, data):
     os.fsync(fd); os.close(fd)
 from stretches import event_groups, stretch_range
 groups, nrows = event_groups(SIDECAR); marks = [i for g in groups for i in g]
-SIZE = os.path.getsize(T); PER = SIZE / nrows
+SIZE = capture_size(T); PER = SIZE / nrows
 print('%d event rows in %d stretches; %d rows' % (len(marks), len(groups), nrows), flush=True)
 plan_path = os.path.join(WORK, 'plan.json'); plan = json.load(open(plan_path)) if os.path.exists(plan_path) else {}
 for g, grp in enumerate(groups):
     if g < g_first or g > g_last: continue
     t0 = time.time()
-    lo, hi = stretch_range(grp, PER, SIZE)
+    lo, hi = RANGE or stretch_range(grp, PER, SIZE)
     p0, b = read_region(T, lo, hi - lo); R = Region(b, p0); S = Stretch(R, print)
     vg, ag = find_gaps(S); cl = cluster_gaps(vg, ag); mods = []; entries = []
     for i, c in enumerate(cl):
