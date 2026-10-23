@@ -11,9 +11,11 @@
 #   2. relay.py places frames on the AUDIO clock: each frame goes to the 1001/30000 s slot nearest its unit's
 #      audio-clock time (a unit counter is not time: in the Shuttle's other-format modes it runs ~50-70 per second);
 #      a slot no frame reached becomes a flat no-signal frame, and of several frames in one slot the nearest is kept
-#      (the others are counted as dropped). It writes schedule.json (start time, slot count) for the mux.
+#      (the others are counted as dropped). It writes schedule.json (start time, slot count) for the frame-count check.
 #   3. audio_relay.py streams the audio as the device delivered it, continuous from the first frame's audio time
-#      (a0.json, published by relay.py at its first frame), inserting silence only across a transport hole.
+#      (a0.json, published by relay.py at its first frame). At a break it places the audio by the next anchor when that
+#      anchor is trusted (the next three resync intervals are 1594-1609 samples and step by one), inserting silence to
+#      reach it; otherwise the audio stays contiguous and the break is recorded.
 #   4. ONE ffmpeg takes both: TFF, BT.601 limited range, yadif send_field (59.94p), crop 704x480 at x=8, SAR 10/11,
 #      ProRes 422 on the VideoToolbox hardware encoder, PCM S24 audio, into a hidden file beside OUT with the index at the
 #      end, as ffmpeg writes a .mov by default (and OBS does). Its frame count is checked against the relay's slots from
@@ -83,6 +85,9 @@ else echo "no sidecar beside the capture: single-slot holds are off"; fi
 # The first picture line of each field, for the crop: PLAIN_RENDER_FIRST_LINE=F1,F2 (e.g. 21,284), or measured from the
 # capture's first 15 s of picture by measure_first_line.py (the engine's waveform top scan, searching from line 21).
 if [ -n "${PLAIN_RENDER_FIRST_LINE:-}" ]; then FL="$PLAIN_RENDER_FIRST_LINE"; echo "first picture line: $FL (PLAIN_RENDER_FIRST_LINE)"
+# A FIFO can be read once: measuring it would take its first 15 s from the replay, so its caller measures the capture
+# file it comes from and passes the result in PLAIN_RENDER_FIRST_LINE.
+elif [ -p "$SRC" ]; then echo "REFUSE: $SRC is a FIFO; measure the capture it comes from and pass PLAIN_RENDER_FIRST_LINE=F1,F2"; exit 2
 else FL=$(python3 "$HERE/measure_first_line.py" "$SRC" "$D" 2>"$D/first_line.log") || { echo "REFUSE: could not measure the first picture line; see $D/first_line.log"; exit 2; }
   cat "$D/first_line.log"; fi
 python3 "$HERE/audio_relay.py" "$D" "$D/a.fifo" 2>"$D/audio_relay.log" & AP=$!
