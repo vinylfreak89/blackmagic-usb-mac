@@ -59,17 +59,32 @@ def put(b):
             done = k
         while done < len(chunk): done += os.write(fd, chunk[done:])
     sha.update(b); written += len(b)
+STAGING_MAX = float(os.environ.get('ASSEMBLE_STAGING_MAX_GB', '6')) * (1 << 30)
+METRICS = os.environ.get('JUICEFS_METRICS', 'http://127.0.0.1:9568/metrics')
+def staged_bytes():
+    """bytes JuiceFS has written to the local disk and not yet uploaded (its own counter), or None if it cannot be read"""
+    import urllib.request
+    try: text = urllib.request.urlopen(METRICS, timeout=10).read().decode()
+    except Exception: return None
+    for line in text.splitlines():
+        if line.startswith('juicefs_staging_block_bytes'): return float(line.rsplit(' ', 1)[1])
+    return None
 def throttle():
-    if base or dst == '-': return
+    """With the destination on the JuiceFS share, hold the copy while the upload backlog is above STAGING_MAX: writes
+    land on the local disk first (write-back) and upload at ~25 MB/s, slower than this copy writes, so over a whole
+    capture the backlog would fill the internal disk. Staged blocks cannot be evicted. Waits on the backlog itself; a
+    counter that cannot be read stops the run rather than writing on blind. (Until 2026-10-23 this asked LucidLink's
+    CLI, which no longer exists, and so never held anything.)"""
+    if os.environ.get('ASSEMBLE_THROTTLE') != 'always' and (base or dst == '-' or not os.path.realpath(dst).startswith('/Volumes/zpool/')): return
+    held = None
     while True:
-        try:
-            out = subprocess.run(['lucid', 'cache'], capture_output=True, text=True, timeout=30).stdout
-            line = [l for l in out.splitlines() if 'Remaining upload' in l][0].split(':')[1].strip()
-            unit = line[-3:] if line[-3:] in ('KiB', 'MiB', 'GiB', 'TiB') else 'B'
-            val = float(line[:-len(unit)]) * {'B': 1, 'KiB': 1 << 10, 'MiB': 1 << 20, 'GiB': 1 << 30, 'TiB': 1 << 40}[unit]
-        except Exception: return
-        if val < (6 << 30): return
-        time.sleep(20)
+        v = staged_bytes()
+        if v is None: raise SystemExit('STOPPED: JuiceFS\'s upload backlog (%s) cannot be read; not writing on without it' % METRICS)
+        if v < STAGING_MAX:
+            if held: print('upload backlog %.1f GB: writing again after %.0f s' % (v / 1e9, time.time() - held), file=sys.stderr, flush=True)
+            return
+        if held is None: held = time.time(); print('upload backlog %.1f GB, over %.1f GB: holding the copy until uploads catch up' % (v / 1e9, STAGING_MAX / 1e9), file=sys.stderr, flush=True)
+        time.sleep(10)
 def shift(bb, ov, oa):
     """raise the sequence number of every record in bb (whole records); returns the number of records"""
     p = 0; n = len(bb); k = 0
@@ -126,11 +141,12 @@ def copy(a, b, ov, oa):
                 assert left, 'range does not end on a record'
                 carry = bytes(bb[p:]); del bb[p:]
         nrec += k; put(bb)
-        if written - last_report > (2 << 30):
+        if written - last_report > (256 << 20):      # often enough that the backlog overshoots by at most this
             last_report = written; throttle()
             import resource
             if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > (1536 << 20): raise SystemExit('STOPPED: the assembler has used more than 1.5 GB of memory')
-            print('%.0f s: %.2f GB written, %d records, %.1f MB/s' % (time.time() - t0, written / 1e9, nrec, written / 1e6 / (time.time() - t0)), file=sys.stderr, flush=True)
+            if written // (2 << 30) != (written - len(bb)) // (2 << 30):
+                print('%.0f s: %.2f GB written, %d records, %.1f MB/s' % (time.time() - t0, written / 1e9, nrec, written / 1e6 / (time.time() - t0)), file=sys.stderr, flush=True)
 pos = base; ov = oa = 0
 for m in mods:
     copy(pos, m['file_from'], ov, oa); segs.append(dict(kind='copy', src=[pos, m['file_from']], dst_end=written, ov=ov, oa=oa))
