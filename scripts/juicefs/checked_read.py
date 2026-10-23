@@ -192,4 +192,4 @@ def main():
         'ALL BYTES PROVEN' if stats['complete'] else 'STOPPED: %d of %d bytes written' % (stats['bytes_written'], size)), file=sys.stderr, flush=True)
     sys.exit(0 if stats['complete'] else (0 if stats.get('reader_closed') else 3))
 
-main()
+if __name__ == '__main__': main()
