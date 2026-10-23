@@ -99,6 +99,10 @@ int main(int argc, char **argv){
         fputs("FS_REGISTRATION_OFF must be 0 or 1\n",stderr);return 2;
     }
     cfg.registration_off=regoff && !strcmp(regoff,"1");
+    { const char *fl=getenv("FS_FIRST_LINE");   /* "21,284": the first published line of each field (registration off) */
+      if(fl&&*fl){ char *e; long a=strtol(fl,&e,10),b=*e==','?strtol(e+1,&e,10):-1;
+        if(*e||b<0){fprintf(stderr,"FS_FIRST_LINE: expected F1,F2 (e.g. 21,284), got %s\n",fl);return 9;}
+        cfg.first_line_f1=(int)a;cfg.first_line_f2=(int)b;fprintf(stderr,"# FS_FIRST_LINE=%ld,%ld\n",a,b); } }
     for (int i = 2; i < argc; i++){
         if (!strcmp(argv[i], "--pace-us") && i + 1 < argc) cfg.capture.replay_pace_us = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--ring-mb") && i + 1 < argc) cfg.capture.ring_mb = atoi(argv[++i]);

@@ -14,7 +14,8 @@ a short queue (the log is buffered by the writer).
 plain_render.sh creates replay.done beside the log once the replay has exited: frames still unmatched after the log's last
 lines are then an error (exit 3), never an endless wait (2026-10-20: a replay that died mid-stream left this waiting 10 h).
 Writes schedule.json beside the log: a0 (ticks), slots written, frames placed/dropped/estimated, fill slots, and the largest
-distance between a placed frame's audio time and its slot start. mux.py takes the video timeline from it."""
+distance between a placed frame's audio time and its slot start. As soon as the first frame is placed, a0.json beside the log
+holds a0, so audio_relay.py can place the audio against the same timeline while the render runs."""
 import os, sys, time, json
 FR = 720 * 480 * 2; fill = bytes([200, 41, 110, 41]) * (720 * 480 // 2); SLOT = 8008
 vf = open(sys.argv[1], "rb", buffering=0); logp = sys.argv[2]; out = sys.stdout.buffer
@@ -55,7 +56,9 @@ def place():
     global a0, pending
     while queue and vlines:
         v = vlines.pop(0); frame = queue.pop(0); t = audio_time(v)
-        if a0 is None: a0 = t
+        if a0 is None:
+            a0 = t; p = os.path.join(os.path.dirname(logp) or ".", "a0.json")
+            json.dump(dict(a0_ticks=a0), open(p + ".new", "w")); os.replace(p + ".new", p)   # published whole, never half-written
         s = max(0, round((t - a0) / SLOT)); dev = abs(t - (a0 + s * SLOT))
         if pending is None or s > pending[0]:
             if pending is not None: emit(pending[0], pending[1], pending[3]); st["placed"] += 1; st["max_dev_ticks"] = max(st["max_dev_ticks"], pending[2])

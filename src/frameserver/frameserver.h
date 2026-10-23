@@ -61,6 +61,10 @@ typedef struct {
     int registration_off;      // default 0; 1 publishes every field at the nominal (0,0) placement.
                                // The engine still runs and logs its evaluation; applied/frame offsets
                                // in the sidecar are the published 0. H-retiming uses that placement.
+    int first_line_f1, first_line_f2; // default 0 = the nominal aperture (NTSC 23 / 286). Otherwise, with registration_off only
+                               // (fs_open refuses it with registration on, where the engine places the fields), the first
+                               // published line of each field (19..27 / 282..290): it becomes the published placement, so
+                               // the sidecar's applied offsets, H-retiming and the pixels agree (21 / 284 = offsets -2 / -2).
     int offline_backpressure;  // default 0; replay only (fs_open refuses it for a device). Offline render: a full frame
                                // pool, work ring or audio queue makes the producer WAIT for the worker instead of shedding,
                                // and the capture core's replay waits too (replay_block_when_full). Output can then be as
