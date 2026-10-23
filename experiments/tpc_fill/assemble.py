@@ -11,6 +11,10 @@
 # returns it for every later read on that handle, macFUSE shares one handle among all opens of a file, and JuiceMount's NFS
 # server pools that handle until it has been idle for 2 minutes (checked every 30 s), so touching the file sooner keeps the
 # error alive (measured 2026-10-20: 30 s retries failed for 30 min; after 3 idle minutes the same reads succeeded).
+# ASSEMBLE_TEE=PATH: every byte of the output is also written, in order, to PATH (a FIFO a render reads), so the output need
+# not be read back; a reader that goes away only ends the tee, never the copy. ASSEMBLE_WRITE_PROOF=1: the output, on the
+# JuiceFS share, is proven to be stored as written (scripts/juicefs/write_proof.py: its layout, the local copies of its objects
+# and the store's listing, with nothing downloaded); the run fails if it is not, and the proof goes into the assembly JSON.
 import sys, os, struct, pickle, hashlib, json, time, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from joined import open_capture, capture_size       # the source may be a NAME.join.json: the parts read as one capture
@@ -41,6 +45,19 @@ if resume:
     fd = os.open(dst, os.O_WRONLY); resume_len = os.fstat(fd).st_size; os.lseek(fd, resume_len, os.SEEK_SET); vfd = None if defer else os.open(dst, os.O_RDONLY)
     print('resume: %s the first %d bytes of %s, then appending' % ('regenerating (comparison deferred to the read-back hash)' if defer else 'verifying', resume_len, dst), file=sys.stderr, flush=True)
 else: fd = 1 if dst == '-' else os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+proof = None
+if os.environ.get('ASSEMBLE_WRITE_PROOF'):
+    assert dst != '-', 'a write proof needs a file'
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'scripts', 'juicefs'))
+    import write_proof; proof = write_proof.WriteProof(dst)
+tee = os.open(os.environ['ASSEMBLE_TEE'], os.O_WRONLY) if os.environ.get('ASSEMBLE_TEE') else None
+def to_tee(b):
+    global tee
+    try:
+        mv = memoryview(b)
+        while mv: mv = mv[os.write(tee, mv):]
+    except BrokenPipeError:
+        print('the tee reader went away at byte %d; writing on without it' % written, file=sys.stderr, flush=True); os.close(tee); tee = None
 sha = hashlib.sha256(); written = 0; t0 = time.time(); nrec = 0; last_report = 0; segs = []
 def put(b):
     global written
@@ -60,6 +77,8 @@ def put(b):
                 raise SystemExit('STOPPED: resume mismatch at byte %d: the partial file is not this stream' % (at + i))
             done = k
         while done < len(chunk): done += os.write(fd, chunk[done:])
+        if proof: proof.wrote(chunk)
+        if tee is not None: to_tee(chunk)
     sha.update(b); written += len(b)
 STAGING_MAX = float(os.environ.get('ASSEMBLE_STAGING_MAX_GB', '6')) * (1 << 30)
 METRICS = os.environ.get('JUICEFS_METRICS', 'http://127.0.0.1:9568/metrics')
@@ -155,8 +174,13 @@ for m in mods:
     d = bytearray(data_of(m)); nrec += shift(d, ov, oa); put(d); segs.append(dict(kind='fill', name=m['rep']['name'], src=[m['file_from'], m['file_to']], dst=[written - len(d), written], kv=m['kv'], ka=m['ka'])); del d
     pos = m['file_to']; ov += m['kv']; oa += m['ka']
 copy(pos, size, ov, oa); segs.append(dict(kind='copy', src=[pos, size], dst_end=written, ov=ov, oa=oa))
+if tee is not None: os.close(tee)
 if dst != '-': os.fsync(fd)
 os.close(fd)
-res = dict(source=src, destination=dst, resumed_from=resume_len, source_bytes=size - base, bytes=written, sha256=sha.hexdigest(), records=nrec, fills=len(mods), video_transfers_added=ov, audio_transfers_added=oa, seconds=time.time() - t0, segments=segs)
+proven = None
+if proof:
+    try: proven = proof.finish()
+    except write_proof.Failed as e: raise SystemExit('STOPPED: the output is not proven stored as written: %s' % e)
+res = dict(write_proof=proven, source=src, destination=dst, resumed_from=resume_len, source_bytes=size - base, bytes=written, sha256=sha.hexdigest(), records=nrec, fills=len(mods), video_transfers_added=ov, audio_transfers_added=oa, seconds=time.time() - t0, segments=segs)
 json.dump(res, open(os.environ.get('ASSEMBLY_JSON', 'ev/test_assembly.json' if base else dst.split('/')[-1] + '.assembly.json'), 'w'), indent=1)
 print('done: %d bytes, sha256 %s, %d records, %d fills, +%d video and +%d audio transfers, %.0f s' % (written, sha.hexdigest(), nrec, len(mods), ov, oa, time.time() - t0), file=sys.stderr)

@@ -19,9 +19,12 @@ patched. These are the steps of the 2026-10-19/20 patch, in order, each gated; a
                between the two captures' counters and whether they pair fields the same way (FILL_OFF, FILL_PAIRING)
   2. plan      plan.py builds each gap's rebuilt file range from the donor, in DIR
   3. assemble  assemble.py writes the patched capture beside the target: NAME patched.mov.raw.tpc
-  4. read back the patched capture is read once (through checked_read.py on the JuiceFS share): its SHA-256 must equal the
-               assembler's, and the same bytes feed plain_render.sh, which renders NAME patched.mov and replays it into a
-               new sidecar. The replay must publish every exact unit with no holes or drops; the new sidecar must be
+  4. read back the patched capture's bytes feed plain_render.sh, which renders NAME patched.mov and replays it into a new
+               sidecar, and their SHA-256 must equal the assembler's. On the JuiceFS share steps 3 and 4 are one pass:
+               the render reads the assembler's own output stream, and write_proof.py proves the file stored as written
+               (layout, local copies, the store's listing; nothing downloaded). If the render fails after the capture
+               was assembled and proven, the next run reads the capture back through checked_read.py instead.
+               Off the share, the file itself is read back. The replay must publish every exact unit with no holes or drops; the new sidecar must be
                clean at the patched units and, everywhere else, show the live sidecar's events and decisions.
 `swap DIR` then puts the result in place of the originals: deletes NAME.mov.raw.tpc, NAME.mov.registration.csv and
 NAME.mov (the old render), renames the patched capture and render to those names, writes the new sidecar, reads them
@@ -140,13 +143,19 @@ def first_line(T, W):
     log(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'first picture line %s' % r.stdout.strip())
     return dict(first_line=r.stdout.strip())
 
-def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL):
+def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL, assembler=None):
+    """render PATCHED and rebuild its sidecar. assembler=(argv, cwd, env): the bytes come from that assembler's output stream
+    as it writes PATCHED (ASSEMBLE_TEE), instead of from the file; A is then None and the caller checks the assembly."""
     fa, fb = os.path.join(W, 'readback.fifo'), os.path.join(W, 'render.fifo')
     for f in (fa, fb):
         if os.path.exists(f): os.remove(f)
         os.mkfifo(f)
     cr = None
-    if on_share(PATCHED):        # every block proven against B2 as it is read (juicedata/juicefs#7499)
+    if assembler:
+        argv, cwd, aenv = assembler
+        cr = subprocess.Popen(argv, cwd=cwd, env=dict(aenv, ASSEMBLE_TEE=fa))
+        src = fa
+    elif on_share(PATCHED):        # every block proven against B2 as it is read (juicedata/juicefs#7499)
         cr = subprocess.Popen([sys.executable, os.path.join(REPO, 'scripts/juicefs/checked_read.py'), PATCHED, '--out', fa, '--report', os.path.join(W, 'checked_read.json')],
                               stdout=open(os.path.join(W, 'checked_read.log'), 'w'), stderr=subprocess.STDOUT)
         src = fa
@@ -178,21 +187,26 @@ def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL):
                 except subprocess.TimeoutExpired: os.killpg(rp.pid, signal.SIGKILL); rp.wait()
                 break
     except BaseException:
-        os.killpg(rp.pid, signal.SIGTERM); raise
+        os.killpg(rp.pid, signal.SIGTERM)
+        if assembler: cr.terminate()
+        raise
     if th.is_alive():            # the render ended without draining its FIFO: a broken pipe ends the read-back
         try: os.close(os.open(fb, os.O_RDONLY | os.O_NONBLOCK))
         except OSError: pass
     th.join(120)
-    if cr:
+    if assembler: cr.wait()          # its write proof waits for the uploads, bounded by WRITE_PROOF_UPLOAD_S
+    elif cr:
         try: cr.wait(timeout=120)
         except subprocess.TimeoutExpired: cr.kill(); cr.wait()
     for f in (fa, fb): os.remove(f)
     out = open(rout).read()
+    if assembler and cr.returncode != 0: fail('assemble.py failed (exit %d); the partial %s is left for inspection' % (cr.returncode, PATCHED))
     if rd['err']: fail('read-back: %s' % rd['err'])
-    if cr and cr.returncode != 0: fail('checked read of the patched capture failed (exit %d); see %s' % (cr.returncode, os.path.join(W, 'checked_read.log')))
+    if assembler: A = dict(sha256=rd['sha'])      # the stream the render read; the caller checks it against the assembly
+    if cr and not assembler and cr.returncode != 0: fail('checked read of the patched capture failed (exit %d); see %s' % (cr.returncode, os.path.join(W, 'checked_read.log')))
     if rd['n'] != expect: fail('read back %d of %d bytes' % (rd['n'], expect))
     if rd['sha'] != A['sha256']: fail('read-back SHA-256 %s differs from the assembler\'s %s' % (rd['sha'], A['sha256']))
-    log('read-back: %d bytes, SHA-256 equal to the assembler\'s%s' % (rd['n'], ', every block proven against B2' if cr else ''))
+    if not assembler: log('read-back: %d bytes, SHA-256 equal to the assembler\'s%s' % (rd['n'], ', every block proven against B2' if cr else ''))
     if rp.returncode != 0 or 'ALL DONE' not in out or 'RESULT OK' not in out: fail('render did not finish (exit %d); see %s' % (rp.returncode, rout))
     m = re.search(r'video obs (\d+) \| exact (\d+) short (\d+) hole (\d+) unframed (\d+)', out)
     p = re.search(r'published (\d+) \| dropped\(pool\) (\d+) dropped\(ring\) (\d+) dropped\(surfaces\) (\d+)', out)
@@ -352,23 +366,44 @@ def run(T, ats, joins_d, W):
     expect = size + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in pl['entries'])
     log('plan: %d gaps filled, units %s; the patched capture will be %d bytes' % (len(pl['entries']), [u for e in pl['entries'] for u in e['units']], expect))
     # 3
+    NEWLOG = os.path.join(W, 'rebuilt_sidecar.csv'); OUTCSV = os.path.join(W, 'sidecar.csv')
+    made = {}
     def assemble():
-        for x in (PATCH['tpc'], PATCH['mov']):
+        for x in (PATCH['tpc'], PATCH['mov'], NEWLOG):
             if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
-        aj = os.path.join(W, 'assembly.json')
-        r = subprocess.run([sys.executable, 'assemble.py', VT, PATCH['tpc'], work], cwd=HERE, env=dict(os.environ, ASSEMBLY_JSON=aj))
-        if r.returncode != 0: fail('assemble.py failed (exit %d); the partial %s is left for inspection' % (r.returncode, PATCH['tpc']))
+        aj = os.path.join(W, 'assembly.json'); argv = [sys.executable, 'assemble.py', VT, PATCH['tpc'], work]; env = dict(os.environ, ASSEMBLY_JSON=aj)
+        if os.path.exists(aj): os.remove(aj)          # only this run's assembly may answer for the file
+        rendered = None
+        if on_share(PATCH['tpc']):       # 3 and 4 in one pass: the render reads the assembler's stream; the file is proven by its writer
+            try: rendered = read_back(PATCH['tpc'], expect, None, PATCH['mov'], NEWLOG, W, FL, assembler=(argv, HERE, dict(env, ASSEMBLE_WRITE_PROOF='1')))
+            except Failed as e:
+                if not os.path.exists(aj) or not os.path.exists(PATCH['tpc']): raise
+                made['render_error'] = str(e)      # assembled and proven; only the render failed
+                for x in (PATCH['mov'], NEWLOG):
+                    if os.path.exists(x): os.remove(x); log('removed the failed render\'s %s' % x)
+        else:
+            r = subprocess.run(argv, cwd=HERE, env=env)
+            if r.returncode != 0: fail('assemble.py failed (exit %d); the partial %s is left for inspection' % (r.returncode, PATCH['tpc']))
         A = json.load(open(aj))
         if A['bytes'] != expect or os.path.getsize(PATCH['tpc']) != expect: fail('patched capture: %d bytes written, %d on disk, %d expected' % (A['bytes'], os.path.getsize(PATCH['tpc']), expect))
-        return dict(bytes=A['bytes'], sha256=A['sha256'], mtime=int(os.stat(PATCH['tpc']).st_mtime), ino=os.stat(truth(PATCH['tpc'])).st_ino)
+        if on_share(PATCH['tpc']) and not (A.get('write_proof') or {}).get('complete'): fail('the patched capture has no write proof')
+        if rendered and rendered != A['sha256']: fail('the stream the render read (SHA-256 %s) is not the assembled capture (%s)' % (rendered, A['sha256']))
+        return dict(bytes=A['bytes'], sha256=A['sha256'], mtime=int(os.stat(PATCH['tpc']).st_mtime), ino=os.stat(truth(PATCH['tpc'])).st_ino,
+                    write_proof=A.get('write_proof'), rendered=bool(rendered))
     A = stage(W, 'assemble', dict(inputs, plan=pl), assemble)
+    if made.get('render_error'): fail('%s (the patched capture is assembled and proven stored; the next run renders it from a checked read)' % made['render_error'])
     if os.path.getsize(PATCH['tpc']) != expect or int(os.stat(PATCH['tpc']).st_mtime) != A['mtime']: fail('the patched capture changed after it was assembled')
-    log('assembled %s: %d bytes, SHA-256 %s' % (PATCH['tpc'], A['bytes'], A['sha256']))
+    log('assembled %s: %d bytes, SHA-256 %s%s' % (PATCH['tpc'], A['bytes'], A['sha256'], ', proven stored as written (%d objects, %d downloaded)' % (
+        A['write_proof']['objects'], A['write_proof']['downloaded_blocks']) if A.get('write_proof') else ''))
     # 4
-    NEWLOG = os.path.join(W, 'rebuilt_sidecar.csv'); OUTCSV = os.path.join(W, 'sidecar.csv')
-    for x in (PATCH['mov'], NEWLOG):
-        if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
-    read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
+    if A.get('rendered'):
+        for x in (PATCH['mov'], NEWLOG):
+            if not os.path.exists(x): fail('the render made with the assembly is missing: %s' % x)
+        log('render: %s, made from the assembler\'s stream' % PATCH['mov'])
+    else:
+        for x in (PATCH['mov'], NEWLOG):
+            if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
+        read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
     sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1]) for e in pl['entries'] for u in e['units']], OUTCSV)
     hd, tl = digests(truth(PATCH['tpc']), expect)
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
