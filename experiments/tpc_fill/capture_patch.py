@@ -123,7 +123,15 @@ def lineup(T, D, grp, rows_per_byte):
     return dict(pairing=votes[0][0], off=votes[0][1], gap=[g_lo % 65536, g_hi % 65536], matches=table)
 
 # ------------------------------------------------------------------ 4. the read-back, render and rebuilt sidecar
-def read_back(PATCHED, expect, A, RENDER, NEWLOG, W):
+def first_line(T, W):
+    """the first picture line of each field, measured from the original capture as plain_render would (its render here
+    reads a FIFO, which cannot be measured without taking the start of the stream from the replay)"""
+    r = subprocess.run([sys.executable, os.path.join(REPO, 'scripts/plain_render/measure_first_line.py'), T, W], capture_output=True, text=True)
+    if r.returncode != 0 or not re.fullmatch(r'\d+,\d+', r.stdout.strip()): fail('could not measure the first picture line of %s: %s' % (T, r.stderr.strip()[-300:]))
+    log(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'first picture line %s' % r.stdout.strip())
+    return dict(first_line=r.stdout.strip())
+
+def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL):
     fa, fb = os.path.join(W, 'readback.fifo'), os.path.join(W, 'render.fifo')
     for f in (fa, fb):
         if os.path.exists(f): os.remove(f)
@@ -147,7 +155,7 @@ def read_back(PATCHED, expect, A, RENDER, NEWLOG, W):
             rd.update(n=n, sha=h.hexdigest())
         except Exception as e: rd['err'] = repr(e)
     th = threading.Thread(target=tee, daemon=True); th.start()
-    env = dict(os.environ, PLAIN_RENDER_DECISION_LOG=NEWLOG, PLAIN_RENDER_STALL_S='5400')
+    env = dict(os.environ, PLAIN_RENDER_DECISION_LOG=NEWLOG, PLAIN_RENDER_STALL_S='5400', PLAIN_RENDER_FIRST_LINE=FL)
     rout = os.path.join(W, 'render.out')
     rp = subprocess.Popen(['/bin/bash', os.path.join(REPO, 'scripts/plain_render/plain_render.sh'), fb, RENDER, os.path.join(W, 'render')],
                           env=env, stdout=open(rout, 'w'), stderr=subprocess.STDOUT, start_new_session=True)
@@ -285,6 +293,7 @@ def run(T, D, ats, W):
         log('line-up of the event at %d:%02d: pairing %s, FILL_OFF %d' % (groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, lu[g]['pairing'], lu[g]['off']))
     if len({(x['pairing'], x['off']) for x in lu.values()}) != 1: fail('the events line up differently: %s' % {g: (x['pairing'], x['off']) for g, x in lu.items()})
     pairing, off = lu[chosen[0]]['pairing'], lu[chosen[0]]['off']
+    FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
     # 2
     env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
     work = os.path.join(W, 'plan')
@@ -319,10 +328,10 @@ def run(T, D, ats, W):
     NEWLOG = os.path.join(W, 'rebuilt_sidecar.csv'); OUTCSV = os.path.join(W, 'sidecar.csv')
     for x in (PATCH['mov'], NEWLOG):
         if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
-    read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W)
+    read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
     sc_sha, spans = sidecar_gate(ORIG['csv'], NEWLOG, [(u[0], u[1]) for e in pl['entries'] for u in e['units']], OUTCSV)
     hd, tl = digests(truth(PATCH['tpc']), expect)
-    res = dict(state='verified', name=name, dir=d, original=ORIG, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'],
+    res = dict(state='verified', name=name, dir=d, original=ORIG, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
                head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, pairing=pairing, fill_off=off, spans=spans, verified_at=time.time())
     json.dump(res, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)' % (PATCH['tpc'], PATCH['mov'], W))
