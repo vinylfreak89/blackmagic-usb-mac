@@ -56,7 +56,11 @@ for args, why in ((['master', '--cut', '1-2'], "master's own name"), (['cut1', '
     rc, out = run(*args); assert rc == 2 and why in out, (args, out)
 # 6. a span whose ends move to the same scene change is refused
 rc, out = run('empty', '--cut', '2.9-3.2'); assert rc == 2 and 'empty after moving' in out, out
-# 7. --dry-run writes nothing
+# 7. a time past the end moves to the end; another tool's partial beside the master is left alone
+other = os.path.join(d, '.end.partial.mov'); open(other, 'wb').write(b'plain_render is writing this')
+rc, out = run('end', '--cut', '13-25', '--window', '2'); assert rc == 0 and 'the end' in out, out
+expect('end', [(0, 720)]); assert open(other, 'rb').read() == b'plain_render is writing this'; os.remove(other)
+# 8. --dry-run writes nothing
 rc, out = run('dry', '--cut', '4-7', '--dry-run'); assert rc == 0 and 'nothing written' in out and not os.path.exists(os.path.join(d, 'dry.mov')), out
 assert not [n for n in os.listdir(d) if n.startswith('.')], os.listdir(d)
 shutil.rmtree(d)

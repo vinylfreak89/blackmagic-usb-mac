@@ -17,7 +17,7 @@ single ffmpeg that writes the copy. Before the copy takes its name it is checked
 own index, and at every seam the first frames and audio of each stretch against the master's own bytes and samples.
 --dry-run prints the plan (where each time moved) and writes nothing.
 """
-import json, math, os, re, shutil, subprocess, sys, tempfile, time
+import json, math, os, re, shutil, signal, subprocess, sys, tempfile, time
 from fractions import Fraction
 
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
@@ -101,6 +101,7 @@ def main():
     nsamples = int(au['nb_frames'])                           # a master's audio ends a little before its last frame
     vstart = int(v['start_pts']) * Fraction(v['time_base']); astart = int(au['start_pts'])   # audio time base is 1/48000
     if Fraction(au['time_base']) != Fraction(1, SR): die('the master\'s audio time base is %s, not 1/%d' % (au['time_base'], SR))
+    if vstart or astart: die('the master\'s streams start at %s s / sample %d, not 0 (renders start at 0; seeks here assume it)' % (vstart, astart))
     say('master %s: %d frames (%s), %s fps, %s audio samples' % (master, nframes, hms(nframes, fd), v['r_frame_rate'], au['nb_frames']))
 
     def snap(t):
@@ -108,7 +109,7 @@ def main():
         f0 = min(nframes, max(0, round(t / fd)))
         if exact: return f0, 'as given'
         lo, hi = max(Fraction(0), t - Fraction(window)), min(nframes * fd, t + Fraction(window))
-        sc = [(round((Fraction(tt) - vstart) / fd), 'scene change', sco) for tt, sco in scene_changes(master, float(vstart + lo), float(vstart + hi), threshold)]
+        sc = [] if lo >= hi else [(round((Fraction(tt) - vstart) / fd), 'scene change', sco) for tt, sco in scene_changes(master, float(vstart + lo), float(vstart + hi), threshold)] if lo < hi else []
         sc += [(f, what, None) for f, what in ((0, 'the start'), (nframes, 'the end')) if abs((f - f0) * fd) <= window]
         if not sc: return f0, 'no scene change within %g s: as given' % window
         f, what, score = min(sc, key=lambda x: abs(x[0] - f0))
@@ -141,9 +142,11 @@ def main():
     say('the copy: %d frames (%s), %d samples' % (total_f, hms(total_f, fd), total_s))
     if dry: say('dry run: nothing written'); return
 
-    part = os.path.join(os.path.dirname(out), '.' + name + '.partial.mov')
-    if os.path.exists(part): os.remove(part)                   # a stopped run's leftover (this tool's own name)
+    # the copy grows under a name of this run's own (plain_render's partials are .NAME.partial.mov), created exclusively
+    part = os.path.join(os.path.dirname(out), '.%s.trim-%d.partial.mov' % (name, os.getpid()))
+    os.close(os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)); made = True
     work = tempfile.mkdtemp(prefix='trim_render.')
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))   # a stop cleans up like Ctrl-C
     try:
         fifos = []
         with open(os.path.join(work, 'list.txt'), 'w') as f:
@@ -154,6 +157,7 @@ def main():
         mux = subprocess.Popen(['ffmpeg', '-nostdin', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', os.path.join(work, 'list.txt'),
                                 '-map', '0:v', '-map', '0:a', '-c', 'copy', '-f', 'mov', '-y', part], stderr=open(os.path.join(work, 'mux.log'), 'w'))
         for i, ((fa, fb), (sa, sb)) in enumerate(zip(keep, samples)):
+            if mux.poll() is not None: die('writing the copy stopped early: %s' % open(os.path.join(work, 'mux.log')).read()[-400:])
             start = vstart + fa * fd
             # seek just past the frame's own timestamp without sample-accurate trimming: the copied video starts at that
             # frame (every frame is whole) and the audio decodes from the packet before it; the master's timestamps are
@@ -171,16 +175,18 @@ def main():
         if mux.wait() != 0: die('writing the copy failed: %s' % open(os.path.join(work, 'mux.log')).read()[-400:])
         check(master, part, keep, samples, fd, vstart, astart, total_f, total_s)
         size = os.path.getsize(part); ino = os.stat(truth(part)).st_ino
-        if os.path.exists(out): die('%s appeared while the copy was being written; the copy is left at %s' % (out, part))
-        os.rename(part, out)
+        t = os.stat(truth(part))
+        if t.st_size != size: die('the copy is %d bytes in JuiceMount\'s view, %d in the Mac\'s' % (t.st_size, size))
+        if os.path.exists(out) or os.path.exists(truth(out)): die('%s appeared while the copy was being written; nothing was renamed' % out)
+        os.rename(part, out); made = False                      # the name is checked just before; rename replaces nothing else
         t = os.stat(truth(out))
-        if t.st_size != size or t.st_ino != ino: die('the renamed copy is not the one checked (size %d of %d)' % (t.st_size, size))
+        if t.st_size != size or t.st_ino != ino: print('WARNING: %s is %d bytes, inode %d; the copy checked was %d bytes, inode %d' % (out, t.st_size, t.st_ino, size, ino), flush=True); sys.exit(1)
         ad = os.path.join(os.path.dirname(part), '._' + os.path.basename(part))
         try: os.unlink(ad)                                      # the share leaves the old name's ._ entry after a rename
         except OSError: pass
         say('DONE %s (%.2f GB); the master is untouched' % (out, size / 1e9))
     except BaseException:
-        if os.path.exists(part): os.remove(part)
+        if made and os.path.exists(part): os.remove(part)         # only the file this run created
         raise
     finally: shutil.rmtree(work, ignore_errors=True)
 
@@ -188,14 +194,15 @@ def pcm(path, k, n):
     """samples [k, k + n) of a file's audio by absolute sample number (its own timeline, time base 1/48000), as raw S24LE"""
     r = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-noaccurate_seek', '-copyts', '-ss', '%.9f' % max(0, k / SR - 0.1), '-i', path,
                         '-map', '0:a', '-af', 'atrim=start_pts=%d:end_pts=%d' % (k, k + n), '-c:a', 'pcm_s24le', '-f', 's24le', '-'], capture_output=True)
-    if r.returncode != 0: die('could not read audio at sample %d of %s' % (k, path))
+    if r.returncode != 0 or len(r.stdout) != n * 6: die('could not read samples %d-%d of %s (%d bytes)' % (k, k + n, path, len(r.stdout)))
     return r.stdout
 
 def frame_hash(path, t):
     r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v', '-read_intervals', '%.9f%%+#1' % t, '-show_packets', '-show_data_hash', 'sha256',
                         '-show_entries', 'packet=pts,data_hash', '-of', 'json', path], capture_output=True, text=True)
     pk = json.loads(r.stdout).get('packets', []) if r.returncode == 0 else []
-    return pk[0]['data_hash'] if pk else None
+    if not pk or 'data_hash' not in pk[0]: die('could not read the frame at %.3f s of %s' % (t, path))
+    return pk[0]['data_hash']
 
 def check(master, part, keep, samples, fd, vstart, astart, total_f, total_s):
     v, au = probe(part); cv = int(v['start_pts']) * Fraction(v['time_base']); ca = int(au['start_pts'])
