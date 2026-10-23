@@ -36,6 +36,20 @@ static int fsync_dir_of(const char *path){
 }
 
 
+/* A rename on the JuiceMount share leaves the old name's AppleDouble entry ("._<old name>") listed
+ * with nothing behind it: JuiceMount keeps a file's extended attributes in its own store and does
+ * not move them with the file (measured 2026-10-23: a plain rename and a rename over a placeholder
+ * both left one; deleting it through the share right after the rename removes it). Best effort: a
+ * filesystem with native extended attributes has no such name, and it never changes a result. */
+void remove_appledouble(const char *path){
+    int e = errno;
+    const char *slash = strrchr(path, '/');
+    size_t dl = slash ? (size_t)(slash - path) + 1 : 0;
+    char ad[PATH_MAX];
+    if (snprintf(ad, sizeof ad, "%.*s._%s", (int)dl, path, path + dl) < (int)sizeof ad) unlink(ad);
+    errno = e;
+}
+
 /* Rename without ever replacing an existing final name. RENAME_EXCL where the filesystem supports
  * it; where it reports ENOTSUP (an SMB share from a cloud-drive client, measured 2026-09-28), take
  * the final name first with an exclusive create -- an empty placeholder no one else can claim --
@@ -43,12 +57,12 @@ static int fsync_dir_of(const char *path){
  * (EXDEV included, so a caller can fall back to copying). */
 static int exclusive_rename(const char *from, const char *to){
     if (FAIL_AT(PUB_STEP_EXCL_UNSUPPORTED)) errno = ENOTSUP;
-    else if (renamex_np(from, to, RENAME_EXCL) == 0) return 0;
+    else if (renamex_np(from, to, RENAME_EXCL) == 0){ remove_appledouble(from); return 0; }
     if (errno != ENOTSUP) return -1;
     int fd = open(to, O_WRONLY | O_CREAT | O_EXCL, 0644);
     if (fd < 0) return -1;
     close(fd);
-    if (rename(from, to) == 0) return 0;
+    if (rename(from, to) == 0){ remove_appledouble(from); return 0; }
     int e = errno; unlink(to); errno = e; return -1;
 }
 

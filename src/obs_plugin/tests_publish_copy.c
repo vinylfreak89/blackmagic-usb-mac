@@ -91,6 +91,19 @@ int main(void){
     two[1]=PUB_STEP_EXCL_UNSUPPORTED; fill(src,n,7); fill(dst,10,1); char keep[4096]; snprintf(keep,sizeof keep,"%s/keep.csv",dir); fill(keep,10,1);
     CHECK(publish_file(src,dst)==-1,"no EXCL: existing final refused"); CHECK(same(dst,keep),"no EXCL: existing final untouched"); CHECK(same(src,ref),"no EXCL: source intact");
     unlink(dst); unlink(keep); publish_copy_test_fail=NULL;
+    // 4d. the renamed-away name's "._" entry (left behind by the JuiceMount share) is deleted after a
+    //     rename, on both rename paths; nothing else is touched, and a missing one is not an error.
+    char ad[4096], adkeep[4096], other[4096]; snprintf(ad,sizeof ad,"%s/._src.csv",dir); snprintf(adkeep,sizeof adkeep,"%s/._dst.csv",dir); snprintf(other,sizeof other,"%s/other.csv",dir);
+    for (int path=0; path<2; path++){
+        two[0]=two[1]=PUB_STEP_EXCL_UNSUPPORTED; publish_copy_test_fail = path ? hook2 : NULL;
+        fill(src,n,7); fill(ad,10,3); fill(adkeep,10,4);
+        CHECK(publish_file(src,dst)==2,"._ cleanup path %d: renamed",path); CHECK(same(dst,ref),"._ cleanup path %d: byte-exact",path);
+        CHECK(access(ad,F_OK)!=0,"._ cleanup path %d: the source's ._ entry is gone",path); CHECK(access(adkeep,F_OK)==0,"._ cleanup path %d: the final's ._ is kept",path);
+        unlink(dst); unlink(adkeep);
+    }
+    publish_copy_test_fail=NULL;
+    fill(other,10,5); errno=0; remove_appledouble(other); CHECK(errno==0,"no ._ entry: errno untouched"); CHECK(access(other,F_OK)==0,"no ._ entry: the file itself is kept"); unlink(other);
+    remove_appledouble("bare.csv"); CHECK(access("bare.csv",F_OK)!=0,"a bare name is handled");
     // 5. unwritable directory (exists, mode 0): -1, source kept
     fill(src,n,9); char ro[4096]; snprintf(ro,sizeof ro,"%s/ro",dir); mkdir(ro,0); char rodst[4096]; snprintf(rodst,sizeof rodst,"%s/x.csv",ro);
     if (getuid()!=0){ CHECK(publish_by_copy(src,rodst)==-1,"unwritable directory fails"); CHECK(access(src,F_OK)==0,"source kept after failure"); }

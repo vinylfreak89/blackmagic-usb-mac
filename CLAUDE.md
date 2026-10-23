@@ -379,7 +379,8 @@ recording may live on a cloud volume such as a LucidLink filespace). The kernel 
 try the exclusive rename, copy only on EXDEV (a device-number check once compared one static
 `dirname()` buffer with itself and never copied). Measured 2026-09-28 on a cloud client's SMB share:
 `renamex_np(RENAME_EXCL)` returns ENOTSUP, so an exclusively created placeholder is renamed over
-instead; and one 443 MB write was acknowledged and fsynced yet read back as zeros past 112 MiB,
+instead (the JuiceMount share too, where any rename leaves the old name's `._` entry listed with
+nothing behind it until deleted through the share, which the publish does; measured 2026-10-23); and one 443 MB write was acknowledged and fsynced yet read back as zeros past 112 MiB,
 while 1 MiB (and the plugin's 64 KiB) writes verified. Read-back verification is not optional.
 Exception (owner, 2026-09-28): a LucidLink volume takes growing files ("it chunks the
 upload/download"; 25 GB local cache, ~450 Mbit/s upload against ~34 MB/s written with a .tpc).

@@ -26,6 +26,9 @@ int publish_by_copy(const char *src, const char *final);
 // buffer with itself and never took the copy path). Returns 2 renamed (source gone), else exactly
 // publish_by_copy's results; any other rename failure (e.g. EEXIST) is -1 with the source intact.
 int publish_file(const char *src, const char *final);
+// remove_appledouble: delete "._<name>" beside path, if there is one. Both publish functions call it
+// for the renamed-away name, because the JuiceMount share leaves that entry behind on a rename.
+void remove_appledouble(const char *path);
 // Test hook (weak): called at named steps; a test returns nonzero to make that step fail.
 enum publish_step { PUB_STEP_WRITE = 1, PUB_STEP_FSYNC, PUB_STEP_REOPEN, PUB_STEP_COMPARE, PUB_STEP_RENAME, PUB_STEP_CLEANUP, PUB_STEP_DIRSYNC, PUB_STEP_UNLINK_SRC, PUB_STEP_CROSS_DEVICE, PUB_STEP_EXCL_UNSUPPORTED };
 extern int (*publish_copy_test_fail)(enum publish_step step);
