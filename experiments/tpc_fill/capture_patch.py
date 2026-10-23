@@ -272,7 +272,7 @@ def stage(W, name, inputs, fn):
     p = os.path.join(W, name + '.json')
     if os.path.exists(p):
         j = json.load(open(p))
-        if j.get('inputs') == inputs: log('%s: done in an earlier run, reused' % name); return j['result']
+        if j.get('inputs') == json.loads(json.dumps(inputs)): log('%s: done in an earlier run, reused' % name); return j['result']   # as stored (tuples become lists)
     r = fn(); json.dump(dict(inputs=inputs, result=r), open(p + '.new', 'w'), indent=1); os.replace(p + '.new', p); return r
 
 def run(T, ats, joins_d, W):
@@ -347,7 +347,7 @@ def run(T, ats, joins_d, W):
         if not ents: fail('the planner found nothing to fill at the chosen events')
         bad = [e['name'] + ': ' + e.get('error', 'structure check failed') for e in ents if not e.get('filled') or not e.get('structure_ok')]
         if bad: fail('not every gap could be filled: %s' % '; '.join(bad))
-        return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka')} | dict(units=e['rep'].get('video_units_filled', [])) for e in ents])
+        return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=e['rep'].get('video_units_filled', [])) for e in ents])
     pl = stage(W, 'plan', dict(inputs, events=events), plan)
     expect = size + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in pl['entries'])
     log('plan: %d gaps filled, units %s; the patched capture will be %d bytes' % (len(pl['entries']), [u for e in pl['entries'] for u in e['units']], expect))
@@ -372,8 +372,9 @@ def run(T, ats, joins_d, W):
     sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1]) for e in pl['entries'] for u in e['units']], OUTCSV)
     hd, tl = digests(truth(PATCH['tpc']), expect)
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
+    stats = {p: st(p) for pc in parts for p in pc}                 # as this run read them: swap deletes nothing that changed since
     res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=replaced, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
-               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, pairing=events[0][2], fill_off=events[0][3], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3]) for e in events], spans=spans,
+               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, input_stats=stats, pairing=events[0][2], fill_off=events[0][3], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3]) for e in events], spans=spans,
                joins=(json.load(open(VT)) if joins_d else None), verified_at=time.time())
     json.dump(res, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)%s' % (PATCH['tpc'], PATCH['mov'], W, '; swap also removes %s' % ', '.join(os.path.basename(x) for x in replaced) if replaced else ''))
@@ -389,6 +390,9 @@ def swap(W):
     if hashlib.sha256(open(R['sidecar'], 'rb').read()).hexdigest() != R['sidecar_sha256']: fail('the verified sidecar changed')
     if not os.path.exists(P['mov']): fail('the patched render is missing: %s' % P['mov'])
     b = busy([O['tpc'], O['csv'], O['mov'], P['tpc'], P['mov']] + R.get('replaced', []))
+    for x, (size, mtime) in R.get('input_stats', {}).items():   # a part still growing, or rewritten, is not the one patched
+        if not os.path.exists(x) or os.path.getsize(x) != size or int(os.stat(x).st_mtime) != mtime:
+            fail('%s is not as the run read it (%s bytes, then %d): nothing deleted' % (x, os.path.getsize(x) if os.path.exists(x) else 'gone', size))
     if b: fail('in use: %s' % '; '.join(b))
     sc = open(R['sidecar'], 'rb').read(); step = 'start'
     try:
@@ -423,6 +427,12 @@ def swap(W):
         log('dates of the capture and sidecar set to the originals\'')
     except Failed: raise
     except Exception as e: fail('during "%s": %r (the steps logged above it were done)' % (step, e))
+    if on_share(O['tpc']):                     # the share leaves a deleted or renamed-away name's ._ entry listed
+        for x in [O['tpc'], O['csv'], P['tpc'], P['mov']] + R.get('replaced', []):
+            ad = os.path.join(os.path.dirname(x), '._' + os.path.basename(x))
+            if os.path.exists(x) and x in (O['tpc'], O['csv']): continue
+            try: os.unlink(ad)
+            except OSError: pass
     R['state'] = 'swapped'; R['swapped_at'] = time.time(); json.dump(R, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('SWAPPED: %s is the patched capture' % O['tpc'])
 

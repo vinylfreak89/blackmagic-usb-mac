@@ -95,7 +95,9 @@ class Joined:
             for i, byte in ((i0, value & 0xff), (i1, value >> 8)):
                 if lo <= i < hi: buf[i] = byte
         tail = b''; tailpos = []; q = 0
-        while q + 24 <= len(buf) and q < hi:
+        # past hi, records are followed until no header that starts before hi can still be incomplete: once every byte
+        # still held for matching lies at or past hi, a header with a counter byte inside the range has been seen whole
+        while q + 24 <= len(buf) and (q < hi or (tailpos and min(tailpos) < hi)):
             m, t, ep, pi, sq, st, rq, al = H.unpack_from(buf, q)
             if m != MAGIC: raise IOError('bad record at %d of %s' % (s + q, p['path']))
             n = 24 + (al if t in (0, 3) else 0)

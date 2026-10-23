@@ -74,6 +74,13 @@ with joined.open_capture(sp) as f:
         n = rnd.choice([1, 7, 47, 48, 4093, 65536, 1 << 20, 3 << 20, 8 << 20]); f.seek(pos); b = f.read(n)
         assert b == want[pos:pos + n], 'read of %d at %d differs' % (n, pos)
         pos += len(b)
+# reads that end exactly between, or just after, a header's two counter bytes, and start right after them
+for h in heads[:60]:
+    vpos = len(src[:X]) + len(joined.note_record(note)) + len(sess) + fpos(h + 4)
+    for end in (vpos, vpos + 1, vpos + 2):
+        with joined.open_capture(sp) as f:
+            f.seek(end - 5000); assert f.read(5000) == want[end - 5000:end], 'a read ending at %d (header counter at %d) differs' % (end, vpos)
+            f.seek(end); assert f.read(3000) == want[end:end + 3000], 'a read starting at %d differs' % end
 for f0 in range(X - 100, X + 300, 37):                     # reads across the join itself
     with joined.open_capture(sp) as f: f.seek(f0); assert f.read(5000) == want[f0:f0 + 5000]
 for x in (p1, p2, sp): os.remove(x)

@@ -6,10 +6,13 @@
 # (part k, its own numbering) and with the first whole units after the Shuttle relocked (part k+1, its own numbering).
 # Donor counter = part-k counter + off_before = part-(k+1) counter + off_after, so part k+1's counters move by
 # off_after - off_before into part k's numbering. Both sides must pair fields the same way.
-# The check: each part carries TICK records (milliseconds since its capture session started) and one record per USB slot
-# (125 us; a HostLoss record counts the slots it stands for). OBS's log has each session's start ("started (device)")
-# before the line naming the part file, so the last unit before the disconnect and the first after it sit on one clock;
-# the units between them by that clock must agree with the units between them by the offset, within JOIN_TOLERANCE.
+# The check, on clocks that cannot drift apart over a long session: part k from its last whole unit to the end of its
+# scheduled USB slots, counted exactly (one record per 125 us slot, failed packets included; a HostLoss record counts
+# the slots it stands for); then OBS's log from "the Shuttle disconnected" to part k+1's session start ("started
+# (device)"), a fraction of a second apart; then part k+1's own session clock (TICK records, ms since its start, plus
+# slots) to its relocked unit. The units across the disconnect by that clock must agree with the offset's within
+# JOIN_TOLERANCE. (A part's session clock can run for hours by its end; compared with the log's wall clock over that
+# long, ordinary drift would approach the tolerance, so it is not used.)
 import glob, os, re, struct, time
 import numpy as np
 from region import load, UNIT
@@ -60,21 +63,32 @@ def match(tf, refs, df, log):
             if decisive: votes.append((kind, off))
     return votes
 
-def session_start(part):
-    """the wall-clock start of the capture session that wrote part (OBS's log), or None"""
-    for path in sorted(glob.glob(os.path.join(OBS_LOGS, '*.txt')), reverse=True):
-        m = re.search(r'(\d{4})-(\d\d)-(\d\d) (\d\d)-(\d\d)-(\d\d)\.txt$', path)
+def session_times(part):
+    """(wall-clock start of the session that wrote part, wall-clock time of the first Shuttle disconnect after the part
+    began), from OBS's log; None for what the log does not have"""
+    # OBS's own logs, and a copy kept beside the capture as NAME.mov.obs.txt (OBS deletes old logs; the copy's first line
+    # must be the log's own first line, its date taken from the name of the log it copies: "# log 2026-10-23 17-40-37.txt")
+    beside = glob.glob(os.path.join(os.path.dirname(part), '*.obs.txt'))
+    for path in beside + sorted(glob.glob(os.path.join(OBS_LOGS, '*.txt')), reverse=True):
+        name = path
+        if path in beside:
+            first = open(path, errors='replace').readline()
+            name = first[len('# log '):].strip() if first.startswith('# log ') else ''
+        m = re.search(r'(\d{4})-(\d\d)-(\d\d) (\d\d)-(\d\d)-(\d\d)\.txt$', name)
         if not m: continue
-        y, mo, d, h, mi, s = map(int, m.groups()); day = time.mktime((y, mo, d, 0, 0, 0, 0, 0, -1)); prev = h * 3600 + mi * 60 + s; started = None
+        y, mo, d, h, mi, s = map(int, m.groups()); day = time.mktime((y, mo, d, 0, 0, 0, 0, 0, -1)); prev = h * 3600 + mi * 60 + s; started = None; mine = None
         for line in open(path, errors='replace'):
             t = re.match(r'(\d\d):(\d\d):(\d\d)\.(\d{3}): ', line)
             if not t: continue
             sec = int(t.group(1)) * 3600 + int(t.group(2)) * 60 + int(t.group(3)) + int(t.group(4)) / 1000
             if sec < prev - 3600: day += 86400
             prev = sec
-            if '[shuttle-source] started (device)' in line: started = day + sec
-            elif '[shuttle-source] raw .tpc started: %s —' % part in line: return started
-    return None
+            if mine is None:
+                if '[shuttle-source] started (device)' in line: started = day + sec
+                elif '[shuttle-source] raw .tpc started: %s —' % part in line: mine = started
+            elif re.search(r'\[shuttle-source\] the Shuttle (disconnected|stopped answering)', line): return mine, day + sec
+        if mine is not None: return mine, None
+    return None, None
 
 def unit_time(R, off, t0):
     """wall time of the picture unit at video-stream offset off of region R, on the part's session clock started at t0"""
@@ -91,6 +105,15 @@ def unit_time(R, off, t0):
         elif r[2] == 0x83 and r[1] == 1: slots += r[6]       # a HostLoss record: req_len is the unread slot count
     return t0 + ms / 1000 + sign * slots * SLOT
 
+def slots_after(R, off):
+    """the video slots from the unit at video-stream offset off to the end of the region (its scheduled slots, failed ones
+    included, and those a HostLoss record counts)"""
+    k = R.vpk[R.vrec_of(off)][1]; n = 0
+    for r in R.recs[k + 1:]:
+        if r[2] == 0x83 and r[1] == 0: n += 1
+        elif r[2] == 0x83 and r[1] == 1: n += r[6]
+    return n
+
 def last_whole(R):
     w = [(o, c) for o, c, fm, ok in R.marks if ok and fm == 0xe801]
     if not w: raise ValueError('no whole picture unit')
@@ -104,9 +127,12 @@ def relocked(R, run=60):
     raise ValueError('no stretch of %d whole units in order' % run)
 
 def seqs(R, last):
+    """per endpoint, the highest (last) or lowest transfer number of the region's DATA and TransferError records; HostLoss
+    records are left out (a ring-loss HostLoss carries seq 0)"""
     out = {}
-    for r in (reversed(R.recs) if last else R.recs):
-        if r[1] in (0, 1, 2) and r[2] in (0x83, 0x84) and r[2] not in out: out[r[2]] = r[4]
+    for r in R.recs:
+        if r[1] in (0, 2) and r[2] in (0x83, 0x84):
+            out[r[2]] = (max if last else min)(out.get(r[2], r[4]), r[4])
     return out
 
 def measure_join(pa, pb, D, df, log):
@@ -126,12 +152,15 @@ def measure_join(pa, pb, D, df, log):
     delta = (off_a - off_b) % 65536
     units_between = (cb + delta - ca) % 65536                     # by the offset: from the last unit before to the relocked one
     res = dict(pairing=pa_kind, off_before=off_b, off_after=off_a, counter_delta=delta, last_before=ca, relocked_after=cb, units_by_offset=units_between,
-               seq_last=seqs(ra, True), seq_first=seqs(rb, False))
-    t0a, t0b = session_start(pa), session_start(pb)
-    if t0a is None or t0b is None: raise ValueError('OBS\'s log does not have the capture sessions of %s and %s: the clock check cannot be made' % (pa, pb))
-    gap = unit_time(rb, ob, t0b) - unit_time(ra, oa, t0a); res.update(seconds_by_clock=round(gap, 3), units_by_clock=round(gap / PERIOD, 2))
-    log('join: offset %d (donor %+d before, %+d after, pairing %s): %d units from the last before to the relocked one; by the capture clock %.3f s = %.1f units' % (
-        delta, off_b, off_a, pa_kind, units_between, gap, gap / PERIOD))
+               seq_last={str(e): v for e, v in seqs(ra, True).items()}, seq_first={str(e): v for e, v in seqs(rb, False).items()})   # str keys: stored as JSON
+    _, t_disc = session_times(pa); t0b, _ = session_times(pb)
+    if t_disc is None or t0b is None: raise ValueError('OBS\'s log does not have the disconnect after %s or the session of %s: the clock check cannot be made' % (pa, pb))
+    before = slots_after(ra, oa) * SLOT; reconnect = t0b - t_disc; after = unit_time(rb, ob, 0)
+    if not 0 <= reconnect < 120: raise ValueError('the next session started %.3f s after the disconnect: not this join' % reconnect)
+    gap = before + reconnect + after
+    res.update(seconds_by_clock=round(gap, 3), units_by_clock=round(gap / PERIOD, 2), clock=dict(slots_before=round(before, 4), reconnect=round(reconnect, 3), relock=round(after, 4)))
+    log('join: offset %d (donor %+d before, %+d after, pairing %s): %d units from the last before to the relocked one; by the capture clock %.3f s = %.1f units (%.3f s of slots to the disconnect, %.3f s to the next session, %.3f s to the relock)' % (
+        delta, off_b, off_a, pa_kind, units_between, gap, gap / PERIOD, before, reconnect, after))
     if abs(units_between - gap / PERIOD) > JOIN_TOLERANCE: raise ValueError('the donor says %d units across the disconnect, the capture clock %.1f: they disagree by more than %d' % (units_between, gap / PERIOD, JOIN_TOLERANCE))
     return res
 
@@ -140,7 +169,7 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
     specs = [dict(path=parts[0][0], size=os.path.getsize(parts[0][0]), counter_delta=0, seq_delta={'131': 0, '132': 0})]; notes = []
     for k, j in enumerate(joins):
         prev = specs[-1]; cd = (prev['counter_delta'] + j['counter_delta']) % 65536
-        sd = {str(ep): (j['seq_last'][ep] + prev['seq_delta'][str(ep)]) + 1 - j['seq_first'][ep] for ep in (0x83, 0x84)}
+        sd = {str(ep): (j['seq_last'][str(ep)] + prev['seq_delta'][str(ep)]) + 1 - j['seq_first'][str(ep)] for ep in (0x83, 0x84)}
         specs.append(dict(path=parts[k + 1][0], size=os.path.getsize(parts[k + 1][0]), counter_delta=cd, seq_delta=sd))
         notes.append('capture_patch join %d: %s follows; Shuttle counter +%d, transfers +%s; measured from donor %s (counter %+d before the disconnect, %+d after, pairing %s), %d units across it, %.1f by the capture clock' % (
             k + 1, os.path.basename(parts[k + 1][0]), cd, sd, os.path.basename(donors[k]), j['off_before'], j['off_after'], j['pairing'], j['units_by_offset'], j['units_by_clock']))
@@ -151,6 +180,15 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
     with open(out_csv, 'w') as out:
         for k, (_, csv) in enumerate(parts):
             d16 = specs[k]['counter_delta']; dext = None; dord = None
+            if k:                                            # the part's first counter, for the extended shift of all its rows
+                with open(csv) as f:
+                    h = None
+                    for line in f:
+                        if line.startswith('#'): continue
+                        if h is None: h = line.rstrip('\n').split(','); ce = h.index('counter_extended'); continue
+                        v = line.rstrip('\n').split(',')[ce]
+                        if v: first = int(v); dext = last_ce + ((first + d16 - last_ce) % 65536) - first; break
+                if dext is None: raise ValueError('%s has no row with a counter' % csv)
             with open(csv) as f:
                 for line in f:
                     if line.startswith('#'):
@@ -160,15 +198,12 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
                     if line.rstrip('\n').split(',') == hdr: continue
                     r = line.rstrip('\n').split(',')
                     if k:
-                        if dext is None and r[ix['counter_extended']]:
-                            first = int(r[ix['counter_extended']]); dext = last_ce + ((first + d16 - last_ce) % 65536) - first
                         if dord is None: dord = last_ord + 1 - int(r[ix['ordinal']])
-                        if dext is not None:
-                            for col in ('counter_extended', 'frame_top_unit'):
-                                v = r[ix[col]]
-                                if v and v != '0': r[ix[col]] = str(int(v) + dext)
-                        if r[ix['counter_extended']]:            # a row without a counter (unframed, lost) keeps its 0
-                            r[ix['observed_counter']] = str((int(r[ix['observed_counter']]) + d16) % 65536)
+                        # counter_extended, frame_top_unit and observed_counter all hold the parser's extended counter (the
+                        # frameserver logs the extended value as observed_counter); 0 or empty means none and stays
+                        for col in ('counter_extended', 'frame_top_unit', 'observed_counter'):
+                            v = r[ix[col]]
+                            if v and v != '0': r[ix[col]] = str(int(v) + dext)
                         r[ix['ordinal']] = str(int(r[ix['ordinal']]) + dord); r[ix['epoch']] = '1'
                     if r[ix['counter_extended']]: last_ce = int(r[ix['counter_extended']])
                     last_ord = int(r[ix['ordinal']]); out.write(','.join(r) + '\n'); rows += 1

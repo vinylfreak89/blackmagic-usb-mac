@@ -58,6 +58,14 @@ def split(src, p1, p2, at_frac=0.5, lose_video_pkts=2000):
             for i in range(d0, d0 + r[6], 24):
                 if bytes(part[i:i + 20]) == SYNC:
                     c = ((part[i + 20] | part[i + 21] << 8) - K) % 65536; part[i + 20] = c & 0xff; part[i + 21] = c >> 8
+    # part 2's TICKs restart at its own session start, as a reset makes them: its session begins where part 1's slots end
+    tick, nv = None, 0
+    for p, n, r in recs[:k1]:
+        if r[0] == 4: tick, nv = r[4], 0
+        elif r[0] == 0 and r[1] == 0x83: nv += 1
+    t_cut = tick + nv * 0.125                                 # ms of the original session at part 2's first record
+    for p, n, r in recs[k1:]:
+        if r[0] == 4: struct.pack_into('<I', part, p - base + 12, int(round(r[4] - t_cut)))
     open(p2, 'wb').write(joined.note_record('shuttle-source tee v1 usb=iousbhost input=svideo setup=on mode=0x3c000000 part=2 recording=T.mov') + part)
     return lost, K
 
@@ -73,16 +81,23 @@ def main():
         assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
         os.remove(tp + '.check.mov'); shutil.rmtree(os.path.join(S, 'tr'))
     logs = os.path.join(S, 'obs-logs'); os.makedirs(logs)
-    with open(os.path.join(logs, '2026-10-23 10-00-00.txt'), 'w') as f:      # one session wrote both parts: their TICKs are on one clock
+    with open(os.path.join(logs, '2026-10-23 10-00-00.txt'), 'w') as f:      # a session per part, as a reconnect makes them
         f.write('10:00:00.000: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n')
         f.write('10:00:01.000: [shuttle-source] raw .tpc started: %s — local spill x\n' % T)
-        f.write('10:00:20.000: [shuttle-source] raw .tpc started: %s — local spill x\n' % P2)
+        f.write('10:00:15.000: [shuttle-source] the Shuttle disconnected (USB connection lost): picture blanked; reconnecting when it comes back\n')
+        f.write('10:00:15.000: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n')
+        f.write('10:00:15.100: [shuttle-source] raw .tpc started: %s — local spill x\n' % P2)
     good, gL, gR = units(src)
     DA = os.path.join(S, 'donorA.tpc'); raise_counters(src, DA, 1000)
     W = os.path.join(S, 'work'); env = dict(os.environ, CAPTURE_PATCH_OBS_LOGS=logs)
     r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W, '--join', DA], capture_output=True, text=True, env=env)
     print(r.stdout[-4000:]); assert r.returncode == 0, r.stderr[-3000:]
     res = json.load(open(os.path.join(W, 'result.json')))
+    # a second run with the same inputs reuses every finished step instead of redoing it (here it then stops at the read-back,
+    # whose outputs exist): the stage keys survive their JSON round trip
+    r2 = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W, '--join', DA], capture_output=True, text=True, env=env)
+    for st in ('join-1', 'first-line', 'plan', 'assemble'):
+        assert '%s: done in an earlier run, reused' % st in r2.stdout, (st, r2.stdout[-1500:])
     j = res['joins']['parts'][1]; print('join: counter delta %d, transfers %s' % (j['counter_delta'], j['seq_delta']))
     assert j['counter_delta'] == K, (j['counter_delta'], K)
     got, pL, pR = units(res['patched']['tpc'])

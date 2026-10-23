@@ -44,8 +44,9 @@ class Stretch:
     # ---- helpers on the target's region
     def vseq_of_stream(self, off): return self.R.recs[self.R.vpk[self.R.vrec_of(off)][1]][4]
     def aseq_of_rec(self, ri): return self.R.recs[self.R.apk[self.R.arec_of(ri)][1]][4]
-    # A transfer number with no DATA records is a transfer that delivered nothing: one that failed (only TransferError records
-    # are left of it, as before a Shuttle disconnect) or a number a join left unused. Its statistics are zero packets.
+    # A transfer number with no DATA records in the stretch is a transfer that delivered nothing, or a number a join or a
+    # host-loss record left unused; its statistics are zero packets. (Before a real disconnect the failed transfers do keep
+    # DATA records: 128 zero-length, error-status packets each, plus two TransferError records.)
     def vstats(self, seq):
         if (0x83, seq) not in self.R.tx: return (0, 0, 0, 0)
         if ('v', seq) not in self.cache:
@@ -365,11 +366,13 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     # ticks and other notes keep their place by the share of data records before them
     # a host-loss record names slots that were never read; inside a range whose gap on that endpoint is now filled it no longer describes the file
     filled_eps = ({0x83} if vwin else set()) | ({0x84} if awin else set())
-    # so does a transfer-error record: the transfer it describes (before a disconnect, one that delivered nothing) is replaced
-    dropped = [R.recs[k] for k in range(k_lo, k_hi + 1) if R.recs[k][1] in (1, 2) and R.recs[k][2] in filled_eps]
+    # so does a transfer-error record: the transfer it describes is replaced. The once-per-session 'control truth lost'
+    # marker (TransferError, pkt_index 0xFFFE) describes the session, not a transfer, and is always kept.
+    gone = lambda r: r[2] in filled_eps and (r[1] == 1 or (r[1] == 2 and r[3] != 0xFFFE))
+    dropped = [R.recs[k] for k in range(k_lo, k_hi + 1) if gone(R.recs[k])]
     rep['host_loss_records_removed'] = [dict(ep=r[2], seq=r[4], slots=r[6]) for r in dropped if r[1] == 1]
-    rep['transfer_error_records_removed'] = len([r for r in dropped if r[1] == 2])
-    notes = [(k, R.recs[k]) for k in range(k_lo, k_hi + 1) if R.recs[k][1] != 0 and not (R.recs[k][1] in (1, 2) and R.recs[k][2] in filled_eps)]
+    rep['transfer_error_records_removed'] = [dict(ep=r[2], seq=r[4], pkt_index=r[3], status=r[5]) for r in dropped if r[1] == 2]
+    notes = [(k, R.recs[k]) for k in range(k_lo, k_hi + 1) if R.recs[k][1] != 0 and not gone(R.recs[k])]
     n_data = (k_hi - k_lo + 1) - len(notes); done_frac = []
     for k, r in notes: done_frac.append(((k - k_lo - sum(1 for kk, _ in notes if kk < k)) / max(1, n_data), bytes(R.b[r[0] - R.p0:r[0] - R.p0 + 24 + (r[7] if r[1] == 3 else 0)])))
     out = bytearray(); total_new = sum(len(x) for x in VT) + sum(len(x) for x in AT); ni = 0; first_ep = R.blocks[b_lo][0]
