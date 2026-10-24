@@ -8,7 +8,8 @@ Given only --donor clips, the tool works out where each belongs (locate.py): a c
 a disconnect joins it, one that lines up either side of a gap inside a part fills it, and one that lines up with the
 capture's last units and runs on past them is appended (the capture stopped before the tape did). It lines up by picture
 when that is decisive and by sound otherwise (snow, held cels); where both can tell they must agree. Every clip must fit
-somewhere, no place may get two clips, and every disconnect needs one; a gap with no clip is left as it is and named.
+somewhere, no place may get two clips, and every disconnect and every gap needs one (a gap with no clip is named before
+any work is done: a patched capture with a hole left in it would fail the replay check at the end).
 
 A capture split at Shuttle disconnects (NAME.mov.raw.tpc, NAME.mov.raw.part2.tpc, ... with NAME.mov.registration.csv,
 NAME.mov.registration.part2.csv, ...) needs one --join DONOR per disconnect, in order: a recapture cued at least 15 s before
@@ -237,8 +238,23 @@ def load_csv(fn):
             rows.append(line.rstrip('\n').split(','))
     return pre, hdr, rows
 
+def row_counter(csv, row):
+    """the extended counter of the live sidecar row nearest `row` that has one"""
+    best = None; n = 0; hdr = None
+    with open(csv) as f:
+        for line in f:
+            if line.startswith('#'): continue
+            if hdr is None: hdr = line.rstrip('\n').split(','); ce = hdr.index('counter_extended'); continue
+            v = line.split(',', ce + 1)[ce]
+            if v and (best is None or abs(n - row) < abs(best[0] - row)): best = (n, int(v))
+            if n > row and best is not None and best[0] <= row: break
+            n += 1
+    return best[1] if best else None
+
 def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV):
-    """the rebuilt sidecar numbered as the live one, compared row by row; written to OUTCSV"""
+    """the rebuilt sidecar numbered as the live one, compared row by row; written to OUTCSV. filled16: [(first, last, hint)],
+    16-bit counters of each patched span and an extended counter near it (a long capture's 16-bit counter wraps every
+    36.4 minutes, so the counter alone does not say which unit is meant)"""
     lp, lh, live = load_csv(LIVE); npre, nh, new = load_csv(NEWLOG)
     if lh != nh: fail('the live and rebuilt sidecars have different columns')
     ix = {h: i for i, h in enumerate(lh)}; CE, OC, ORD, FTU, DR, PUB = (ix[k] for k in ('counter_extended', 'observed_counter', 'ordinal', 'frame_top_unit', 'drop_reason', 'published'))
@@ -255,10 +271,12 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV):
     N = {int(r[CE]): r for r in new if r[CE]}
     # each patched span in extended counters: the live counter that the span's 16-bit counters name
     spans = []
-    for a16, b16 in filled16:
+    for a16, b16, hint in filled16:
         cand = [c for c in L if c % 65536 == a16 % 65536] + [c for c in N if c % 65536 == a16 % 65536]
         if not cand: fail('patched unit %d is in neither sidecar' % a16)
-        a = min(cand); b = a + ((b16 - a16) % 65536); spans.append((a, b))
+        a = min(cand, key=lambda c: abs(c - hint)) if hint is not None else min(cand)
+        if hint is not None and abs(a - hint) > 30000: fail('patched unit %d is nowhere near where its fill is (%d)' % (a16, hint))
+        b = a + ((b16 - a16) % 65536); spans.append((a, b))
     GAP = set(); AFTER = set()
     for a, b in spans: GAP |= set(range(a - 6, b + 12)); AFTER |= set(range(a - 6, b + 310))   # the live engine reset at each hole
     HIST = {'audio_residual_ticks', 'vote_engine_anchor', 'vote_count', 'vote_winner_count', 'ordinal'}
@@ -375,39 +393,41 @@ def run(T, ats, joins_d, W, clips=None):
         if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
         lu = stage(W, 'lineup-%d' % g, dict(inputs, donor=D), lambda: lineup(VT, D, groups[g], per))
         log('%s: the event at %d:%02d, donor %s: pairing %s, FILL_OFF %d' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), lu['pairing'], lu['off']))
-        events.append((g, D, lu['pairing'], lu['off'], None))
+        events.append((g, D, lu['pairing'], lu['off'], None, None))
     for k, D in enumerate(joins_d + ([append_d] if append_d else [])):
         r0 = part_rows[k + 1]
         g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] + 400 else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
         j = meas[k]; off = ((j['off_before'] - specs[k]['counter_delta']) + 32768) % 65536 - 32768
         rng = (max(0, part_at[k + 1] - 150_000_000), min(size, part_at[k + 1] + 300_000_000))
         log('%s: the event at sidecar rows %d-%d, donor %s: pairing %s, FILL_OFF %d, read from byte %d' % ('append' if j.get('append') else 'join %d' % (k + 1), groups[g][0], groups[g][-1], os.path.basename(D), j['pairing'], off, rng[0]))
-        events.append((g, D, j['pairing'], off, rng))
+        events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None))   # an append: where its seam is
     for gp in auto_gaps:                                 # gaps inside a part, placed by locate.py (offsets in the part's numbering)
         k = gp['part']; r0 = part_rows[k] + gp['rows'][0]
         g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
         off = ((gp['off'] - (specs[k]['counter_delta'] if joins_d or append_d else 0)) + 32768) % 65536 - 32768
         log('gap at sidecar rows %d-%d, donor %s (lined up by %s): pairing %s, FILL_OFF %d' % (groups[g][0], groups[g][-1], os.path.basename(gp['donor']), gp['basis'], gp['pairing'], off))
-        events.append((g, gp['donor'], gp['pairing'], off, None))
+        events.append((g, gp['donor'], gp['pairing'], off, None, None))
     # events in one sidecar stretch are planned in one pass with one donor: merged when they share donor, pairing and offset
     # (a short part between a disconnect and the end), refused otherwise
     merged = {}
-    for g, D, pairing, off, rng in events:
+    for g, D, pairing, off, rng, app_at in events:
         if g in merged:
-            g0, D0, p0, o0, r0 = merged[g]
+            g0, D0, p0, o0, r0, a0 = merged[g]
             if (D0, p0, o0) != (D, pairing, off): fail('two places to patch fall in one stretch of the sidecar (rows %d-%d) with different clips or offsets (%s, %s): the planner takes one clip per stretch' % (
                 groups[g][0], groups[g][-1], os.path.basename(D0), os.path.basename(D)))
-            rng = None if r0 is None or rng is None else (min(r0[0], rng[0]), max(r0[1], rng[1]))
+            rng = r0 if rng is None else rng if r0 is None else (min(r0[0], rng[0]), max(r0[1], rng[1]))   # keep a known range
+            app_at = app_at if app_at is not None else a0
             log('the events at sidecar rows %d-%d share clip %s and its offset: planned together' % (groups[g][0], groups[g][-1], os.path.basename(D)))
-        merged[g] = (g, D, pairing, off, rng)
+        merged[g] = (g, D, pairing, off, rng, app_at)
     events = list(merged.values())
     FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
     # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
-        for g, D, pairing, off, rng in events:
+        for g, D, pairing, off, rng, app_at in events:
             env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
+            if app_at is not None: env['FILL_APPEND_AT'] = str(app_at)
             r = subprocess.run([sys.executable, 'plan.py', VT, LIVE, work, str(g), str(g)] + ([str(rng[0]), str(rng[1])] if rng else []), cwd=HERE, env=env)
             if r.returncode != 0: fail('plan.py failed on the event at row %d (exit %d)' % (groups[g][0], r.returncode))
         P = json.load(open(os.path.join(work, 'plan.json')))
@@ -460,13 +480,14 @@ def run(T, ats, joins_d, W, clips=None):
         for x in (PATCH['mov'], NEWLOG):
             if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
         read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
-    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1]) for e in pl['entries'] for u in e['units']], OUTCSV)
+    hint = lambda e: row_counter(LIVE, int(e['file_from'] / per))            # the live row nearest the fill: which wrap it is in
+    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e)) for e in pl['entries'] for u in e['units']], OUTCSV)
     hd, tl = digests(truth(PATCH['tpc']), expect)
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
     stats = {p: st(p) for pc in parts for p in pc}                 # as this run read them: swap deletes nothing that changed since
     res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=replaced, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
-               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, input_stats=stats, pairing=events[0][2], fill_off=events[0][3], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3]) for e in events], spans=spans,
-               joins=(json.load(open(VT)) if joins_d else None), verified_at=time.time())
+               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, input_stats=stats, pairing=events[0][2], fill_off=events[0][3], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3], append_at=e[5]) for e in events], spans=spans,
+               joins=(json.load(open(VT)) if joins_d or append_d else None), verified_at=time.time())
     json.dump(res, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)%s' % (PATCH['tpc'], PATCH['mov'], W, '; swap also removes %s' % ', '.join(os.path.basename(x) for x in replaced) if replaced else ''))
 

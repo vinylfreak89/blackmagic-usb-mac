@@ -8,7 +8,8 @@
 #     before a disconnect, which belongs to that join.
 # A clip is placed at a place when it lines up with the capture's units just before it (joins.line_up_before: picture when
 # decisive, otherwise sound; both must agree when both can tell); at a gap, also just after it, with the same offset.
-# Every clip must land somewhere, no place may get two clips, and every disconnect needs one.
+# Every clip must land somewhere, no place may get two clips, and every disconnect and every gap needs one (a patched capture
+# with a hole left in it fails the replay check at the end, so a missing clip is named before any work is done).
 import os
 import joins as J
 from region import load, UNIT
@@ -43,7 +44,9 @@ def places(parts, log):
                 w = [c for o, c, fm, ok in R.marks if ok and fm == 0xe801]; seq = [w[0]]
                 for c in w[1:]: seq.append(seq[-1] + ((c - seq[-1]) % 65536))
                 hs = [(x, y) for x, y in zip(seq, seq[1:]) if y - x > 1]
-                if not hs: raise ValueError('no missing picture units around sidecar rows %d-%d' % (a, b))
+                if not hs:                                   # no picture unit missing: where the sound's resyncs break
+                    rc = [c for _, _, c in R.resyncs]; hs = [(x, y) for x, y in zip(rc, rc[1:]) if (y - x) % 65536 != 1]
+                if not hs: raise ValueError('no missing picture unit or audio resync around sidecar rows %d-%d' % (a, b))
                 return R, hs[0][0] % 65536, hs[-1][1] % 65536
             out.append(dict(kind='gap', part=k, rows=[a, b], label='the gap at %d:%02d of %s' % (a / 29.97 // 60, a / 29.97 % 60, os.path.basename(tp)), load=gap))
     return out
@@ -56,7 +59,8 @@ def locate(parts, donors, log):
     found = {}                                          # place index -> [(donor, pairing, off, basis)]
     pl = places(parts, log)
     for i, p in enumerate(pl):
-        R, before, after = p['load']()
+        try: R, before, after = p['load']()
+        except ValueError as e: raise ValueError('%s cannot be read for placing clips: %s' % (p['label'], e))
         for D in donors:
             df, ch = feats[D]; quiet = []
             try:
@@ -82,6 +86,7 @@ def locate(parts, donors, log):
     gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3])
             for i, p in enumerate(pl) if p['kind'] == 'gap' and i in found]
     left = [p['label'] for i, p in enumerate(pl) if p['kind'] == 'gap' and i not in found]
-    if left: log('gaps with no clip, left as they are: %s' % '; '.join(left))
+    if left: raise ValueError('%s %s no clip: the patched capture would still have %s; add a recapture across %s' % (
+        '; '.join(left), 'has' if len(left) == 1 else 'have', 'that hole' if len(left) == 1 else 'those holes', 'it' if len(left) == 1 else 'each'))
     return dict(joins=joins, append=end[0] if end else None, gaps=gaps,
                 placed={os.path.basename(d[0]): pl[i]['label'] for i, ds in found.items() for d in ds})

@@ -3,6 +3,7 @@
 
 From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR, each case's target and clips:
   end      the capture stopped early (cut cleanly at 70%), one clip (SOURCE with its counters raised): placed as an append
+  end-pass the same, with the clip's resyncs 372 samples later in its sound, as another pass of the tape has them
   split    a disconnect at 50% losing 6 s (a real disconnect's size: the rebuilder once capped a hole near 18 units) and
            the second part stopped early at 80% of it, one clip: placed at the disconnect AND as the append
   gap      a host loss punched in at 50% (as test_capture_patch.py makes one), one clip: placed at the gap
@@ -13,7 +14,7 @@ import json, os, shutil, struct, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE)
 from test_capture_patch import records, raise_counters, units, punch
-from test_capture_patch_joins import split, wait_free
+from test_capture_patch_joins import split, wait_free, stand_in_log
 
 def cut(src, dst, frac, base=0):
     """src up to the first video transfer that starts after frac of it (a clean stop: no loss records)"""
@@ -27,11 +28,25 @@ def sidecar(tp, csv, S):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     os.remove(tp + '.check.mov'); shutil.rmtree(os.path.join(S, 'tr'))
 
-def clip(src, S, name, by=1000, frac=None):
-    """a recapture: SOURCE (or its first frac) with its counters raised by `by`, named and with a sidecar as OBS leaves one"""
+def shift_resyncs(path, by):
+    """move every audio resync record `by` sample records later in the audio stream, in place: another pass of the tape,
+    whose sound sits `by` samples later against its units (measured +372 and -205 between real passes)"""
+    b = bytearray(open(path, 'rb').read()); slots = [(p + 24, r[6]) for p, n, r in records(b) if r[0] == 0 and r[1] == 0x84]
+    a = bytearray().join(bytes(b[o:o + n]) for o, n in slots); recs = [bytes(a[i:i + 24]) for i in range(0, len(a), 24)]
+    pos = [i for i, x in enumerate(recs) if x[:20] == b'DeckLinkAudioResyncT']
+    for i in reversed(pos):
+        if i + by < len(recs): r = recs.pop(i); recs.insert(i + by, r)
+    a = b''.join(recs); o2 = 0
+    for o, n in slots: b[o:o + n] = a[o2:o2 + n]; o2 += n
+    open(path, 'wb').write(b)
+
+def clip(src, S, name, by=1000, frac=None, audio_shift=0):
+    """a recapture: SOURCE (or its first frac) with its counters raised by `by` (and its resyncs moved audio_shift samples),
+    named and with a sidecar as OBS leaves one"""
     tp = os.path.join(S, name + '.mov.raw.tpc')
     if frac: cut(src, tp + '.whole', frac); raise_counters(tp + '.whole', tp, by); os.remove(tp + '.whole')
     else: raise_counters(src, tp, by)
+    if audio_shift: shift_resyncs(tp, audio_shift)
     sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
 
 def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None):
@@ -65,6 +80,10 @@ def main():
     S = os.path.join(S0, 'end'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     run_case('end', S, T, [clip(src, S, 'clipA')], good, gL, gR, dict(os.environ))
+    # end-pass: the same, the clip from "another pass", its sound 372 samples later against its units
+    S = os.path.join(S0, 'end-pass'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('end-pass', S, T, [clip(src, S, 'clipP', audio_shift=372)], good, gL, gR, dict(os.environ))
     # none: a clip that covers only the start
     S = os.path.join(S0, 'none'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
@@ -75,18 +94,12 @@ def main():
     run_case('gap', S, T, [clip(src, S, 'clipG')], good, gL, gR, dict(os.environ))
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
-    split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)
+    lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)
     b = open(P2, 'rb').read(); recs = list(records(b)); k = int(len(recs) * 0.8)
     while not (recs[k][2][0] == 0 and recs[k][2][1] == 0x83 and recs[k][2][2] == 0): k += 1
     open(P2, 'wb').write(b[:recs[k][0]])
     for tp, csv in ((T, 'T.mov.registration.csv'), (P2, 'T.mov.registration.part2.csv')): sidecar(tp, os.path.join(S, csv), S)
-    logs = os.path.join(S, 'obs-logs'); os.makedirs(logs)
-    with open(os.path.join(logs, '2026-10-23 10-00-00.txt'), 'w') as f:
-        f.write('10:00:00.000: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n')
-        f.write('10:00:01.000: [shuttle-source] raw .tpc started: %s — local spill x\n' % T)
-        f.write('10:00:15.000: [shuttle-source] the Shuttle disconnected (USB connection lost): picture blanked; reconnecting when it comes back\n')
-        f.write('10:00:15.000: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n')
-        f.write('10:00:15.100: [shuttle-source] raw .tpc started: %s — local spill x\n' % P2)
+    logs = os.path.join(S, 'obs-logs'); stand_in_log(logs, T, P2, t_cut)
     run_case('split', S, T, [clip(src, S, 'clipJ')], good, gL, gR, dict(os.environ, CAPTURE_PATCH_OBS_LOGS=logs))
     shutil.rmtree(S0); print('capture_patch clips: all tests passed')
 

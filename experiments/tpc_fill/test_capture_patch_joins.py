@@ -68,7 +68,7 @@ def split(src, p1, p2, at_frac=0.5, lose_video_pkts=2000):
     for p, n, r in recs[k1:]:
         if r[0] == 4: struct.pack_into('<I', part, p - base + 12, int(round(r[4] - t_cut)))
     open(p2, 'wb').write(joined.note_record('shuttle-source tee v1 usb=iousbhost input=svideo setup=on mode=0x3c000000 part=2 recording=T.mov') + part)
-    return lost, K
+    return lost, K, t_cut / 1000          # t_cut: seconds into the original session where part 2 begins (the disconnect)
 
 def wait_free(paths, cap_s=600):
     """until no program, and on the share no JuiceMount write handle (pooled until 2 min idle), holds any of paths"""
@@ -79,6 +79,17 @@ def wait_free(paths, cap_s=600):
         assert time.time() - t0 < cap_s, ('still in use after %d s' % cap_s, busy(paths))
         time.sleep(10)
 
+def stand_in_log(logs, T, P2, t_cut):
+    """an OBS log with a session per part, as a reconnect makes them: the disconnect, and part 2's session start, at t_cut s
+    into part 1's session (the tick clock the join is checked on)"""
+    os.makedirs(logs); at = lambda t: '10:%02d:%06.3f' % (t // 60, t % 60)
+    with open(os.path.join(logs, '2026-10-23 10-00-00.txt'), 'w') as f:
+        f.write('%s: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n' % at(0))
+        f.write('%s: [shuttle-source] raw .tpc started: %s — local spill x\n' % (at(0.5), T))
+        f.write('%s: [shuttle-source] the Shuttle disconnected (USB connection lost): picture blanked; reconnecting when it comes back\n' % at(t_cut))
+        f.write('%s: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n' % at(t_cut))
+        f.write('%s: [shuttle-source] raw .tpc started: %s — local spill x\n' % (at(t_cut + 0.1), P2))
+
 def main():
     src, S = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
     if os.path.exists(S): sys.exit('remove %s first' % S)
@@ -86,19 +97,13 @@ def main():
     # work folders hold FIFOs, which the share cannot: local, as the dashboard keeps them
     L = tempfile.mkdtemp(prefix='cpj-') if os.path.realpath(S).startswith('/Volumes/zpool/') else S
     T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
-    lost, K = split(src, T, P2); print('split: packets lost %s; part 2 counters moved by %d' % ({hex(k): v for k, v in lost.items()}, -K))
+    lost, K, t_cut = split(src, T, P2); print('split: packets lost %s; part 2 counters moved by %d' % ({hex(k): v for k, v in lost.items()}, -K))
     for tp, csv in ((T, 'T.mov.registration.csv'), (P2, 'T.mov.registration.part2.csv')):
         r = subprocess.run(['/bin/bash', os.path.join(REPO, 'scripts/plain_render/plain_render.sh'), tp, tp + '.check.mov', os.path.join(L, 'tr')],
                            env=dict(os.environ, PLAIN_RENDER_DECISION_LOG=os.path.join(S, csv)), capture_output=True, text=True)
         assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
         os.remove(tp + '.check.mov'); shutil.rmtree(os.path.join(L, 'tr'))
-    logs = os.path.join(L, 'obs-logs'); os.makedirs(logs)
-    with open(os.path.join(logs, '2026-10-23 10-00-00.txt'), 'w') as f:      # a session per part, as a reconnect makes them
-        f.write('10:00:00.000: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n')
-        f.write('10:00:01.000: [shuttle-source] raw .tpc started: %s — local spill x\n' % T)
-        f.write('10:00:15.000: [shuttle-source] the Shuttle disconnected (USB connection lost): picture blanked; reconnecting when it comes back\n')
-        f.write('10:00:15.000: [shuttle-source] started (device), registration OFF (nominal placement), H-retiming off\n')
-        f.write('10:00:15.100: [shuttle-source] raw .tpc started: %s — local spill x\n' % P2)
+    logs = os.path.join(L, 'obs-logs'); stand_in_log(logs, T, P2, t_cut)
     good, gL, gR = units(src)
     DA = os.path.join(S, 'donorA.tpc'); raise_counters(src, DA, 1000)
     W = os.path.join(L, 'work'); env = dict(os.environ, CAPTURE_PATCH_OBS_LOGS=logs)
