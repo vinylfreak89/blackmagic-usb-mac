@@ -13,7 +13,7 @@
 # slots) to its relocked unit. The units across the disconnect by that clock must agree with the offset's within
 # JOIN_TOLERANCE. (A part's session clock can run for hours by its end; compared with the log's wall clock over that
 # long, ordinary drift would approach the tolerance, so it is not used.)
-import glob, os, re, struct, time
+import collections, glob, os, re, struct, time
 import numpy as np
 from region import load, UNIT
 from joined import note_record
@@ -46,8 +46,9 @@ def donor_fields(D):
         R = load(D, at, min(DONOR_CHUNK, size - at) + (2 << 20)); out.update(fields(R)); at += DONOR_CHUNK; del R
     return out
 
-def match(tf, refs, df, log):
-    """line up target fields (counters refs) with every donor field: [(pairing, off)] of the decisive matches"""
+def match(tf, refs, df, log, best=None):
+    """line up target fields (counters refs) with every donor field: [(pairing, off)] of the decisive matches; best(x), if
+    given, receives every field's best match (pairing, off), decisive or not"""
     dk = sorted(df); stack = np.stack([df[a][t] for a in dk for t in (0, 1)]).astype(np.int16); votes = []
     for c in refs:
         f = tf[c]
@@ -61,7 +62,60 @@ def match(tf, refs, df, log):
             off = ((off + 32768) % 65536) - 32768
             log('  part counter %d slot %d -> donor %d slot %d  mad %.2f (next best %.2f)%s' % (c, s + 1, a, t + 1, mad[b], n2, '' if decisive else '  not decisive'))
             if decisive: votes.append((kind, off))
+            if best: best((kind, off))
     return votes
+
+AUDIO_MIN_R = 0.8; AUDIO_MARGIN = 0.8; AUDIO_MIN_RMS = 2000.0       # correlation, runner-up/best, and loudness (24-bit units, ~-72 dBFS)
+# Sound places a donor to within about a unit, not exactly, and says nothing of the pairing. Two passes' resyncs at the
+# same sound are apart by the pairing plus an audio delay that differs from pass to pair of passes (measured 2026-10-24:
+# +372/+373 on both sides of one disconnect, -205 at another, both pairing the same by picture; 513-517 between captures 3
+# and 4, which pair one field apart). So the nearest donor resync can name the unit next to the right one: at the second
+# 2026-10-23 disconnect the sound said 14673 where all 26 picture best matches said 14674. Picture decides the unit.
+
+def donor_audio(D):
+    """[(mono samples, resyncs [(sample index, counter)])] of the donor, in chunks that overlap by half a chunk, so any
+    stretch of up to a quarter chunk of sound (~2.8 s at 22.6 MB/s) lies whole in at least one"""
+    out = []; size = os.path.getsize(D); at = 0
+    while True:
+        R = load(D, at, min(DONOR_CHUNK, size - at)); L, Rr = R.pcm()
+        out.append(((L + Rr).astype(np.float64), [(s, c) for _, s, c in R.resyncs])); del R
+        if at + DONOR_CHUNK >= size: return out
+        at += DONOR_CHUNK // 2
+
+def audio_lineup(R, c_end, chunks, log, units=(10, 80), after=False):
+    """line up the target's sound in the units `units` before counter c_end of region R (after=True: after it) with the
+    donor's sound (donor_audio): dict(off: donor counter - target counter, to within about a unit; r; ...) or ValueError.
+    Refuses silence and a weak or rivalled match."""
+    rs = [(s, c) for _, s, c in R.resyncs if units[0] <= ((c - c_end) if after else (c_end - c)) % 65536 <= units[1]]   # after: units after c_end
+    if len(rs) < 30: raise ValueError('only %d audio resyncs in the target before counter %d' % (len(rs), c_end))
+    rs.sort(key=lambda x: x[0]); s0, s1 = rs[0][0], rs[-1][0]
+    L, Rr = R.pcm(); x = (L + Rr).astype(np.float64)[s0:s1]
+    rms = float(np.sqrt((x * x).mean()))
+    if rms < AUDIO_MIN_RMS: raise ValueError('the target is nearly silent before counter %d (RMS %.0f): its sound cannot place the donor' % (c_end, rms))
+    x = x - x.mean(); ex = float((x * x).sum()); peaks = []          # (r, chunk, lag, donor counter there)
+    for ci, (y, drs) in enumerate(chunks):
+        if len(y) < len(x) or not drs: continue
+        y = y - y.mean(); n = 1 << int(np.ceil(np.log2(len(y) + len(x))))
+        c = np.fft.irfft(np.fft.rfft(y, n) * np.conj(np.fft.rfft(x, n)), n)[:len(y) - len(x) + 1]
+        e = np.concatenate([[0.0], np.cumsum(y * y)]); ey = e[len(x):] - e[:len(e) - len(x)]
+        r = c / np.sqrt(ex * ey + 1e-9)
+        for _ in range(3):                                            # the chunk's three best places, each a unit apart
+            k = int(np.argmax(r)); rk = float(r[k])
+            if not np.isfinite(rk) or rk <= 0: break
+            peaks.append((rk, ci, k, min(drs, key=lambda q: abs(q[0] - k))[1]))
+            r[max(0, k - 1602):k + 1603] = -1
+    if not peaks: raise ValueError('the donor has less sound than the stretch to match')
+    rb, ci, k, cb = max(peaks); drs = chunks[ci][1]
+    # the same donor sound found again in an overlapping chunk is not a rival: rivals land on another donor unit
+    runner = max([p[0] for p in peaks if min((p[3] - cb) % 65536, (cb - p[3]) % 65536) > 1], default=0.0)
+    log('  audio: %d samples before counter %d match the donor at r %.3f (runner-up %.3f)' % (len(x), c_end, rb, runner))
+    if rb < AUDIO_MIN_R or runner > AUDIO_MARGIN * rb: raise ValueError('the sound does not place the donor clearly (r %.3f, runner-up %.3f)' % (rb, runner))
+    # the target resync nearest the middle of the stretch, and the donor resync nearest the same sound
+    st, ct = rs[len(rs) // 2]; sd = st - s0 + k
+    sdr, cd = min(drs, key=lambda q: abs(q[0] - sd)); d = sdr - sd
+    off = ((cd - ct + 32768) % 65536) - 32768
+    log('  audio: target unit %d ~ donor unit %d (resyncs %+d samples apart): offset %d, to within a unit' % (ct, cd, d, off))
+    return dict(off=off, r=round(rb, 4), runner_up=round(runner, 4), resync_samples=int(d))
 
 def session_times(part):
     """(wall-clock start of the session that wrote part, wall-clock time of the first Shuttle disconnect after the part
@@ -135,23 +189,22 @@ def seqs(R, last):
             out[r[2]] = (max if last else min)(out.get(r[2], r[4]), r[4])
     return out
 
-def measure_join(pa, pb, D, df, log):
+def measure_join(pa, pb, D, df, log, chunks=None):
     """the offset of part pb's counters into part pa's numbering, from donor D, and the clock check"""
     ra = load(pa, max(0, os.path.getsize(pa) - EDGE), EDGE); rb = load(pb, 0, min(EDGE, os.path.getsize(pb)))
     oa, ca = last_whole(ra); ob, cb = relocked(rb)
-    fa, fb = fields(ra), fields(rb)
-    refs_a = sorted((c for c in fa if 10 <= (ca - c) % 65536 <= 130), key=lambda c: (ca - c) % 65536)[::10]   # 10-130 units before
-    refs_b = sorted((c for c in fb if 10 <= (c - cb) % 65536 <= 130), key=lambda c: (c - cb) % 65536)[::20]   # 10-130 units after
     log('join %s -> %s: last whole unit before %d, Shuttle locked again from %d' % (os.path.basename(pa), os.path.basename(pb), ca, cb))
-    va = match(fa, refs_a, df, log); vb = match(fb, refs_b, df, log)
-    for side, v, n in (('before', va, refs_a), ('after', vb, refs_b)):
-        if len(v) < 6: raise ValueError('only %d of %d fields %s the disconnect matched the donor clearly; the donor may not cover it' % (len(v), 2 * len(n), side))
-        if len(set(v)) != 1: raise ValueError('the matches %s the disconnect disagree: %s' % (side, sorted(set(v))))
-    (pa_kind, off_b), (pb_kind, off_a) = va[0], vb[0]
+    if chunks is None: chunks = donor_audio(D)
+    sides = []
+    for side, R, c, after in (('before', ra, ca, False), ('after', rb, cb, True)):
+        try: k, o, basis = line_up_before(R, c, df, chunks, log, after=after)
+        except ValueError as e: raise ValueError('%s the disconnect: %s; the donor may not cover it' % (side, e))
+        log('join: %s the disconnect the donor lines up by %s: pairing %s, donor counter = part %+d' % (side, basis, k, o)); sides.append((k, o, basis))
+    (pa_kind, off_b, basis_b), (pb_kind, off_a, basis_a) = sides
     if pa_kind != pb_kind: raise ValueError('the donor pairs fields %s before the disconnect and %s after: the reset changed the pairing' % (pa_kind, pb_kind))
     delta = (off_a - off_b) % 65536
     units_between = (cb + delta - ca) % 65536                     # by the offset: from the last unit before to the relocked one
-    res = dict(pairing=pa_kind, off_before=off_b, off_after=off_a, counter_delta=delta, last_before=ca, relocked_after=cb, units_by_offset=units_between,
+    res = dict(pairing=pa_kind, off_before=off_b, off_after=off_a, counter_delta=delta, last_before=ca, relocked_after=cb, units_by_offset=units_between, basis=[basis_b, basis_a],
                seq_last={str(e): v for e, v in seqs(ra, True).items()}, seq_first={str(e): v for e, v in seqs(rb, False).items()})   # str keys: stored as JSON
     _, t_disc = session_times(pa); t0b, _ = session_times(pb)
     if t_disc is None or t0b is None: raise ValueError('OBS\'s log does not have the disconnect after %s or the session of %s: the clock check cannot be made' % (pa, pb))
@@ -164,22 +217,91 @@ def measure_join(pa, pb, D, df, log):
     if abs(units_between - gap / PERIOD) > JOIN_TOLERANCE: raise ValueError('the donor says %d units across the disconnect, the capture clock %.1f: they disagree by more than %d' % (units_between, gap / PERIOD, JOIN_TOLERANCE))
     return res
 
+CONSENSUS = 2 / 3; CONSENSUS_MIN = 10       # the picture's best matches, decisive or not: share and count that must agree
+
+def picture(R, c_ref, df, log, after=False):
+    """the picture's answer for the units 10-130 before (after) counter c_ref: (decisive (pairing, off) or None,
+    the most common best match (pairing, off) or None, its count, fields compared)"""
+    tf = fields(R); dist = (lambda c: (c - c_ref) % 65536) if after else (lambda c: (c_ref - c) % 65536)
+    refs = sorted((c for c in tf if 10 <= dist(c) <= 130), key=dist)[::10]
+    if not refs: return None, None, 0, 0
+    best = []
+    v = match(tf, refs, df, log, best.append)
+    dec = v[0] if len(v) >= 6 and len(set(v)) == 1 else None
+    if not best: return dec, None, 0, 0
+    top, n = collections.Counter(best).most_common(1)[0]
+    return dec, top, n, len(best)
+
+def line_up_before(R, c_end, df, chunks, log, after=False, sound_alone=False):
+    """where the donor has the target's units just before counter c_end of region R (after=True: just after it), as
+    (pairing, off, basis), or ValueError. The picture decides: decisive field matches; or, where the fields match without
+    a clear margin (dim, low-contrast or damaged picture), the best matches of at least two thirds of them agreeing (and at
+    least 10), when the sound puts the donor within a unit of the same place. Sound alone (sound_alone=True: snow at the
+    end of a tape, where a unit's error cannot show) gives the offset to within a unit and no pairing ('same' is taken)."""
+    dec, top, n, m = picture(R, c_end, df, log, after)
+    try: au = audio_lineup(R, c_end, chunks, log, after=after)
+    except ValueError as e: au = None; log('  audio: %s' % e)
+    near = lambda off: au is not None and abs(((au['off'] - off + 32768) % 65536) - 32768) <= 1
+    if dec:
+        if au is not None and not near(dec[1]): raise ValueError('the picture places the donor at offset %d, the sound at %d' % (dec[1], au['off']))
+        return dec[0], dec[1], 'picture' + (' and sound' if au else '')
+    if top and n >= CONSENSUS_MIN and n >= CONSENSUS * m:
+        if near(top[1]): return top[0], top[1], 'picture (%d of %d best matches agree) confirmed by sound (r %.3f)' % (n, m, au['r'])
+        if au is None: raise ValueError('%d of %d fields agree on offset %d but none clearly, and the sound cannot confirm it' % (n, m, top[1]))
+        raise ValueError('%d of %d fields agree on offset %d but none clearly, and the sound places the donor at %d' % (n, m, top[1], au['off']))
+    if au is not None and sound_alone: return 'same', au['off'], 'sound alone (r %.3f): offset to within a unit, pairing not measurable' % au['r']
+    raise ValueError('the picture does not place the donor (no field clearly; the most common best match %s in %d of %d fields) and %s' % (
+        top, n, m, 'the sound alone cannot decide the unit' if au else 'the sound does not either'))
+
+APPEND_HOLE = 8           # units: the donor is cut this far past the target's last whole unit; the hole between is filled from it
+
+def measure_append(pa, D, df, chunks, log):
+    """a donor that carries on past the end of the last part pa: where it lines up with pa's last units, and where it is cut
+    to follow as one more part (the units between are then a gap the filler rebuilds from the same donor)"""
+    ra = load(pa, max(0, os.path.getsize(pa) - EDGE), EDGE); oa, ca = last_whole(ra)
+    log('append to %s: its last whole unit is %d' % (os.path.basename(pa), ca))
+    kind, off, basis = line_up_before(ra, ca, df, chunks, log, sound_alone=True)
+    cut = (ca + off + APPEND_HOLE) % 65536                          # in the donor's numbering
+    size = os.path.getsize(D); at = 0; where = None
+    while at < size and where is None:                              # the record holding the cut unit's marker
+        R = load(D, at, min(DONOR_CHUNK, size - at) + (2 << 20))
+        for o, c, fm, ok in R.marks:
+            if c == cut and ok and fm == 0xe801: where = R.recs[R.vpk[R.vrec_of(o)][1]][0]; break
+        at += DONOR_CHUNK; del R
+    if where is None: raise ValueError('the donor has no whole unit %d (%d past the target\'s end): it does not run past the end' % (cut, APPEND_HOLE))
+    rd = load(D, where, min(EDGE, size - where))
+    log('append: donor %s lines up by %s (pairing %s, donor counter = target %+d); it follows from donor byte %d (its unit %d, %.1f GB to its end)' % (
+        os.path.basename(D), basis, kind, off, where, cut, (size - where) / 1e9))
+    return dict(pairing=kind, off_before=off, off_after=off, counter_delta=(-off) % 65536, last_before=ca, relocked_after=(cut - off) % 65536,
+                units_by_offset=APPEND_HOLE, basis=basis, append=True, donor_start=where, donor_cut_counter=cut,
+                seq_last={str(e): v for e, v in seqs(ra, True).items()}, seq_first={str(e): v for e, v in seqs(rd, False).items()})
+
 def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
     """the join description and the joined live sidecar for parts [(tpc, csv)] and the measured joins"""
+    start = lambda k: parts[k][2] if len(parts[k]) > 2 else 0      # an appended donor follows from partway into its file
     specs = [dict(path=parts[0][0], size=os.path.getsize(parts[0][0]), counter_delta=0, seq_delta={'131': 0, '132': 0})]; notes = []
     for k, j in enumerate(joins):
         prev = specs[-1]; cd = (prev['counter_delta'] + j['counter_delta']) % 65536
         sd = {str(ep): (j['seq_last'][str(ep)] + prev['seq_delta'][str(ep)]) + 1 - j['seq_first'][str(ep)] for ep in (0x83, 0x84)}
-        specs.append(dict(path=parts[k + 1][0], size=os.path.getsize(parts[k + 1][0]), counter_delta=cd, seq_delta=sd))
-        notes.append('capture_patch join %d: %s follows; Shuttle counter +%d, transfers +%s; measured from donor %s (counter %+d before the disconnect, %+d after, pairing %s), %d units across it, %.1f by the capture clock' % (
-            k + 1, os.path.basename(parts[k + 1][0]), cd, sd, os.path.basename(donors[k]), j['off_before'], j['off_after'], j['pairing'], j['units_by_offset'], j['units_by_clock']))
+        specs.append(dict(path=parts[k + 1][0], start=start(k + 1), size=os.path.getsize(parts[k + 1][0]) - start(k + 1), counter_delta=cd, seq_delta=sd))
+        if j.get('append'):
+            notes.append('capture_patch append: %s follows from its byte %d (its unit %d); Shuttle counter +%d, transfers +%s; lined up with the end of the capture by %s (donor counter = capture %+d, pairing %s); the %d units before it are rebuilt from it' % (
+                os.path.basename(parts[k + 1][0]), start(k + 1), j['donor_cut_counter'], cd, sd, j['basis'], j['off_before'], j['pairing'], APPEND_HOLE - 1))
+        else:
+            notes.append('capture_patch join %d: %s follows; Shuttle counter +%d, transfers +%s; measured from donor %s (counter %+d before the disconnect, %+d after, pairing %s), %d units across it, %.1f by the capture clock' % (
+                k + 1, os.path.basename(parts[k + 1][0]), cd, sd, os.path.basename(donors[k]), j['off_before'], j['off_after'], j['pairing'], j['units_by_offset'], j['units_by_clock']))
     import json
     json.dump(dict(parts=specs, notes=notes), open(out_spec, 'w'), indent=1)
     # the live sidecars, part after part, numbered as the joined capture: counters, frame tops and ordinals moved
-    hdr = None; last_ce = last_ord = None; rows = 0
+    hdr = None; last_ce = last_ord = last_row = None; rows = 0
     with open(out_csv, 'w') as out:
-        for k, (_, csv) in enumerate(parts):
-            d16 = specs[k]['counter_delta']; dext = None; dord = None
+        for k, part in enumerate(parts):
+            csv = part[1]; d16 = specs[k]['counter_delta']; dext = None; dord = None
+            app = joins[k - 1].get('append') if k else False
+            if app:                                          # the seam: the planner's event, the gate's excluded span
+                seam = list(last_row); seam[ix['drop_reason']] = 'Hole'
+                for col in ('counter_extended', 'observed_counter', 'frame_top_unit'): seam[ix[col]] = ''
+                seam[ix['published']] = '0'; last_ord += 1; seam[ix['ordinal']] = str(last_ord); out.write(','.join(seam) + '\n'); rows += 1
             if k:                                            # the part's first counter, for the extended shift of all its rows
                 with open(csv) as f:
                     h = None
@@ -187,8 +309,10 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
                         if line.startswith('#'): continue
                         if h is None: h = line.rstrip('\n').split(','); ce = h.index('counter_extended'); continue
                         v = line.rstrip('\n').split(',')[ce]
-                        if v: first = int(v); dext = last_ce + ((first + d16 - last_ce) % 65536) - first; break
-                if dext is None: raise ValueError('%s has no row with a counter' % csv)
+                        if v and (not app or int(v) % 65536 == joins[k - 1]['donor_cut_counter']):     # an append: from the cut unit
+                            first = int(v); dext = last_ce + ((first + d16 - last_ce) % 65536) - first; break
+                if dext is None: raise ValueError('%s has no row with %s' % (csv, 'the cut unit %d' % joins[k - 1]['donor_cut_counter'] if app else 'a counter'))
+            skip = bool(app)
             with open(csv) as f:
                 for line in f:
                     if line.startswith('#'):
@@ -197,6 +321,9 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
                     if hdr is None: hdr = line.rstrip('\n').split(','); ix = {h: i for i, h in enumerate(hdr)}; out.write(line); continue
                     if line.rstrip('\n').split(',') == hdr: continue
                     r = line.rstrip('\n').split(',')
+                    if skip:                                 # an appended donor's rows before its cut unit are the capture's own
+                        if r[ix['counter_extended']] and int(r[ix['counter_extended']]) == first: skip = False
+                        else: continue
                     if k:
                         if dord is None: dord = last_ord + 1 - int(r[ix['ordinal']])
                         # counter_extended, frame_top_unit and observed_counter all hold the parser's extended counter (the
@@ -206,5 +333,5 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
                             if v and v != '0': r[ix[col]] = str(int(v) + dext)
                         r[ix['ordinal']] = str(int(r[ix['ordinal']]) + dord); r[ix['epoch']] = '1'
                     if r[ix['counter_extended']]: last_ce = int(r[ix['counter_extended']])
-                    last_ord = int(r[ix['ordinal']]); out.write(','.join(r) + '\n'); rows += 1
+                    last_ord = int(r[ix['ordinal']]); last_row = r; out.write(','.join(r) + '\n'); rows += 1
     return specs, notes, rows

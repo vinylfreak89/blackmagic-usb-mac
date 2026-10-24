@@ -1,0 +1,87 @@
+# Where each recapture (donor) belongs in a capture, found from the donors themselves: the patch tool is given clips in any
+# order and works out which disconnect, gap or the end each one covers.
+#
+# The places a clip can serve, from the capture's parts and their live sidecars:
+#   - each disconnect: the end of every part but the last (a join; measured afterwards from both sides and the clock);
+#   - the end: the end of the last part (an append, when the clip runs on past it);
+#   - each gap inside a part: an event stretch of the part's sidecar holding a Hole row (host loss), except the loss just
+#     before a disconnect, which belongs to that join.
+# A clip is placed at a place when it lines up with the capture's units just before it (joins.line_up_before: picture when
+# decisive, otherwise sound; both must agree when both can tell); at a gap, also just after it, with the same offset.
+# Every clip must land somewhere, no place may get two clips, and every disconnect needs one.
+import os
+import joins as J
+from region import load, UNIT
+from stretches import event_groups, stretch_range
+
+JOIN_EDGE_ROWS = 600          # a Hole this close to a part's end is the loss before its disconnect
+
+def hole_groups(csv):
+    """event stretches of a live sidecar that hold a Hole row: [(first row, last row)], and the sidecar's row count"""
+    groups, nrows = event_groups(csv); holes = set(); hdr = None; n = 0
+    with open(csv) as f:
+        for line in f:
+            if line.startswith('#'): continue
+            if hdr is None: hdr = line.rstrip('\n').split(','); iD = hdr.index('drop_reason'); continue
+            if line.split(',', iD + 1)[iD] == 'Hole': holes.add(n)
+            n += 1
+    return [(g[0], g[-1]) for g in groups if any(r in holes for r in g)], nrows
+
+def places(parts, log):
+    """[dict(kind, part, label, load: () -> (region, counter before, counter after or None))]"""
+    out = []
+    for k, (tp, csv) in enumerate(parts):
+        size = os.path.getsize(tp)
+        def end(tp=tp, size=size):
+            R = J.load(tp, max(0, size - J.EDGE), min(J.EDGE, size)); return R, J.last_whole(R)[1], None
+        out.append(dict(kind='join' if k < len(parts) - 1 else 'end', part=k, label='the %s of %s' % ('disconnect at the end' if k < len(parts) - 1 else 'end', os.path.basename(tp)), load=end))
+        hg, nrows = hole_groups(csv)
+        for a, b in hg:
+            if k < len(parts) - 1 and nrows - b <= JOIN_EDGE_ROWS: continue
+            def gap(tp=tp, size=size, a=a, b=b, nrows=nrows):
+                lo, hi = stretch_range([a, b], size / nrows, size); R = load(tp, lo, hi - lo)
+                w = [c for o, c, fm, ok in R.marks if ok and fm == 0xe801]; seq = [w[0]]
+                for c in w[1:]: seq.append(seq[-1] + ((c - seq[-1]) % 65536))
+                hs = [(x, y) for x, y in zip(seq, seq[1:]) if y - x > 1]
+                if not hs: raise ValueError('no missing picture units around sidecar rows %d-%d' % (a, b))
+                return R, hs[0][0] % 65536, hs[-1][1] % 65536
+            out.append(dict(kind='gap', part=k, rows=[a, b], label='the gap at %d:%02d of %s' % (a / 29.97 // 60, a / 29.97 % 60, os.path.basename(tp)), load=gap))
+    return out
+
+def locate(parts, donors, log):
+    """{'joins': [donor per disconnect], 'append': donor or None, 'gaps': [dict(part, rows, donor, pairing, off)], 'placed': ...}"""
+    feats = {}
+    for D in donors:
+        log('reading donor %s' % os.path.basename(D)); feats[D] = (J.donor_fields(D), J.donor_audio(D))
+    found = {}                                          # place index -> [(donor, pairing, off, basis)]
+    pl = places(parts, log)
+    for i, p in enumerate(pl):
+        R, before, after = p['load']()
+        for D in donors:
+            df, ch = feats[D]; quiet = []
+            try:
+                kind, off, basis = J.line_up_before(R, before, df, ch, quiet.append, sound_alone=p['kind'] == 'end')
+                if after is not None:
+                    k2, o2, b2 = J.line_up_before(R, after, df, ch, quiet.append, after=True)
+                    if (k2, o2) != (kind, off): raise ValueError('it lines up at %s before the gap and %s after' % ((kind, off), (k2, o2)))
+                found.setdefault(i, []).append((D, kind, off, basis))
+                log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d)' % (p['label'], os.path.basename(D), basis, kind, off))
+            except ValueError as e: log('%s: not %s (%s)' % (p['label'], os.path.basename(D), e))
+        del R
+    for i, ds in found.items():
+        if len(ds) > 1: raise ValueError('%s is covered by more than one clip: %s; give one' % (pl[i]['label'], ', '.join(os.path.basename(d[0]) for d in ds)))
+    used = {d[0] for ds in found.values() for d in ds}
+    for D in donors:
+        if D not in used: raise ValueError('%s lines up with no disconnect, gap or the end of the capture' % os.path.basename(D))
+    joins = []
+    for i, p in enumerate(pl):
+        if p['kind'] == 'join':
+            if i not in found: raise ValueError('%s has no clip: a recapture across it is needed to join the parts' % p['label'])
+            joins.append(found[i][0][0])
+    end = [found[i][0][0] for i, p in enumerate(pl) if p['kind'] == 'end' and i in found]
+    gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3])
+            for i, p in enumerate(pl) if p['kind'] == 'gap' and i in found]
+    left = [p['label'] for i, p in enumerate(pl) if p['kind'] == 'gap' and i not in found]
+    if left: log('gaps with no clip, left as they are: %s' % '; '.join(left))
+    return dict(joins=joins, append=end[0] if end else None, gaps=gaps,
+                placed={os.path.basename(d[0]): pl[i]['label'] for i, ds in found.items() for d in ds})

@@ -5,6 +5,7 @@
 # transfer ~440,000; part 2's picture began at counter 15, transfers at 6). A join description (NAME.join.json) says by how
 # much each later part's counters and transfer numbers move so the parts read as one numbering:
 #   {"parts": [{"path": ..., "size": ..., "counter_delta": 0, "seq_delta": {"131": 0, "132": 0}}, ...], "notes": [...]}
+# A part may begin partway into its file ("start": a record boundary; an appended donor follows from its cut there).
 # open_capture(path) gives a read-only file-like object over either a plain .tpc or a join description. For a join it
 # yields part 1, then for each later part a SESSION record holding that join's note (replay reads SESSION notes only for
 # the USB stack and ignores the rest), then the part with, on the fly:
@@ -59,7 +60,7 @@ class Joined:
         for k, p in enumerate(self.parts):
             if k:
                 nb = note_record(notes[k - 1]); self.segs.append((v, v + len(nb), None, nb)); v += len(nb)
-            assert os.path.getsize(p['path']) >= p['size'], '%s is shorter than the join says' % p['path']
+            assert os.path.getsize(p['path']) >= p.get('start', 0) + p['size'], '%s is shorter than the join says' % p['path']
             self.segs.append((v, v + p['size'], k, None)); v += p['size']
         self.size = v; self.pos = 0; self.files = {}
     def seek(self, off, whence=0):
@@ -82,14 +83,14 @@ class Joined:
         if k not in self.files: self.files[k] = open(self.parts[k]['path'], 'rb', buffering=0)
         return self.files[k]
     def part_bytes(self, k, a, b):
-        """bytes [a, b) of part k, renumbered"""
-        p = self.parts[k]; f = self.file(k); cd = p.get('counter_delta', 0) % 65536
+        """bytes [a, b) of part k, renumbered (offsets within the part, which begins at its file's byte p['start'])"""
+        p = self.parts[k]; f = self.file(k); cd = p.get('counter_delta', 0) % 65536; z = p.get('start', 0)
         sd = {int(e): v for e, v in p.get('seq_delta', {}).items()}
         if not cd and not any(sd.values()):
-            f.seek(a); return f.read(b - a)
-        s = boundary(f, max(0, a - BACK)) if a > BACK else 0      # a part file starts with a record
+            f.seek(z + a); return f.read(b - a)
+        s = boundary(f, z + max(0, a - BACK)) - z if a > BACK else 0     # a part starts with a record
         if s > a: raise IOError('no record boundary in the 4 MB before %d of %s' % (a, p['path']))
-        f.seek(s); buf = bytearray(f.read(b - s + (1 << 20)))     # to the end of the record holding byte b - 1
+        f.seek(z + s); buf = bytearray(f.read(min(b - s + (1 << 20), z + p['size'] - (z + s))))   # to the record holding b - 1, never past the part
         lo, hi = a - s, b - s
         def put16(i0, i1, value):
             for i, byte in ((i0, value & 0xff), (i1, value >> 8)):
