@@ -33,6 +33,12 @@
 # decision log (the sidecar's schema) from the same pass; it is not overwritten if it exists.
 # PLAIN_RENDER_STALL_S=N: the replay's no-delivery deadline (default 120 s); raise it when the input can pause for longer,
 # e.g. a FIFO fed from a cloud volume whose reader waits out dropouts.
+# PLAIN_RENDER_FILTER='COMMAND': a picture filter between the replay and the relay (bash -c, frames on stdin and stdout, 720x480
+# UYVY, one frame out per frame in, so the audio-clock placement and the frame-count check hold); it fails the render if it
+# exits non-zero. PLAIN_RENDER_DEINTERLACE replaces the yadif step (default yadif=mode=send_field:parity=tff): a filter whose
+# two fields are not a weavable pair needs each field on its own, e.g. separatefields,scale=720:480,fps=60000/1001. The fps
+# step is needed: on separatefields' own timestamps ffmpeg 9 with -shortest takes 4 frames and then waits for audio that
+# cannot come until it takes more (measured 2026-10-24 at audio leads of 0.2-2 s). The recovery submodule's render.sh uses both.
 set -u
 # The whole script is one function, called on the last line: bash reads and parses all of it before running any of it.
 # Run as plain lines, bash reads the file as it goes, so an edit during a render makes the running render execute
@@ -56,7 +62,7 @@ make -C "$REPO/src/frameserver" -q frameserver_replay || { echo "REFUSE: $RP is 
 # macOS with "Code Signature Invalid" before it runs (2026-10-21). Read it in full first, then check its signature.
 cat "$RP" > /dev/null || { echo "REFUSE: could not read $RP"; exit 2; }
 codesign -v "$RP" 2>/dev/null || { echo "REFUSE: $RP fails its code-signature check"; exit 2; }
-rm -f "$D/v.fifo" "$D/a.fifo" "$D/cap.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/a0.json" "$D/schedule.json" "$D/audio.json" "$D/lost_counters.txt" "$D/checked_read.rc"
+rm -f "$D/v.fifo" "$D/a.fifo" "$D/cap.fifo" "$D/a.s24" "$D/timing.csv" "$D/replay.done" "$D/a0.json" "$D/schedule.json" "$D/audio.json" "$D/lost_counters.txt" "$D/checked_read.rc" "$D/vraw.fifo" "$D/filter.rc"
 mkfifo "$D/v.fifo" "$D/a.fifo"; date
 # Outputs are emptied in place, never deleted and recreated: JuiceMount (0.4) keeps a deleted file's write handle and its size
 # high-water mark per path, so a file recreated where one was deleted can receive writes into the deleted inode, or be reported at
@@ -95,7 +101,7 @@ python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | 
   -thread_queue_size 64 -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
   -thread_queue_size 4096 -f s24le -ar 48000 -ac 2 -i "$D/a.fifo" \
   -map 0:v -map 1:a \
-  -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,yadif=mode=send_field:parity=tff,crop=704:480:8:0,setsar=10/11" \
+  -vf "setparams=field_mode=tff:range=tv:color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m,${PLAIN_RENDER_DEINTERLACE:-yadif=mode=send_field:parity=tff},crop=704:480:8:0,setsar=10/11" \
   -c:v prores_videotoolbox -profile:v standard -c:a pcm_s24le -shortest -f mov -y "$PART" > "$D/ffmpeg.log" 2>&1 & PL=$!
 # The replay's input: the capture itself, or a FIFO fed by the checked reader. If the checked reader ends without opening the
 # FIFO (a setup error), the write end is opened once without blocking so the replay sees end of file instead of waiting forever.
@@ -114,10 +120,24 @@ case "$CHK" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; 
 try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
 except OSError: pass' "$D/cap.fifo"; } & CRP=$!
 fi;; esac
-FS_FIRST_LINE="$FL" FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$D/v.fifo" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
+# With a filter the replay writes vraw.fifo, the filter reads it and writes v.fifo for the relay. Started here, after every
+# refusal, so a refused render leaves no filter waiting on its FIFO.
+VDUMP="$D/v.fifo"; FP=""
+if [ -n "${PLAIN_RENDER_FILTER:-}" ]; then
+  mkfifo "$D/vraw.fifo"; VDUMP="$D/vraw.fifo"; echo "picture filter: $PLAIN_RENDER_FILTER"
+  { bash -c "$PLAIN_RENDER_FILTER" < "$D/vraw.fifo" > "$D/v.fifo" 2>"$D/filter.log"; echo $? > "$D/filter.rc"; } & FP=$!
+fi
+FS_FIRST_LINE="$FL" FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$VDUMP" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
 RC=$?; touch "$D/replay.done"
 CRC=0; if [ -n "$CRP" ]; then wait $CRP; CRC=$(cat "$D/checked_read.rc" 2>/dev/null || echo 9); rm -f "$D/cap.fifo"; tail -1 "$D/checked_read.log"; fi
-# A replay that died before opening the FIFO leaves the relay blocked opening it: open the write end once without
+# A replay that died before opening the filter's FIFO leaves the filter blocked opening it: the same release, then the
+# filter's exit status.
+FLC=0; if [ -n "$FP" ]; then
+  python3 -c 'import os, sys
+try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
+except OSError: pass' "$D/vraw.fifo"
+  wait $FP; FLC=$(cat "$D/filter.rc" 2>/dev/null || echo 9); rm -f "$D/vraw.fifo"; tail -3 "$D/filter.log"; fi
+# A replay (or filter) that died before opening the FIFO leaves the relay blocked opening it: open the write end once without
 # blocking, so the relay sees end of file and the pipeline ends (fails) instead of waiting forever.
 python3 -c 'import os, sys
 try: os.close(os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK))
@@ -128,9 +148,9 @@ python3 -c 'import os, sys
 try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK))
 except OSError: pass' "$D/a.fifo"
 wait $AP; ARC=$?; rm -f "$D/v.fifo" "$D/a.fifo"; date
-echo "replay exit $RC, encode exit $FRC, audio exit $ARC"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log" "$D/audio_relay.log"
+echo "replay exit $RC, encode exit $FRC, audio exit $ARC${FP:+, filter exit $FLC}"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log" "$D/audio_relay.log"
 if [ "$CRC" != 0 ]; then echo "CHECKED READ FAILED (exit $CRC): the capture was not proven intact; see $D/checked_read.log and $D/checked_read.json. Render not finished."; exit 1; fi
-if [ $RC -ne 0 ] || [ $FRC -ne 0 ] || [ $ARC -ne 0 ]; then echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; fi
+if [ $RC -ne 0 ] || [ $FRC -ne 0 ] || [ $ARC -ne 0 ] || [ "$FLC" != 0 ]; then echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; fi
 python3 "$HERE/finish.py" "$D" "$PART" "$OUT" || { echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; }
 [ -z "${3:-}" ] && rm -rf "$D"
 date; echo ALL DONE
