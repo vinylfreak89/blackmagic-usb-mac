@@ -398,7 +398,9 @@ def run(T, ats, joins_d, W, clips=None):
         r0 = part_rows[k + 1]
         g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] + 400 else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
         j = meas[k]; off = ((j['off_before'] - specs[k]['counter_delta']) + 32768) % 65536 - 32768
-        rng = (max(0, part_at[k + 1] - 150_000_000), min(size, part_at[k + 1] + 300_000_000))
+        # the capture read around a join: 40 MB before (1.7 s) and 120 MB after (5 s) is room for the rebuilt window and the
+        # sound line-ups; 150/300 MB made the planner pass its 3 GB guard on a 195-unit hole (3.6 GB; 2.4 GB at 40/120)
+        rng = (max(0, part_at[k + 1] - 40_000_000), min(size, part_at[k + 1] + 120_000_000))
         log('%s: the event at sidecar rows %d-%d, donor %s: pairing %s, FILL_OFF %d, read from byte %d' % ('append' if j.get('append') else 'join %d' % (k + 1), groups[g][0], groups[g][-1], os.path.basename(D), j['pairing'], off, rng[0]))
         events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None))   # an append: where its seam is
     for gp in auto_gaps:                                 # gaps inside a part, placed by locate.py (offsets in the part's numbering)

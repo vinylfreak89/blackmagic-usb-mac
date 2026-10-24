@@ -232,7 +232,10 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 return dres[a] + 800 - s_t if a in dres else None
             pr1 = predicted(sA, g['c1']); pr2 = predicted(sB, g['c2'])
             assert pr1 is not None and pr2 is not None, ('the donor capture has no resync for this moment', name)
-            if PAIRING == 'same' or ga:
+            if True:
+                # Every pairing, every seam (until 2026-10-24 only 'same' and an append seam): the unit clocks assume a
+                # one-field shift puts the sound 800 samples off, but real passes measured 513-517 and 703 (the
+                # 2026-10-23 second disconnect: the fine ±96 search then missed by ~100 and the plan refused).
                 # two plays of one tape: the linear audio sits a few hundred samples off the unit clocks and drifts with tape speed
                 # (measured 2026-10-20: -280 to -253 samples over 40 units), so the unit clocks only bound a full cross-correlation
                 for side, (seg0, seg1) in (('before', (max(0, sA - 14000), sA - 2000)), ('after', (sB + 2000, min(sB + 14000, len(S.mono))))):
@@ -257,7 +260,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 # a unit or more means the donor is placed a unit out (sound alone can do that), not a pass offset
                 av = M + g['n'] - 1601.6 * g['kc']; rep['append_av_shift_samples'] = round(av)
                 assert abs(av) <= 800, ('the append seam would take up %d samples: the donor is placed a unit out' % av, name)
-            elif r1 > 0.9 and r2 > 0.9 and PAIRING == 'same' and exp is not None:
+            elif r1 > 0.9 and r2 > 0.9 and exp is not None:     # any pairing: drift between two plays has nothing to do with it
                 # two plays differ in tape speed, so the line-up on each side also carries the drift between them; the device's
                 # clock gives the count, and the difference is split between the two seams
                 M = exp - g['n']; e = (d2 - d1) - M
