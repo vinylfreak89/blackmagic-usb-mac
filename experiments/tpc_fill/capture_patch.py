@@ -251,7 +251,10 @@ def row_counter(csv, row):
             n += 1
     return best[1] if best else None
 
-def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV):
+NOMINAL_FIRST = (23, 286)    # the 480-line aperture's nominal first lines; a render cropped at the measured first line places each
+                             # field by the difference (applied_d / frame_d), where the live session, uncropped, logged 0
+
+def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None):
     """the rebuilt sidecar numbered as the live one, compared row by row; written to OUTCSV. filled16: [(first, last, hint)],
     16-bit counters of each patched span and an extended counter near it (a long capture's 16-bit counter wraps every
     36.4 minutes, so the counter alone does not say which unit is meant)"""
@@ -280,15 +283,23 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV):
     GAP = set(); AFTER = set()
     for a, b in spans: GAP |= set(range(a - 6, b + 12)); AFTER |= set(range(a - 6, b + 310))   # the live engine reset at each hole
     HIST = {'audio_residual_ticks', 'vote_engine_anchor', 'vote_count', 'vote_winner_count', 'ordinal'}
+    # the placement columns of a render cropped at the measured first line: the live value moved by the crop, exactly
+    f1, f2 = (int(x) for x in first_line.split(',')) if first_line else NOMINAL_FIRST
+    crop = {ix[h]: d for h, d in (('applied_d1', f1 - NOMINAL_FIRST[0]), ('frame_d1', f1 - NOMINAL_FIRST[0]),
+                                  ('applied_d2', f2 - NOMINAL_FIRST[1]), ('frame_d2', f2 - NOMINAL_FIRST[1])) if h in ix}
+    def same(i, n, l):
+        if i in crop and n.lstrip('-').isdigit() and l.lstrip('-').isdigit(): return int(n) - crop[i] == int(l)
+        return n == l
     missing = sorted(set(L) - set(N)); added = sorted(set(N) - set(L))
     diff = {}; first = min(N)
     for c in N:
         if c in AFTER or c not in L or c - first < 300: continue
         for i, h in enumerate(lh):
-            if N[c][i] != L[c][i]: diff[h] = diff.get(h, 0) + 1
+            if not same(i, N[c][i], L[c][i]): diff[h] = diff.get(h, 0) + 1
     kinds = lambda R: {k: sum(1 for r in R if r[DR] == k) for k in sorted(set(r[DR] for r in R))}
     log('sidecar: live %d rows %s | rebuilt %d rows %s | counter shift %d, ordinal shift %d' % (len(live), kinds(live), len(new), kinds(new), D, O))
-    log('sidecar: columns differing outside the patched spans and the first 300 units: %s' % diff)
+    log('sidecar: columns differing outside the patched spans and the first 300 units: %s%s' % (diff, ' (placement compared after the first-line crop of %+d/%+d lines)' % (
+        f1 - NOMINAL_FIRST[0], f2 - NOMINAL_FIRST[1]) if (f1, f2) != NOMINAL_FIRST else ''))
     bad = [c for a, b in spans for c in range(a, b + 1) if c not in N or N[c][DR] != 'None' or N[c][PUB] != '1']
     if bad: fail('the rebuilt sidecar is not clean at the patched units: %s' % bad[:10])
     def events(R):
@@ -297,7 +308,10 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV):
             if r[DR] != 'None': out.append((prev, r[OC], 'Short' if r[DR] == 'ShortShown' else r[DR]))
             if r[CE]: prev = int(r[CE])
         return out
-    ev_live = [e for e in events(live) if e[0] not in GAP]; ev_new = events(new)
+    # the edges are each session's own: the live sidecar began a few units before the raw capture did, and a replay of the
+    # file sees its leading fragment first; events there are left out as values there are (the first 300 units, the last 30)
+    edge = lambda prev: prev is None or prev - first < 300 or max(L) - prev < 30
+    ev_live = [e for e in events(live) if e[0] not in GAP and not edge(e[0])]; ev_new = [e for e in events(new) if not edge(e[0])]
     log('sidecar: non-picture rows live %d (%d outside the patched spans), rebuilt %d' % (len(events(live)), len(ev_live), len(ev_new)))
     if ev_new != ev_live: fail('the rebuilt sidecar\'s non-picture rows differ from the live ones outside the patched spans: first live %s / rebuilt %s' % (
         next((a for a, b in zip(ev_live, ev_new) if a != b), ev_live[len(ev_new):][:1]), next((b for a, b in zip(ev_live, ev_new) if a != b), ev_new[len(ev_live):][:1])))
@@ -485,7 +499,7 @@ def run(T, ats, joins_d, W, clips=None):
             if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
         read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
     hint = lambda e: row_counter(LIVE, int(e['file_from'] / per))            # the live row nearest the fill: which wrap it is in
-    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e)) for e in pl['entries'] for u in e['units']], OUTCSV)
+    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e)) for e in pl['entries'] for u in e['units']], OUTCSV, FL)
     hd, tl = digests(truth(PATCH['tpc']), expect)
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
     stats = {p: st(p) for pc in parts for p in pc}                 # as this run read them: swap deletes nothing that changed since
