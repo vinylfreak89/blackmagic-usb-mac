@@ -51,7 +51,9 @@ for g, grp in enumerate(groups):
             mg, t, ep, pi, sq, st, rq, al = H.unpack_from(post, p)
             if t in (0, 2): struct.pack_into('<I', post, p + 8, sq + (m['kv'] if ep == 0x83 else m['ka'] if ep == 0x84 else 0))
             p += 24 + (al if t in (0, 3) else 0)
-        ok, N = check(pre + m['data'] + bytes(post), a0, print); del N
+        seam = {c % 65536 for g1, g2, _ in m['rep'].get('audio_gaps', []) for c in range(g1, g1 + ((g2 - g1) % 65536))} if m['rep'].get('append_seam') else set()
+        ok, N = check(pre + m['data'] + bytes(post), a0, print, seam); del N
+        if m['rep'].get('append_seam'): print('  %s: append seam; the donor\'s sound sits %s samples off the capture\'s against the picture, taken up in the seam\'s resync intervals' % (m['rep']['name'], m['rep'].get('append_av_shift_samples')), flush=True)
         fn = m['rep']['name'] + '.bin'; put_file(os.path.join(WORK, fn), m['data'])
         entries.append(dict(name=m['rep']['name'], filled=True, structure_ok=bool(ok), file=fn, bytes=len(m['data']), sha256=hashlib.sha256(m['data']).hexdigest(),
                             file_from=m['file_from'], file_to=m['file_to'], kv=m['kv'], ka=m['ka'], rep=json.loads(json.dumps(m['rep'], default=str))))
