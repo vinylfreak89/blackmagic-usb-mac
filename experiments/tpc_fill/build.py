@@ -156,7 +156,10 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         nb = sum(S.vstats(s)[1] for s in range(q0, q1 + 1)) + delta; n_old = sum(S.vstats(s)[0] for s in range(q0, q1 + 1))
         while True:
             best = None
-            for k in range(0, 40):
+            # every packet holds 2816 or 2848 bytes, so the packet count P lies in [nb/2848, nb/2816]: the transfers to try
+            # follow from the bytes (a fixed 0-39 extra transfers capped a rebuilt hole at ~18 units; a disconnect's is hundreds)
+            base = -(-n_old // S.vnpk); fit_lo = max(0, -(-nb // (2848 * S.vnpk)) - base - 1); fit_hi = max(fit_lo, nb // (2816 * S.vnpk) - base + 1)
+            for k in range(fit_lo, fit_hi + 1):
                 P = whole_tx(S.vnpk, n_old, k); rem = nb - 2816 * P
                 if rem < 0: break
                 if rem > 32 * P: continue
@@ -276,7 +279,9 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         n_old = sum(S.astats(s)[0] for s in range(p0, p1 + 1)); r_old = sum(S.astats(s)[1] for s in range(p0, p1 + 1)) // 24
         def best_fit(n_old, Rn):
             best = None
-            for k in range(0, 60):
+            # every packet holds 4 or 8 records, so P lies in [Rn/8, Rn/4] (a fixed 0-59 extra transfers capped a hole at ~0.6 s)
+            base = -(-n_old // S.anpk); fit_lo = max(0, -(-Rn // (8 * S.anpk)) - base - 1); fit_hi = max(fit_lo, Rn // (4 * S.anpk) - base + 1)
+            for k in range(fit_lo, fit_hi + 1):
                 P = whole_tx(S.anpk, n_old, k); eights = (Rn - 4 * P) // 4
                 if eights < 0: break
                 if eights > P: continue
