@@ -72,7 +72,11 @@ def main():
         a, b = wave_scan(y, 0), wave_scan(y, 1)
         if accepted(a, 0) and accepted(b, 1): f1.append(a); f2.append(b)
         if len(f1) >= WANT: break
-    if cr: os.killpg(cr.pid, signal.SIGTERM); cr.wait()
+    if cr:                       # still reading when enough units were measured; a read that already finished has no group left
+        if cr.poll() is None:
+            try: os.killpg(cr.pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError): pass
+        cr.wait()
     def lowest(xs, nominal):
         c = collections.Counter(xs)
         return min((l for l, n in c.items() if n >= SHARE_MIN * len(xs)), default=nominal), dict(sorted(c.items()))
