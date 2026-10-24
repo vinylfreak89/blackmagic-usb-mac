@@ -6,12 +6,15 @@
 # (part k, its own numbering) and with the first whole units after the Shuttle relocked (part k+1, its own numbering).
 # Donor counter = part-k counter + off_before = part-(k+1) counter + off_after, so part k+1's counters move by
 # off_after - off_before into part k's numbering. Both sides must pair fields the same way.
-# The check, on the Mac's own clock: the time of part k's last whole unit in its session (the TICK record before it, ms
+# Two checks. The sound: where its offset against the units is the same on both sides (it is a property of the pair of
+# passes), the difference of its two line-ups counts the units across the disconnect exactly, and must equal the picture's.
+# And the clock, on the Mac's own clock: the time of part k's last whole unit in its session (the TICK record before it, ms
 # since the session started, plus the slots from that tick to the unit); OBS's log from that session's start to "the
 # Shuttle disconnected" and on to part k+1's session start ("started (device)"); then part k+1's session clock to its
 # relocked unit. TICK records and the log are both the Mac's time, so they do not drift apart over a long session
 # (2026-10-23, 7,039 s into a session: 197.8 units by this clock, 198 by the donor). The units across the disconnect by
-# that clock must agree with the offset's within JOIN_TOLERANCE, which is tight enough to catch a line-up one unit out.
+# that clock must agree with the offset's within JOIN_TOLERANCE (it reads to about ±0.6 unit, so a single unit is the
+# sound's to decide).
 # Counting USB slots to the disconnect instead (what this check did until 2026-10-24) undercounts when the bus stalls
 # before a disconnect: the HostLoss records count only the slots macOS refused, and the 2026-10-23 joins read 195.2 and
 # 385.2 units where the ticks and both donors gave 197.8/198 and 397.3/397.
@@ -20,7 +23,11 @@ import numpy as np
 from region import load, UNIT
 from joined import note_record
 
-SLOT = 125e-6; PERIOD = 1001 / 30000; JOIN_TOLERANCE = 0.6     # units (20 ms): measured 0.2 and 0.3 on the 2026-10-23 joins
+SLOT = 125e-6; PERIOD = 1001 / 30000; JOIN_TOLERANCE = 1.5     # units: the clock reads to about ±0.6 (OBS's log lines,
+# TICK stamping); measured -0.62 and +0.09 on the 2026-10-23 joins. It catches a wrong donor or a line-up several units out;
+# a single unit is decided by the sound (SOUND_SAME): the two sides' sound offsets against the units are a property of the
+# pair of passes, so their difference counts the units across the disconnect exactly
+SOUND_SAME = 200          # samples: the two sides' resync distances must agree this closely for that count to be exact
 EDGE = 300 << 20; DONOR_CHUNK = 256 << 20
 OBS_LOGS = os.environ.get('CAPTURE_PATCH_OBS_LOGS') or os.path.expanduser('~/Library/Application Support/obs-studio/logs')   # tests: a stand-in
 
@@ -146,20 +153,25 @@ def session_times(part):
         if mine is not None: return mine, None
     return None, None
 
-def unit_time(R, off, t0):
-    """wall time of the picture unit at video-stream offset off of region R, on the part's session clock started at t0"""
+def unit_time(R, off, t0, n=8):
+    """wall time of the picture unit at video-stream offset off of region R, on the part's session clock started at t0.
+    A TICK record is stamped when the host's timer runs, after whichever transfers have completed, so it reads late by up to
+    a transfer (16 ms, half a unit), never early: the unit's time is taken from each of the n ticks before it (the slots
+    from the tick to the unit added) and the earliest is kept. Only when no tick comes before the unit are the ones after
+    it used (slots counted back): after a part's last unit they can fall in a stalled bus, where slots undercount."""
     k = R.vpk[R.vrec_of(off)][1]
     ticks = [(i, R.recs[i][5]) for i, _ in R.ticks if R.recs[i][1] == 4]
-    before = [x for x in ticks if x[0] <= k]; after = [x for x in ticks if x[0] > k]
+    before = [x for x in ticks if x[0] <= k][-n:]; after = [x for x in ticks if x[0] > k][:n]
     if not before and not after: raise ValueError('no TICK record in the region')
-    i0, ms = before[-1] if before else after[0]
-    lo, hi, sign = (i0, k, 1) if before else (k, i0, -1)
-    slots = 0
-    for i in range(lo + 1, hi + 1):
-        r = R.recs[i]
-        if r[2] == 0x83 and r[1] == 0: slots += 1
-        elif r[2] == 0x83 and r[1] == 1: slots += r[6]       # a HostLoss record: req_len is the unread slot count
-    return t0 + ms / 1000 + sign * slots * SLOT
+    def slots(lo, hi):
+        m = 0
+        for i in range(lo + 1, hi + 1):
+            r = R.recs[i]
+            if r[2] == 0x83 and r[1] == 0: m += 1
+            elif r[2] == 0x83 and r[1] == 1: m += r[6]       # a HostLoss record: req_len is the unread slot count
+        return m
+    if before: return t0 + min(ms / 1000 + slots(i0, k) * SLOT for i0, ms in before)
+    return t0 + min(ms / 1000 - slots(k, i0) * SLOT for i0, ms in after)
 
 def slots_after(R, off):
     """the video slots from the unit at video-stream offset off to the end of the region (its scheduled slots, failed ones
@@ -197,16 +209,25 @@ def measure_join(pa, pb, D, df, log, chunks=None):
     oa, ca = last_whole(ra); ob, cb = relocked(rb)
     log('join %s -> %s: last whole unit before %d, Shuttle locked again from %d' % (os.path.basename(pa), os.path.basename(pb), ca, cb))
     if chunks is None: chunks = donor_audio(D)
-    sides = []
+    sides = []; sound = []
     for side, R, c, after in (('before', ra, ca, False), ('after', rb, cb, True)):
-        try: k, o, basis = line_up_before(R, c, df, chunks, log, after=after)
+        try: k, o, basis = line_up_before(R, c, df, chunks, log, after=after, sound=sound)
         except ValueError as e: raise ValueError('%s the disconnect: %s; the donor may not cover it' % (side, e))
         log('join: %s the disconnect the donor lines up by %s: pairing %s, donor counter = part %+d' % (side, basis, k, o)); sides.append((k, o, basis))
     (pa_kind, off_b, basis_b), (pb_kind, off_a, basis_a) = sides
     if pa_kind != pb_kind: raise ValueError('the donor pairs fields %s before the disconnect and %s after: the reset changed the pairing' % (pa_kind, pb_kind))
     delta = (off_a - off_b) % 65536
+    sa, sb = sound                                              # the sound's own line-up before and after (or None)
+    by_sound = None
+    if sa and sb and abs(sa['resync_samples'] - sb['resync_samples']) <= SOUND_SAME:
+        by_sound = (sb['off'] - sa['off']) % 65536
+        if by_sound != delta: raise ValueError('the sound counts %d units across the disconnect, the picture %d (resyncs %+d / %+d samples)' % (
+            (cb + by_sound - ca) % 65536, (cb + delta - ca) % 65536, sa['resync_samples'], sb['resync_samples']))
+        log('join: the sound counts the same units across the disconnect (its resyncs %+d / %+d samples from the picture\'s on the two sides)' % (sa['resync_samples'], sb['resync_samples']))
+    elif sa and sb: log('join: the sound\'s offsets differ on the two sides (%+d / %+d samples): it cannot count the units exactly here' % (sa['resync_samples'], sb['resync_samples']))
     units_between = (cb + delta - ca) % 65536                     # by the offset: from the last unit before to the relocked one
     res = dict(pairing=pa_kind, off_before=off_b, off_after=off_a, counter_delta=delta, last_before=ca, relocked_after=cb, units_by_offset=units_between, basis=[basis_b, basis_a],
+               counted_by_sound=by_sound is not None,
                seq_last={str(e): v for e, v in seqs(ra, True).items()}, seq_first={str(e): v for e, v in seqs(rb, False).items()})   # str keys: stored as JSON
     _, t_disc = session_times(pa); t0b, _ = session_times(pb)
     if t_disc is None or t0b is None: raise ValueError('OBS\'s log does not have the disconnect after %s or the session of %s: the clock check cannot be made' % (pa, pb))
@@ -220,7 +241,7 @@ def measure_join(pa, pb, D, df, log, chunks=None):
     res.update(seconds_by_clock=round(gap, 3), units_by_clock=round(gap / PERIOD, 2), clock=dict(before=round(before, 4), slots_before=round(by_slots, 4), reconnect=round(reconnect, 3), relock=round(after, 4)))
     log('join: offset %d (donor %+d before, %+d after, pairing %s): %d units from the last before to the relocked one; by the capture clock %.3f s = %.2f units (%.3f s to the disconnect, %.3f s to the next session, %.3f s to the relock; USB slots counted %.3f s to the disconnect)' % (
         delta, off_b, off_a, pa_kind, units_between, gap, gap / PERIOD, before, reconnect, after, by_slots))
-    if abs(units_between - gap / PERIOD) > JOIN_TOLERANCE: raise ValueError('the donor says %d units across the disconnect, the capture clock %.2f: they disagree by more than %.1f (a line-up a unit out, or the wrong donor)' % (units_between, gap / PERIOD, JOIN_TOLERANCE))
+    if abs(units_between - gap / PERIOD) > JOIN_TOLERANCE: raise ValueError('the donor says %d units across the disconnect, the capture clock %.2f: they disagree by more than %.1f (a line-up units out, or the wrong donor)' % (units_between, gap / PERIOD, JOIN_TOLERANCE))
     return res
 
 CONSENSUS_MIN = 10; CONSENSUS_OVER = 3       # the picture's best matches, decisive or not: the most common answer needs this
@@ -241,7 +262,7 @@ def picture(R, c_ref, df, log, after=False):
     ranked = collections.Counter(best).most_common(2); top, n = ranked[0]
     return dec, top, n, len(best), ranked[1][1] if len(ranked) > 1 else 0
 
-def line_up_before(R, c_end, df, chunks, log, after=False, sound_alone=False):
+def line_up_before(R, c_end, df, chunks, log, after=False, sound_alone=False, sound=None):
     """where the donor has the target's units just before counter c_end of region R (after=True: just after it), as
     (pairing, off, basis), or ValueError. The picture decides: decisive field matches; or, where the fields match without
     a clear margin (dim, low-contrast or damaged picture), at least CONSENSUS_MIN best matches on one answer and
@@ -250,6 +271,7 @@ def line_up_before(R, c_end, df, chunks, log, after=False, sound_alone=False):
     dec, top, n, m, rival = picture(R, c_end, df, log, after)
     try: au = audio_lineup(R, c_end, chunks, log, after=after)
     except ValueError as e: au = None; log('  audio: %s' % e)
+    if sound is not None: sound.append(au)                # the caller's copy of the sound's own line-up
     near = lambda off: au is not None and abs(((au['off'] - off + 32768) % 65536) - 32768) <= 1
     if dec:
         if au is not None and not near(dec[1]): raise ValueError('the picture places the donor at offset %d, the sound at %d' % (dec[1], au['off']))

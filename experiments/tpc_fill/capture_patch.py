@@ -415,7 +415,9 @@ def run(T, ats, joins_d, W, clips=None):
             g0, D0, p0, o0, r0, a0 = merged[g]
             if (D0, p0, o0) != (D, pairing, off): fail('two places to patch fall in one stretch of the sidecar (rows %d-%d) with different clips or offsets (%s, %s): the planner takes one clip per stretch' % (
                 groups[g][0], groups[g][-1], os.path.basename(D0), os.path.basename(D)))
-            rng = r0 if rng is None else rng if r0 is None else (min(r0[0], rng[0]), max(r0[1], rng[1]))   # keep a known range
+            from stretches import stretch_range                  # the merged range covers both, and the stretch's own rows
+            own = stretch_range(groups[g], per, size); rs = [x for x in (r0, rng) if x is not None] + [own]
+            rng = (min(x[0] for x in rs), max(x[1] for x in rs))
             app_at = app_at if app_at is not None else a0
             log('the events at sidecar rows %d-%d share clip %s and its offset: planned together' % (groups[g][0], groups[g][-1], os.path.basename(D)))
         merged[g] = (g, D, pairing, off, rng, app_at)

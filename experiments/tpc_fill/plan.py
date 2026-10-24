@@ -51,7 +51,7 @@ for g, grp in enumerate(groups):
             mg, t, ep, pi, sq, st, rq, al = H.unpack_from(post, p)
             if t in (0, 2): struct.pack_into('<I', post, p + 8, sq + (m['kv'] if ep == 0x83 else m['ka'] if ep == 0x84 else 0))
             p += 24 + (al if t in (0, 3) else 0)
-        seam = {c % 65536 for g1, g2, _ in m['rep'].get('audio_gaps', []) for c in range(g1, g1 + ((g2 - g1) % 65536))} if m['rep'].get('append_seam') else set()
+        seam = {c % 65536 for g1, g2 in m['rep'].get('append_audio_gaps', []) for c in range(g1, g1 + ((g2 - g1) % 65536))}
         ok, N = check(pre + m['data'] + bytes(post), a0, print, seam); del N
         if m['rep'].get('append_seam'): print('  %s: append seam; the donor\'s sound sits %s samples off the capture\'s against the picture, taken up in the seam\'s resync intervals' % (m['rep']['name'], m['rep'].get('append_av_shift_samples')), flush=True)
         fn = m['rep']['name'] + '.bin'; put_file(os.path.join(WORK, fn), m['data'])

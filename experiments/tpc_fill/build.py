@@ -101,14 +101,20 @@ def align(S, D_mono, seg0, seg1, around=None, reach=8000):
     n = 1 << int(np.ceil(np.log2(len(y) + len(x))))
     c = np.fft.irfft(np.fft.rfft(y, n) * np.conj(np.fft.rfft(x, n)), n)[:len(y) - len(x) + 1]
     e = np.concatenate([[0.0], np.cumsum(y * y)]); ey = e[len(x):] - e[:len(e) - len(x)]
-    r = c / np.sqrt((x * x).sum() * ey + 1e-9); k = int(np.argmax(r))
+    ex = (x * x).sum()
+    if ex <= 0: return 0, -1.0                                      # a silent target stretch matches nothing
+    r = np.where(ey > 1e-6 * ex, c / np.sqrt(ex * np.maximum(ey, 1e-6 * ex)), 0.0)   # donor silence (or rounding) matches nothing
+    k = int(np.argmax(r))
     return lo + k - seg0, float(r[k])
 
 def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     R = S.R; rep = dict(name=name, video_gaps=[(g['c1'], g['c2']) for g in vgs], audio_gaps=[(g['c1'], g['c2'], g['n']) for g in ags])
     rec_at = lambda so: R.recs[R.vpk[R.vrec_of(so)][1]][0]        # file offset of the record holding video stream byte so
-    append = APPEND_AT is not None and any(rec_at(g['s_from'] - 1) < APPEND_AT <= rec_at(g['s_to']) for g in vgs)
-    rep['append_seam'] = append
+    seam_vg = [g for g in vgs if APPEND_AT is not None and rec_at(g['s_from'] - 1) < APPEND_AT <= rec_at(g['s_to'])]
+    append = bool(seam_vg); rep['append_seam'] = append
+    # the audio gap of that seam (only it: an ordinary gap in the same cluster keeps the cadence rules)
+    at_seam = lambda a: any((a['c1'] - v['c1']) % 65536 <= v['n'] + 2 or (v['c1'] - a['c1']) % 65536 <= 2 for v in seam_vg)
+    rep['append_audio_gaps'] = [(a['c1'], a['c2']) for a in ags if at_seam(a)]
     cs_all = [g['c1'] for g in vgs + ags] + [g['c2'] for g in vgs + ags]
     c_lo = min(unwrap(cs_all)); n_span = max(unwrap(cs_all)) - c_lo
     D = load_donor((c_lo + OFF - 3) % 65536, n_span + 6, est_off)
@@ -215,7 +221,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         pieces = []; shift = 0; pos = s0; seams = []; new_res = []
         t_recs = R.arec[~R.isr]; d_recs = D.arec[~D.isr]
         for g in ags:
-            sA, sB = g['sA'], g['sB']
+            sA, sB = g['sA'], g['sB']; ga = at_seam(g)
             c1u = res_un[g['r1']]; exp = sum(tab[(c1u + j) % 5] for j in range(g['kc'])) if all((c1u + j) % 5 in tab for j in range(g['kc'])) else None
             # where the donor capture should be, from the two captures' unit clocks: the target's resync c sits 800 samples after the donor's resync c+OFF-1
             dres = {c: s for _, s, c in D.resyncs}
@@ -226,7 +232,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 return dres[a] + 800 - s_t if a in dres else None
             pr1 = predicted(sA, g['c1']); pr2 = predicted(sB, g['c2'])
             assert pr1 is not None and pr2 is not None, ('the donor capture has no resync for this moment', name)
-            if PAIRING == 'same' or append:
+            if PAIRING == 'same' or ga:
                 # two plays of one tape: the linear audio sits a few hundred samples off the unit clocks and drifts with tape speed
                 # (measured 2026-10-20: -280 to -253 samples over 40 units), so the unit clocks only bound a full cross-correlation
                 for side, (seg0, seg1) in (('before', (max(0, sA - 14000), sA - 2000)), ('after', (sB + 2000, min(sB + 14000, len(S.mono))))):
@@ -243,11 +249,14 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 return pred + best[1], best[0], 20 * np.log10(np.sqrt((x * x).mean()) / (1 << 24) + 1e-12)
             d1, r1, lv1 = refine(max(0, sA - 14000), sA - 2000, pr1); d2, r2, lv2 = refine(sB + 2000, min(sB + 14000, len(S.mono)), pr2)
             g['levels_db'] = [round(lv1, 1), round(lv2, 1)]
-            if append:
+            if ga:
                 # after an append seam the sound is the donor's own: both line-ups are exact, and the samples between are M
                 assert r1 > 0.9 and r2 > 0.9, ('the sound either side of the append seam does not line up with the donor', name, r1, r2, rep.get('audio_coarse'), pr1, pr2)
                 M = d2 - d1
-                if exp is not None: rep['append_av_shift_samples'] = int(M - (exp - g['n']))   # how far the donor's sound sits off the capture's against the units
+                # how far the donor's sound sits off the capture's against the units: two passes measured +372 and -205; half
+                # a unit or more means the donor is placed a unit out (sound alone can do that), not a pass offset
+                av = M + g['n'] - 1601.6 * g['kc']; rep['append_av_shift_samples'] = round(av)
+                assert abs(av) <= 800, ('the append seam would take up %d samples: the donor is placed a unit out' % av, name)
             elif r1 > 0.9 and r2 > 0.9 and PAIRING == 'same' and exp is not None:
                 # two plays differ in tape speed, so the line-up on each side also carries the drift between them; the device's
                 # clock gives the count, and the difference is split between the two seams
@@ -268,7 +277,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             assert M > 0, ('no missing audio', M)
             # the device's cadence may restart at a gap; the missing samples come from the line-up, the intervals must then fit
             n1602 = g['n'] + M - 1601 * g['kc']
-            if not append: assert 0 <= n1602 <= g['kc'], ('intervals cannot hold the samples', g['n'], M, g['kc'])
+            if not ga: assert 0 <= n1602 <= g['kc'], ('intervals cannot hold the samples', g['n'], M, g['kc'])
             # change point between the two alignments
             lo = max(300, sA - 3000); hi = min(len(S.mono) - 300, sB + 3000); idx = np.arange(lo, hi)
             e1 = np.abs(S.mono[idx] - D_mono[idx + d1]); e2 = np.abs(S.mono[idx] - D_mono[idx + d2])
@@ -288,7 +297,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                               expected_from_cadence=exp, got=g['n'] + M))
             # new resyncs between c1 and c2, on the cadence continuing from c1 (the last intervals absorb a cadence restart)
             ints = [tab.get((c1u + j) % 5, 1602) for j in range(g['kc'])]; need = g['n'] + M; j = g['kc'] - 1
-            if append:                                   # the two passes' offset spread over the seam's intervals
+            if ga:                                       # the two passes' offset spread over the seam's intervals
                 q, rm = divmod(need, g['kc']); ints = [q + (1 if i < rm else 0) for i in range(g['kc'])]
                 assert all(abs(x - 1601.6) <= 800 for x in ints), ('an append seam interval would be more than half a unit off', ints)
             while sum(ints) != need:
