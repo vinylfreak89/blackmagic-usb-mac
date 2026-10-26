@@ -41,6 +41,8 @@
 #include <errno.h>
 #include <IOSurface/IOSurface.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/IOMessage.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #include <dispatch/dispatch.h>
 #include <util/dstr.h>
 #include <pthread.h>
@@ -156,6 +158,12 @@ typedef struct {
      * failed attempts (another app briefly holding the device) retry once a second. */
     _Atomic int reconnect_wanted; unsigned reconnect_tries; uint64_t reconnect_due_ns; _Atomic uint64_t gone_ns; _Atomic int arrival_reset;   /* due_ns: ctl_m; tries: s->m */
     IONotificationPortRef usb_port; io_iterator_t usb_iter; dispatch_queue_t usb_q;
+    /* System sleep (2026-10-26: the Mac hung on the dark wake after the lid closed with a live session streaming, and
+     * reset without a panic). A live session is stopped before the Mac sleeps and restarted after it wakes, through the
+     * reconnect path; nothing is captured with the lid shut. asleep: from WillSleep to the wake; while set a reconnect
+     * attempt does nothing (the wake posts one). sleep_stopped (under s->m): this sleep stopped a session. */
+    IONotificationPortRef pm_port; io_object_t pm_notifier; io_connect_t pm_root; dispatch_queue_t pm_q;
+    _Atomic int asleep, wake_resume; int sleep_stopped; _Atomic uint64_t woke_ns;
     pthread_mutex_t ctl_m; pthread_cond_t ctl_c;   /* guards the queue and the probe request only; never held while taking s->m */
     int ctl_quit;
     struct { int act; int64_t ms; } q[MEDIA_QUEUE]; unsigned q_head, q_n;
@@ -618,12 +626,16 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
         /* Live: the tape is the transport. Restart and stop act on the capture session; pause and seek
          * have nothing to act on (holding delivery would only discard what the deck keeps playing). */
         if (act == ACT_RECONNECT){
+            if (atomic_load(&s->asleep)){ obs_data_release(settings); return; }   /* the wake posts the attempt */
             if (atomic_load(&s->reconnect_wanted)){
                 if (atomic_exchange(&s->arrival_reset, 0)) s->reconnect_tries = 0;
                 shuttle_stop(s);
                 if (shuttle_start(s, settings) == 0){
                     atomic_store(&s->reconnect_wanted, 0);
-                    blog(LOG_INFO, "[shuttle-source] reconnected to the Shuttle %.1f s after it disconnected (attempt %u)",
+                    if (atomic_exchange(&s->wake_resume, 0))
+                        blog(LOG_INFO, "[shuttle-source] resumed the Shuttle %.1f s after the Mac woke (attempt %u)",
+                             (os_gettime_ns() - atomic_load(&s->woke_ns)) / 1e9, s->reconnect_tries + 1);
+                    else blog(LOG_INFO, "[shuttle-source] reconnected to the Shuttle %.1f s after it disconnected (attempt %u)",
                          (os_gettime_ns() - atomic_load(&s->gone_ns)) / 1e9, s->reconnect_tries + 1);
                     s->reconnect_tries = 0;
                 } else if (++s->reconnect_tries == RECONNECT_TRIES){
@@ -1032,7 +1044,76 @@ static void usb_watch_stop(shuttle_src *s){
     if (s->usb_q){ dispatch_release(s->usb_q); s->usb_q = NULL; }
 }
 
+/* System sleep and wake, on pm_q (IORegisterForSystemPower). macOS waits for the acknowledgement of a sleep it may
+ * not refuse (WillSleep) up to 30 s, so the session is stopped first and the acknowledgement sent after. An idle-sleep
+ * query (CanSystemSleep) is allowed: the stop happens at the WillSleep that follows it. */
 #ifdef SHUTTLE_TEST_HOOKS
+int shuttle_test_power_acks, shuttle_test_ack_with_session, shuttle_test_sleep_replays;
+static void power_allow(shuttle_src *s, void *arg){ (void)arg; shuttle_test_power_acks++; if (s->fs) shuttle_test_ack_with_session++; }
+#else
+static void power_allow(shuttle_src *s, void *arg){ IOAllowPowerChange(s->pm_root, (long)arg); }
+#endif
+static int power_stops(const shuttle_src *s){
+#ifdef SHUTTLE_TEST_HOOKS
+    if (shuttle_test_sleep_replays) return s->fs != NULL;   /* tests have no device: a replay stands for a live session */
+#endif
+    return s->fs && !s->replaying;   /* a replay reads a file, not USB: it is left running */
+}
+static void power_sleep(shuttle_src *s){
+    atomic_store(&s->asleep, 1);
+    pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = 0; pthread_mutex_unlock(&s->ctl_m);   /* no timed attempt while asleep */
+    pthread_mutex_lock(&s->m);
+    if (power_stops(s)){
+        blog(LOG_INFO, "[shuttle-source] the Mac is going to sleep: stopping the Shuttle session (it restarts when the Mac wakes)");
+        shuttle_stop(s); s->sleep_stopped = 1;
+    }
+    pthread_mutex_unlock(&s->m);
+}
+static void power_wake(shuttle_src *s){
+    if (!atomic_exchange(&s->asleep, 0)) return;
+    pthread_mutex_lock(&s->m); int stopped = s->sleep_stopped; s->sleep_stopped = 0; pthread_mutex_unlock(&s->m);
+    atomic_store(&s->woke_ns, os_gettime_ns());
+    if (stopped){ atomic_store(&s->wake_resume, 1); atomic_store(&s->gone_ns, os_gettime_ns()); atomic_store(&s->reconnect_wanted, 1); }
+    if (atomic_load(&s->reconnect_wanted)){   /* a session this sleep stopped, or a disconnect that was already being retried */
+        atomic_store(&s->arrival_reset, 1);    /* the Shuttle may take a moment to come back on USB: a fresh run of attempts */
+        media_post(s, ACT_RECONNECT, 0);
+    }
+}
+static void power_event(shuttle_src *s, natural_t msg, void *arg){
+    switch (msg){
+    case kIOMessageCanSystemSleep: power_allow(s, arg); break;
+    case kIOMessageSystemWillSleep: power_sleep(s); power_allow(s, arg); break;
+    case kIOMessageSystemWillNotSleep: power_wake(s); break;   /* a sleep that was cancelled */
+    case kIOMessageSystemHasPoweredOn: power_wake(s); break;
+    default: break;
+    }
+}
+static void power_cb(void *ctx, io_service_t svc, natural_t msg, void *arg){ (void)svc; power_event(ctx, msg, arg); }
+static void power_watch_start(shuttle_src *s){
+#ifdef SHUTTLE_TEST_HOOKS
+    return;   /* tests drive power_event directly: a real sleep must not wait 30 s for a counted acknowledgement */
+#endif
+    s->pm_q = dispatch_queue_create("shuttle-power", DISPATCH_QUEUE_SERIAL);
+    s->pm_root = s->pm_q ? IORegisterForSystemPower(s, &s->pm_port, power_cb, &s->pm_notifier) : MACH_PORT_NULL;
+    if (s->pm_root == MACH_PORT_NULL){
+        blog(LOG_WARNING, "[shuttle-source] no system sleep notifications: a live session keeps running when the Mac sleeps");
+        if (s->pm_q){ dispatch_release(s->pm_q); s->pm_q = NULL; } return;
+    }
+    IONotificationPortSetDispatchQueue(s->pm_port, s->pm_q);
+}
+static void power_watch_stop(shuttle_src *s){
+    if (s->pm_root == MACH_PORT_NULL) return;
+    IONotificationPortSetDispatchQueue(s->pm_port, NULL);
+    dispatch_sync_f(s->pm_q, NULL, usb_watch_noop);   /* a callback already running finishes before s goes */
+    IODeregisterForSystemPower(&s->pm_notifier); IOServiceClose(s->pm_root); IONotificationPortDestroy(s->pm_port);
+    s->pm_root = MACH_PORT_NULL; s->pm_port = NULL;
+    dispatch_release(s->pm_q); s->pm_q = NULL;
+}
+
+#ifdef SHUTTLE_TEST_HOOKS
+/* Tests: system sleep and wake as IOKit delivers them (the acknowledgement is counted, not sent). */
+void shuttle_test_power(void *d, unsigned msg){ power_event(d, (natural_t)msg, (void *)(intptr_t)0x1234); }
+int shuttle_test_asleep(void *d){ return atomic_load(&((shuttle_src *)d)->asleep); }
 /* Tests: a disconnect as the capture core reports it, and the reconnect state. */
 void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
 int shuttle_test_reconnect_wanted(void *d){ return atomic_load(&((shuttle_src *)d)->reconnect_wanted); }
@@ -1072,6 +1153,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     if (pthread_create(&s->ctl_thr, NULL, media_thread, s) == 0) s->ctl_running = 1;
     else blog(LOG_ERROR, "[shuttle-source] could not start the media-control thread (%s): the play/pause, stop and seek controls will do nothing", strerror(errno));
     usb_watch_start(s);
+    power_watch_start(s);
     if (pthread_create(&s->probe_thr, NULL, probe_thread, s) == 0) s->probe_running = 1;
     else blog(LOG_ERROR, "[shuttle-source] could not start the replay-length probe thread (%s): no seek bar", strerror(errno));
     if (tr_open(&s->reports, 256, report_late, s) != 0){ s->reports = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the delivery-timing reporter (%s): late handoffs are counted in the stop summary only", strerror(errno)); }
@@ -1099,6 +1181,7 @@ static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
     usb_watch_stop(s);                       /* no arrival callback can post to the media thread after this */
+    power_watch_stop(s);                     /* nor a sleep or wake callback */
     if (s->ctl_running){   /* the render thread no longer calls in (the source is being destroyed); finish the action under way */
         pthread_mutex_lock(&s->ctl_m); s->ctl_quit = 1; atomic_store(&s->probe_abort, 1); pthread_cond_broadcast(&s->ctl_c); pthread_mutex_unlock(&s->ctl_m);
         pthread_join(s->ctl_thr, NULL);

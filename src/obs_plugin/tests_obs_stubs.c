@@ -43,6 +43,10 @@ int stub_expect_end(const char *text){
     for (int i = 0; i < STUB_EXPECT_MAX; i++) if (atomic_load(&g_expect[i]) == text){ atomic_store(&g_expect[i], NULL); return atomic_load(&g_expect_n[i]); }
     fprintf(stderr, "stub_expect_end: \"%s\" was not expected\n", text); abort();
 }
+int stub_expect_count(const char *text){
+    for (int i = 0; i < STUB_EXPECT_MAX; i++) if (atomic_load(&g_expect[i]) == text) return atomic_load(&g_expect_n[i]);
+    fprintf(stderr, "stub_expect_count: \"%s\" was not expected\n", text); abort();
+}
 void blog(int level, const char *fmt, ...){
     char line[2048]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
     if (strstr(line, "delivery timing: counter")) atomic_fetch_add(&stub_late_reports, 1);

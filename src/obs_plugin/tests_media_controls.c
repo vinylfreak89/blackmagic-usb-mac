@@ -14,6 +14,9 @@ bool obs_module_load(void);
 void shuttle_test_device_gone(void *d);
 int shuttle_test_reconnect_wanted(void *d);
 unsigned shuttle_test_reconnect_tries(void *d);
+void shuttle_test_power(void *d, unsigned msg);
+int shuttle_test_asleep(void *d);
+extern int shuttle_test_power_acks, shuttle_test_ack_with_session, shuttle_test_sleep_replays;
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -27,6 +30,7 @@ static const char *const L_RESTART = "capture restart failed";
 static const char *const L_GONE = "disconnected (USB connection lost)";
 static const char *const L_GAVE_UP = "could not reconnect to the Shuttle after 30 attempts";
 static const char *const L_NOFILE = "replay file cannot be opened";
+static const char *const L_SLEEP = "the Mac is going to sleep: stopping the Shuttle session";
 #define WAIT(cond, secs, what) do{ double t0_ = now(); while(!(cond) && now() - t0_ < (secs)) usleep(2000); CHECK((cond), "timed out after %g s waiting for %s", (double)(secs), what); }while(0)
 
 int main(int argc, char **argv){
@@ -203,6 +207,53 @@ int main(int argc, char **argv){
         I->update(d, st);
         { int o = stub_expect_end(L_OPEN), g = stub_expect_end(L_GONE), u = stub_expect_end(L_GAVE_UP);
           CHECK(o >= 1 && g == 0 && u <= 1, "after the second disconnect: %d open failures (want at least 1), %d disconnect lines (want 0), %d give-ups (want at most 1)", o, g, u); }
+    }
+
+    /* 6c. system sleep (IOKit's messages, as power_cb receives them). A running session is stopped BEFORE the sleep is
+     * acknowledged; a replay stands in for the live session (no device here), and a real replay is left running.
+     * While asleep a disconnect's reconnect attempts do nothing; the wake starts them. */
+    {
+        enum { CAN_SLEEP = 0xe0000270, WILL_SLEEP = 0xe0000280, WILL_NOT_SLEEP = 0xe0000290, POWERED_ON = 0xe0000300 };
+        st = stub_settings(argv[1], 1); I->update(d, st);
+        WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "a session to put to sleep");
+        stub_expect(L_SLEEP);
+        int acks = shuttle_test_power_acks, with = shuttle_test_ack_with_session;
+        shuttle_test_sleep_replays = 1;
+        shuttle_test_power(d, CAN_SLEEP);
+        CHECK(shuttle_test_power_acks == acks + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "an idle-sleep query was not allowed, or it stopped the session");
+        shuttle_test_power(d, WILL_SLEEP);
+        CHECK(shuttle_test_power_acks == acks + 2, "the sleep was not acknowledged");
+        CHECK(shuttle_test_ack_with_session == with + 1, "the sleep was acknowledged while a session was still running (%d of 2 acks with a session; only the query may)", shuttle_test_ack_with_session - with);
+        CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED && shuttle_test_asleep(d), "after WillSleep: state %d, asleep %d", I->media_get_state(d), shuttle_test_asleep(d));
+        uint64_t f = stub_video_frames; usleep(200000);
+        CHECK(stub_video_frames == f, "frames arrived after the session was stopped for sleep");
+        shuttle_test_power(d, POWERED_ON);
+        CHECK(!shuttle_test_asleep(d), "the wake left the source asleep");
+        CHECK(stub_expect_end(L_SLEEP) == 1, "the sleep stop was not logged once");
+        shuttle_test_sleep_replays = 0;
+        /* a real replay keeps running through a sleep */
+        I->update(d, st);
+        WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "a replay before a sleep");
+        acks = shuttle_test_power_acks;
+        shuttle_test_power(d, WILL_SLEEP);
+        CHECK(shuttle_test_power_acks == acks + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "a sleep stopped a replay, or was not acknowledged");
+        shuttle_test_power(d, WILL_NOT_SLEEP);   /* a cancelled sleep wakes it as well */
+        CHECK(!shuttle_test_asleep(d), "a cancelled sleep left the source asleep");
+        /* live, the device drops off USB while asleep: no attempt until the wake, then attempts */
+        st = stub_settings(argv[1], 0);
+        stub_expect(L_OPEN); stub_expect(L_GONE); stub_expect(L_GAVE_UP);
+        I->update(d, st);                      /* one refused live start */
+        shuttle_test_power(d, WILL_SLEEP);
+        shuttle_test_device_gone(d);
+        usleep(300000);
+        CHECK(stub_expect_end(L_OPEN) == 1, "reconnect attempts ran while asleep");
+        stub_expect(L_OPEN);
+        shuttle_test_power(d, POWERED_ON);
+        WAIT(stub_expect_count(L_OPEN) >= 1, 5, "a reconnect attempt after the wake");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting after the wake");
+        { int o = stub_expect_end(L_OPEN), g = stub_expect_end(L_GONE), u = stub_expect_end(L_GAVE_UP);
+          CHECK(o >= 1 && g == 1 && u == 0, "after the wake: %d open failures (want at least 1), %d disconnects (want 1), %d give-ups (want 0)", o, g, u); }
     }
 
     /* 6b. a replay path that cannot be opened: the previous file's length does not stay on the bar */

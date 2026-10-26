@@ -14,6 +14,7 @@ extern int shuttle_test_usb_backend;          /* cfg.capture.usb_backend of the 
 extern _Atomic int stub_late_reports;   /* late-handoff WARNINGs the plugin logged */
 void stub_expect(const char *text);       /* lines containing text are counted, not printed, until stub_expect_end */
 int stub_expect_end(const char *text);    /* the count since stub_expect (same pointer) */
+int stub_expect_count(const char *text);  /* the count so far, still counting */
 obs_data_t *stub_settings(const char *path, int use_replay);
 #include <obs-frontend-api.h>
 extern void *stub_data; extern obs_source_t *stub_source;   /* the test's source and the plugin's data for it */
