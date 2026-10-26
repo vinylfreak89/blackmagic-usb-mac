@@ -8,6 +8,10 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            the second part stopped early at 80% of it, one clip: placed at the disconnect AND as the append
   gap      a host loss punched in at 50% (as test_capture_patch.py makes one), one clip: placed at the gap
   none     the capture stopped early, a clip of only its first 30%: refused (it lines up nowhere)
+  glitch   the Shuttle's own damage at 50%, no transport lost: one unit's marker destroyed (two units run together) and a
+           false marker half-way through another (a short unit, then an oversized one), one clip: placed at the glitch
+  glitch-optional  the same glitch, a clip of only the first 30%: refused for lining up nowhere, not for the glitch
+           having no clip (a glitch needs none)
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -39,6 +43,22 @@ def shift_resyncs(path, by):
     a = b''.join(recs); o2 = 0
     for o, n in slots: b[o:o + n] = a[o2:o2 + n]; o2 += n
     open(path, 'wb').write(b)
+
+def glitch(src, dst, at_frac=0.5):
+    """the Shuttle's own damage with every USB packet kept: the marker of unit m destroyed (m-1 and m run together into
+    one oversized unit) and a false marker (unit m+4's header) half-way through unit m+3, with m+4's own marker destroyed
+    (m+3 comes short, the false m+4 oversized). Only video payload bytes change, in place."""
+    from region import load, UNIT
+    b = bytearray(open(src, 'rb').read()); R = load(src, 0, len(b))
+    whole = [(o, c) for o, c, fm, ok in R.marks if ok and fm == 0xe801]; i = int(len(whole) * at_frac)
+    o_m = whole[i][0]; o3 = whole[i + 3][0]; o4 = whole[i + 4][0]
+    assert all(whole[i + j][0] == o_m + j * UNIT for j in range(6)), 'the source is not clean where the glitch goes'
+    def put(so, data):                               # write video stream bytes at stream offset so, across packets
+        for j, x in enumerate(data):
+            q = so + j; k = R.vpk[R.vrec_of(q)]; b[R.recs[k[1]][0] + 24 + (q - k[0])] = x
+    hdr4 = bytes(R.v[o4:o4 + 48])
+    put(o_m, b'\x11' * 4); put(o4, b'\x11' * 4); put(o3 + UNIT // 2, hdr4)
+    open(dst, 'wb').write(b); return [whole[i + j][1] for j in (-1, 0, 3, 4)]
 
 def clip(src, S, name, by=1000, frac=None, audio_shift=0):
     """a recapture: SOURCE (or its first frac) with its counters raised by `by` (and its resyncs moved audio_shift samples),
@@ -87,11 +107,22 @@ def main():
     # none: a clip that covers only the start
     S = os.path.join(S0, 'none'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
-    run_case('none', S, T, [clip(src, S, 'clipS', frac=0.3)], good, gL, gR, dict(os.environ), expect_fail='lines up with no disconnect, gap or the end')
+    run_case('none', S, T, [clip(src, S, 'clipS', frac=0.3)], good, gL, gR, dict(os.environ), expect_fail='lines up with no disconnect, gap, glitch or the end')
     # gap: a host loss inside, one clip
     S = os.path.join(S0, 'gap'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     punch(src, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     run_case('gap', S, T, [clip(src, S, 'clipG')], good, gL, gR, dict(os.environ))
+    # glitch: the Shuttle's own damage (no host loss), one clip
+    S = os.path.join(S0, 'glitch'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = glitch(src, T); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
+    import collections; dr = collections.Counter(l.split(',')[31] for l in open(csv) if not l.startswith(('#', 'ordinal')))
+    assert not dr.get('Hole') and sum(v for k, v in dr.items() if k != 'None') >= 2, ('the glitch should show as device damage with no host loss', dict(dr))
+    print('glitch: units %s broken in place; sidecar drop reasons %s' % (broken, dict(dr)))
+    run_case('glitch', S, T, [clip(src, S, 'clipX')], good, gL, gR, dict(os.environ))
+    # glitch-optional: the same glitch and a clip that covers only the start
+    S = os.path.join(S0, 'glitch-optional'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    glitch(src, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('glitch-optional', S, T, [clip(src, S, 'clipY', frac=0.3)], good, gL, gR, dict(os.environ), expect_fail='lines up with no disconnect, gap, glitch or the end')
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)

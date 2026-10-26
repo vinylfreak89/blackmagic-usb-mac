@@ -6,10 +6,11 @@
 
 Given only --donor clips, the tool works out where each belongs (locate.py): a clip that lines up with the units before
 a disconnect joins it, one that lines up either side of a gap inside a part fills it, and one that lines up with the
-capture's last units and runs on past them is appended (the capture stopped before the tape did). It lines up by picture
+capture's last units and runs on past them is appended (the capture stopped before the tape did); one that lines up either
+side of a glitch (units the Shuttle sent broken, as when it loses lock for a moment; no host loss) replaces them. It lines up by picture
 when that is decisive and by sound otherwise (snow, held cels); where both can tell they must agree. Every clip must fit
 somewhere, no place may get two clips, and every disconnect and every gap needs one (a gap with no clip is named before
-any work is done: a patched capture with a hole left in it would fail the replay check at the end).
+any work is done: a patched capture with a hole left in it would fail the replay check at the end); a glitch needs none.
 
 A capture split at Shuttle disconnects (NAME.mov.raw.tpc, NAME.mov.raw.part2.tpc, ... with NAME.mov.registration.csv,
 NAME.mov.registration.part2.csv, ...) needs one --join DONOR per disconnect, in order: a recapture cued at least 15 s before
