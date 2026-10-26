@@ -486,7 +486,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     cshift = None
     if jump:
         # where the renumbering starts: the first header or resync from the glitch's end on; every one before it is earlier
-        its = renum.items(bytes(out)); pre = [p for p, c, _ in its if not after_jump(c)]; post = [p for p, c, _ in its if after_jump(c)]
+        its = renum.items(out); pre = [p for p, c, _ in its if not after_jump(c)]; post = [p for p, c, _ in its if after_jump(c)]
         assert post and (not pre or max(pre) < min(post)), ('the units and resyncs either side of the glitch interleave in the file', name)
         cshift = dict(at=min(post), counts=jump['ahead']); rep['counter_shift'] = cshift; JUMP_DONE = True
     return dict(file_from=f_lo, file_to=f_hi, data=bytes(out), kv=kv, ka=ka, rep=rep, counter_shift=cshift)

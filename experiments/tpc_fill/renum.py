@@ -72,18 +72,20 @@ def renumber(buf, shifts):
     return Renumberer(shifts).push(buf, final=True)
 
 def items(buf):
-    """(position, counter, 'unit' | 'resync') of every picture header and resync record in buf (whole records)"""
-    out = []; recs = _walk(buf)
-    vseg = [(p + 24, al) for p, t, ep, al in recs if t == 0 and ep == 0x83 and al]
-    vs = b''.join(bytes(buf[o:o + l]) for o, l in vseg); starts = []; s = 0
-    for o, l in vseg: starts.append(s); s += l
-    j = vs.find(MARK)
-    while j >= 0:
-        if j + 48 <= len(vs) and vs[j + 7] == 0xe8 and vs[j + 8:j + 48] == ZEROS:
-            k = bisect.bisect_right(starts, j) - 1; out.append((vseg[k][0] + j - starts[k], vs[j + 4] | vs[j + 5] << 8, 'unit'))
-        j = vs.find(MARK, j + 1)
-    for p, t, ep, al in recs:
-        if t == 0 and ep == 0x84 and al:
+    """(position, counter, 'unit' | 'resync') of every picture header and resync record in buf (whole records), found
+    packet by packet with the last 47 picture bytes carried on (no copy of the buffer or of its picture stream)"""
+    out = []; tail = b''; tailpos = []
+    for p, t, ep, al in _walk(buf):
+        if t != 0 or not al: continue
+        if ep == 0x83:
+            comb = tail + bytes(buf[p + 24:p + 24 + al]); nt = len(tail)
+            at = lambda i: tailpos[i] if i < nt else p + 24 + i - nt
+            j = comb.find(MARK)
+            while 0 <= j and j + 48 <= len(comb):            # a header that is not whole yet starts in the carried bytes
+                if comb[j + 7] == 0xe8 and comb[j + 8:j + 48] == ZEROS: out.append((at(j), comb[j + 4] | comb[j + 5] << 8, 'unit'))
+                j = comb.find(MARK, j + 1)
+            keep = min(47, len(comb)); tailpos = [at(i) for i in range(len(comb) - keep, len(comb))]; tail = comb[-keep:]
+        elif ep == 0x84:
             q = buf.find(SYNC, p + 24, p + 24 + al)
             while q >= 0:
                 if (q - p - 24) % 24 == 0: out.append((q, buf[q + 20] | buf[q + 21] << 8, 'resync'))
