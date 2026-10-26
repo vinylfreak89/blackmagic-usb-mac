@@ -575,6 +575,8 @@ static void tpc_attach(shuttle_src *s){
 }
 static void shuttle_stop(shuttle_src *s);
 static int shuttle_start(shuttle_src *s, obs_data_t *settings);
+static int display_on(void);                                                  /* system sleep and wake: defined with them below */
+static void user_wake_locked(shuttle_src *s, int disp, const char *why);
 
 /* ---- media controls: timeline, action queue, control thread ---- */
 /* Under s->m. A replay file the timeline does not describe (another path, or the same path at another
@@ -622,7 +624,7 @@ static void replay_start_at(shuttle_src *s, obs_data_t *settings, int64_t ms){
     s->next_start_unit = u; s->next_start_offset = off;
     if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] replay could not be started at %.1f s", ms / 1000.0);
 }
-static void media_apply(shuttle_src *s, int act, int64_t ms){
+static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /* user_disp: display_on(), asked only while asleep */
     obs_data_t *settings = obs_source_get_settings(s->source);
     if (!atomic_load(&s->replay_mode)){
         /* Live: the tape is the transport. Restart and stop act on the capture session; pause and seek
@@ -655,8 +657,8 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
         }
         /* The user takes over: cancel reconnecting AFTER the stop, since a session ending in a disconnect reports it
          * from inside shuttle_stop and would otherwise re-arm reconnecting against the user's stop. */
-        /* a user action is proof the Mac is awake (nobody presses anything in a dark wake): it ends a missed wake too */
-        if (act == ACT_RESTART || act == ACT_STOP){ atomic_store(&s->asleep, 0); s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0); }
+        /* a user action with the display on ends a missed wake; then it acts on its own (the wake's resume is dropped) */
+        if (act == ACT_RESTART || act == ACT_STOP){ user_wake_locked(s, user_disp, act == ACT_RESTART ? "restart pressed" : "stop pressed"); s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0); }
         if (act == ACT_RESTART){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; if (shuttle_start(s, settings) < 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
         else if (act == ACT_STOP){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; }
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
@@ -723,7 +725,8 @@ static void *media_thread(void *arg){
         int act = s->q[s->q_head].act; int64_t ms = s->q[s->q_head].ms;
         s->q_head = (s->q_head + 1) % MEDIA_QUEUE; s->q_n--;
         pthread_mutex_unlock(&s->ctl_m);
-        pthread_mutex_lock(&s->m); media_apply(s, act, ms); pthread_mutex_unlock(&s->m);
+        int disp = (act == ACT_RESTART || act == ACT_STOP) && atomic_load(&s->asleep) ? display_on() : 0;   /* outside s->m */
+        pthread_mutex_lock(&s->m); media_apply(s, act, ms, disp); pthread_mutex_unlock(&s->m);
         pthread_mutex_lock(&s->ctl_m);
     }
     pthread_mutex_unlock(&s->ctl_m);
@@ -1097,9 +1100,12 @@ static void power_sleep(shuttle_src *s){
  * IOKit's HasPoweredOn) is taken only with the main display on at that moment: HasPoweredOn also comes on the dark
  * wakes a Mac makes with its lid shut, which is when the Mac hung, and a wake notification delivered late can arrive
  * after the next sleep has begun. Under s->m. */
-static void power_wake_locked(shuttle_src *s, const char *why){
+static void power_wake_locked(shuttle_src *s, const char *why, int disp){
     if (!atomic_load(&s->asleep)) return;
-    if (!display_on()) return;   /* a dark wake, or a stale notification: still asleep */
+    if (!disp){   /* a dark wake, or a stale notification: still asleep. Logged, so a night with the lid shut shows each one ignored */
+        blog(LOG_INFO, "[shuttle-source] still asleep: %s with the display off (a dark wake or a late notification), the Shuttle stays stopped", why);
+        return;
+    }
     atomic_store(&s->asleep, 0);
     int stopped = s->sleep_stopped; s->sleep_stopped = 0;
     atomic_store(&s->woke_ns, os_gettime_ns());
@@ -1110,7 +1116,12 @@ static void power_wake_locked(shuttle_src *s, const char *why){
     }
     blog(LOG_INFO, "[shuttle-source] the Mac woke (%s)%s", why, stopped ? ": resuming the Shuttle" : "");
 }
-static void power_wake(shuttle_src *s, const char *why){ pthread_mutex_lock(&s->m); power_wake_locked(s, why); pthread_mutex_unlock(&s->m); }
+/* display_on() asks the window server: outside s->m, so a slow answer during a wake transition never holds the lock */
+static void power_wake(shuttle_src *s, const char *why){ int disp = display_on(); pthread_mutex_lock(&s->m); power_wake_locked(s, why, disp); pthread_mutex_unlock(&s->m); }
+/* A user action ends the sleep (a missed wake notification), but only with the display on: restarts, stops and settings
+ * writes also come from hotkeys, obs-websocket and macro plugins, which can run in a dark wake. Under s->m; disp from
+ * display_on() taken before the lock. */
+static void user_wake_locked(shuttle_src *s, int disp, const char *why){ if (disp) power_wake_locked(s, why, 1); }
 static void power_wake_g(void *why){ shuttle_src *s = atomic_load(&g_power_src); if (s) power_wake(s, why); }
 static void power_event(shuttle_src *s, natural_t msg, void *arg){
     switch (msg){
@@ -1255,12 +1266,13 @@ static void shuttle_destroy(void *data){
 
 static void shuttle_update(void *data, obs_data_t *settings){
     shuttle_src *s = data; if (!s) return;
+    int disp = atomic_load(&s->asleep) ? display_on() : 0;   /* outside s->m */
     pthread_mutex_lock(&s->m);
     s->restart_pending = 0; s->record_gap = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
     shuttle_stop(s);
     atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;   /* a settings change starts the device itself (after the stop: see ACT_STOP) */
-    s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0);          /* a settings change is a user action: the Mac is awake */
-    atomic_store(&s->asleep, 0);
+    user_wake_locked(s, disp, "settings changed");                   /* a settings change with the display on ends a missed wake */
+    s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0);          /* ... and acts on its own; asleep, shuttle_start holds it for the wake */
     /* the end-of-file stop follows the current settings; a restart here begins the file again */
     if (atomic_load(&s->stop_on_eof) && !(obs_data_get_bool(settings, S_REPLAY_RESTART) && obs_data_get_bool(settings, S_REPLAY_STOP))) atomic_store(&s->stop_on_eof, 0);
     shuttle_start(s, settings);

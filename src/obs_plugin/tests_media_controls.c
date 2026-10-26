@@ -292,6 +292,19 @@ int main(int argc, char **argv){
         CHECK(stub_expect_count(L_OPEN) == 2 && !shuttle_test_reconnect_wanted(d), "a wake after a user stop restarted something (%d opens)", stub_expect_count(L_OPEN));
         { int o = stub_expect_end(L_OPEN), h = stub_expect_end(L_HELD), r = stub_expect_end(L_RESTART);
           CHECK(o == 2 && h == 0 && r == 1, "user actions while asleep: %d opens (want 2), %d held (want 0), %d restart failures (want 1)", o, h, r); }
+        /* the same user actions from automation in a dark wake (display off: hotkeys, obs-websocket, macros) do not end it */
+        stub_expect(L_OPEN); stub_expect(L_HELD);
+        shuttle_test_display_on = 0;
+        shuttle_test_power(d, WILL_SLEEP);
+        I->update(d, st);
+        I->media_restart(d);
+        usleep(200000);
+        CHECK(shuttle_test_asleep(d) && stub_expect_count(L_OPEN) == 0 && stub_expect_count(L_HELD) == 2, "user actions with the display off: asleep %d, %d opened (want 0), %d held (want 2)", shuttle_test_asleep(d), stub_expect_count(L_OPEN), stub_expect_count(L_HELD));
+        shuttle_test_display_on = 1; shuttle_test_full_wake(d);
+        WAIT(stub_expect_count(L_OPEN) >= 1, 5, "the held start to be made at the full wake");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop after the held start");
+        stub_expect_end(L_OPEN); stub_expect_end(L_HELD);
         shuttle_test_display_on = 0;
     }
 

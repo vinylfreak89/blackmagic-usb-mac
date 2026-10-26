@@ -38,7 +38,7 @@ $(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h tracking_meter.c t
 	$(CC) $(CPPFLAGS) -O2 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -fobjc-arc -c tracking_meter_window.m -o "$(BUILD_DIR)/tracking_meter_window.o"
 	# the IOUSBHost USB stack (the source's "USB stack" setting; libusb stays the default)
 	$(CC) $(CPPFLAGS) -O2 -Wall -Wextra -fvisibility=hidden -fobjc-arc -DCC_WITH_IOUSBHOST -c ../capture_core/capture_iousbhost.m -o "$(BUILD_DIR)/capture_iousbhost.o"
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DCC_WITH_IOUSBHOST $(LDFLAGS) -framework AppKit -framework IOUSBHost "$(BUILD_DIR)/tracking_meter_window.o" "$(BUILD_DIR)/capture_iousbhost.o" tracking_meter.c tracking_meter_tap.c shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DCC_WITH_IOUSBHOST $(LDFLAGS) -framework AppKit -framework CoreGraphics -framework IOUSBHost "$(BUILD_DIR)/tracking_meter_window.o" "$(BUILD_DIR)/capture_iousbhost.o" tracking_meter.c tracking_meter_tap.c shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
 	cp $(BUNDLE)/Contents/Resources/locale/en-US.ini $(BUNDLE)/Contents/Resources/locale/ja-JP.ini
