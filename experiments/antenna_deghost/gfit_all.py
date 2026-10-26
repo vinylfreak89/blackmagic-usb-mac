@@ -8,7 +8,7 @@ for f in range(NF):
     xy=GY.scene(); yy=GY.generate(xy,ech,noise); dy=dy+yy[:V].mean(0)
     if f<4: data.append((xc,yc,xy,yy))
 dc/=NF; dy/=NF
-echoes,kappa=F.find_echoes_joint(dc,dy,noise/np.sqrt(NF*V),noise/np.sqrt(NF*V),log=print)
+echoes,kappa=F.find_echoes_joint(dc,dy,noise/np.sqrt(NF*V),noise/np.sqrt(NF*V),log=print); echoes=F.drop_weak(echoes,noise,NF*V)
 print('true:     ',' | '.join('T %.2f lam %.1f %.3f∠%+.0f'%(t,l,abs(c),np.degrees(np.angle(c))) for t,l,c in sorted(ech)))
 print('recovered:',' | '.join('T %.2f lam %.1f %.3f∠%+.0f'%(t,l,abs(c),np.degrees(np.angle(c))) for t,l,c in sorted(echoes)),' kappa %.3f∠%+.1f'%(abs(kappa),np.degrees(np.angle(kappa))))
 ghy=echoes; ghc=[(t,l,kappa*g*np.exp(-1j*WSC*t)) for t,l,g in echoes]

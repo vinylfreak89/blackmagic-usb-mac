@@ -2,7 +2,7 @@
 # [picture to M: its own mean/variance]. Blanking must run up to the edge; the junk segment (a back-porch bump on very late
 # lines) is allowed only near the window's start and pays PEN.
 import numpy as np
-BL, SB = 1.5, 0.7; LO, M = 3, 230; JUNK_MAX = 25; PEN = 8.0
+BL, SB = 1.5, 0.7; LO, M = 3, 230; JUNK_MAX = 25; PEN = 30.0
 def start_cp(y):
     """-> (edge = first picture sample, log-likelihood gain over 'all picture')"""
     y = y.astype(np.float64)[:M]

@@ -68,22 +68,3 @@ def pass_full_y(Fy, T, sig, lam, g, floor=0.003):
 def pass_full_c(Fc, T, sig, lam, g, floor=0.003):
     N = X.NFFT; w = 2 * np.pi * np.fft.fftfreq(N) / 2.0; K, k = kern(g * M.H(w, T, sig, lam), g, floor)
     return np.fft.ifft(np.fft.fft(Fc, N, axis=1) * K[None], axis=1)[:, :Fc.shape[1]], k
-
-# ---- full lines: the stretch before the window is carried with each line and processed by every pass
-def kern(Cw, g, floor):
-    K = np.ones(len(Cw), complex); term = np.ones(len(Cw), complex); k = 0
-    while True:
-        k += 1; term = term * (-Cw); K += term
-        if abs(g) ** (k + 1) < floor or k > 40: break
-    return K, k
-def start_lines(Ly, Lc, ghosts_y, ghosts_c, D, B):
-    """prepend the stretch before the window: the reference (sync / burst at level B) ghosted by the measured ghosts"""
-    hy = M.fwd(np.concatenate([R.hidden_y(D), np.zeros(Ly.shape[1])])[None], M.resp_y(ghosts_y), True)[0, :Y.PRE]
-    hc = M.fwd(np.concatenate([B * R.hidden_c(D), np.zeros(Lc.shape[1])])[None].astype(complex), M.resp_c(ghosts_c))[0, :X.PRE]
-    return np.concatenate([np.repeat(hy[None], len(Ly), 0), Ly], 1), np.concatenate([np.repeat(hc[None], len(Lc), 0), Lc], 1)
-def pass_full_y(Fy, T, sig, lam, g, floor=0.003):
-    N = Y.NFFT; w = 2 * np.pi * np.fft.fftfreq(N); Q = Y.quad(N); K, k = kern(M.H(w, T, sig, lam) * (g.real - g.imag * Q), g, floor)
-    return np.real(np.fft.ifft(np.fft.fft(Fy, N, axis=1) * K[None], axis=1))[:, :Fy.shape[1]], k
-def pass_full_c(Fc, T, sig, lam, g, floor=0.003):
-    N = X.NFFT; w = 2 * np.pi * np.fft.fftfreq(N) / 2.0; K, k = kern(g * M.H(w, T, sig, lam), g, floor)
-    return np.fft.ifft(np.fft.fft(Fc, N, axis=1) * K[None], axis=1)[:, :Fc.shape[1]], k

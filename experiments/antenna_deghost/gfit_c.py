@@ -1,8 +1,8 @@
 import numpy as np, sys; S=sys.argv[1]; sys.path.insert(0,S+'/an'); import gclean as G
 F=np.load(S+'/an/rtcache.npy'); Cs0=[G.chroma(f[2:238]) for f in F]
 # drop colour-killed fields
-Cs0=[C for C in Cs0 if np.mean(np.abs(G.band_c(C)))>2.0]; print('fields with colour:',len(Cs0))
-ghosts=[]; lags=np.arange(20,330,2.0)
+Cs0=[C for C in Cs0 if np.mean(np.abs(G.box(C,9)-G.box(C,41)))>2.0]; print('fields with colour:',len(Cs0))
+ghosts=[]; lags=np.arange(24,330,2.0)
 for step in range(4):
     Cs=[G.cancel_c(C,ghosts) for C in Cs0] if ghosts else Cs0
     c=G.corr_c(Cs,lags); i=np.argsort(-np.abs(c))[:6]; print('step %d profile top:'%step,' '.join('%d:%.3f∠%+.0f'%(lags[k],abs(c[k]),np.degrees(np.angle(c[k]))) for k in i))

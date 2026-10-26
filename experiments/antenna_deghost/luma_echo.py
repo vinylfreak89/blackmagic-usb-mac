@@ -7,7 +7,7 @@ def kernel(a,b,sig,L=40):
     hk=np.zeros_like(k); nz=k!=0; hk[nz]=(1-np.cos(np.pi*k[nz]))/(np.pi*k[nz])      # discrete Hilbert kernel
     return a*w+b*np.convolve(w,hk,'same'), k
 def hidden(t):
-    s=np.full(t.shape,BL); s[(t>=START-126)&(t<START-63)]=SYNC; return s
+    s=np.full(t.shape,BL); s[(t>=START-147)&(t<START-84)]=SYNC; return s
 def cancel(Y,a,b,sig,tau):
     K,k=kernel(a,b,sig); n=Y.shape[1]; P=int(tau)+60
     ext=np.concatenate([np.tile(hidden(np.arange(-P,0).astype(float)),(len(Y),1)),Y.astype(np.float64)],1)

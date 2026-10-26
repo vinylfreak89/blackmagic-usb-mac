@@ -8,7 +8,7 @@ L.hidden = lambda t: np.full(t.shape, L.BL)
 V = np.memmap(S + '/rp/b.uyvy', np.uint8, 'r').reshape(-1, 480, 1440)
 START = 4.4; X0 = START + 110
 a, b, sig, tau_l = np.load(S + '/an/luma_echo_fit.npy'); sig = max(float(sig), 1.0)
-G = 0.87 * np.exp(1j * np.radians(153)); TAU_C = 104.0; SIG_C = 10.0
+G = 0.54 * np.exp(1j * np.radians(150)); TAU_C = 97.0; SIG_C = 16.0
 B0 = -51.4 + 0j; BURST = (START - 54.8, START - 21.0)
 tb, gb = np.load(S + '/an/echo_pooled.npy'); tb = float(tb.real)
 grid = np.arange(-300, 720, 1.0)
@@ -16,9 +16,15 @@ def env(xl):
     e = ((xl >= BURST[0]) & (xl < BURST[1])).astype(float); k = np.exp(-0.5 * (np.arange(-30, 31) / 9.0) ** 2); k /= k.sum()
     return np.convolve(e, k, 'same')
 burstcopy = np.interp(np.arange(360) * 2.0 - tb, grid, env(grid)) * B0 * gb
-kc = np.arange(-30, 31); wc = np.exp(-0.5 * (kc / (SIG_C / 2)) ** 2); wc /= wc.sum()
+kc = np.arange(-40, 41); wc = np.exp(-0.5 * (kc / (SIG_C / 2)) ** 2); wc /= wc.sum()
+def field_burstcopy(C):
+    """this field's burst copy: the pooled shape scaled to the field's own median colour where the copy sits (none in a
+    field whose colour was killed: subtracting a copy that is not there paints one in)"""
+    m = np.median(C.real, 0)[: int(X0 // 2)] + 1j * np.median(C.imag, 0)[: int(X0 // 2)]; s = burstcopy[: int(X0 // 2)]
+    k = np.vdot(s, m) / np.vdot(s, s)
+    return k * burstcopy, k
 def cancel_chroma(C):
-    nb = int(X0 // 2); src = C.copy(); src[:, :nb] -= burstcopy[None, :nb]; res = src.copy(); t0 = TAU_C / 2
+    nb = int(X0 // 2); bc, _ = field_burstcopy(C); src = C.copy(); src[:, :nb] -= bc[None, :nb]; res = src.copy(); t0 = TAU_C / 2
     for j in range(nb, 360):
         idx = j - t0 - kc; i0 = np.floor(idx).astype(int); fr = idx - i0; ok = (i0 >= 0) & (i0 < 359)
         res[:, j] = C[:, j] - G * ((res[:, i0[ok]] * (1 - fr[ok]) + res[:, i0[ok] + 1] * fr[ok]) @ wc[ok])

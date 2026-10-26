@@ -62,7 +62,7 @@ def fit(dc, dy, noise_var, kmax=10, Tgrid=np.arange(15, 180, 0.5), lams=(0.3, 1,
         params.append((best[1], best[2]))
         def f(p):
             ps = [(p[2 * i], np.exp(p[2 * i + 1])) for i in range(len(params))]
-            if any(l > 60 or l < 0.05 for _, l in ps): return 1e30
+            if any(l > 20 or l < 0.05 for _, l in ps): return 1e30
             return cost(ps, p[-2] + 1j * p[-1], dc, dy, wc, wy)
         p0 = np.concatenate([np.concatenate([[T, np.log(l)] for T, l in params]), [kappa.real, kappa.imag]])
         st = np.concatenate([np.concatenate([[0.5, 0.3] for _ in params]), [0.05, 0.05]])
@@ -92,7 +92,7 @@ def colour_stage(dc, dy, params_y, g_y, noise_var, Tgrid=np.arange(15, 60, 0.5),
         extra.append((best[1], best[2]))
         def f(p):
             ex = [(p[2 * i], np.exp(p[2 * i + 1])) for i in range(len(extra))]
-            if any(l > 60 or l < 0.05 for _, l in ex): return 1e30
+            if any(l > 20 or l < 0.05 for _, l in ex): return 1e30
             return colour_fit(ex)[2]
         p, cur = nm(f, np.concatenate([[T, np.log(l)] for T, l in extra]), np.concatenate([[0.5, 0.3] for _ in extra]))
         extra = [(p[2 * i], np.exp(p[2 * i + 1])) for i in range(len(extra))]; kappa, a, cur = colour_fit(extra)
@@ -111,7 +111,7 @@ def lm(resid, p0, iters=200, h=1e-4):
         J = np.stack([(resid(p + h * e) - r) / h for e in np.eye(len(p))], 1)
         g = J.T @ r; Hm = J.T @ J; improved = False
         for _ in range(12):
-            step = np.linalg.solve(Hm + mu * np.diag(np.diag(Hm) + 1e-12), -g); pn = p + step; rn = resid(pn); cn = rn @ rn
+            D = np.diag(Hm) + 1e-9 * (np.trace(Hm) / len(p) + 1e-12); step = -np.linalg.pinv(Hm + mu * np.diag(D)) @ g; pn = p + step; rn = resid(pn); cn = rn @ rn
             if cn < c: p, r, c, mu, improved = pn, rn, cn, mu / 3, True; break
             mu *= 4
         if not improved or np.abs(step).max() < 1e-7: break
@@ -120,7 +120,7 @@ def fit2(dy, noise_var, kmax=10, Tgrid=np.arange(40, 180, 0.5), lams=(0.3, 1, 2,
     """brightness-only echoes: greedy start, LM refinement of all delays/trails; echoes kept >= 2 samples apart"""
     dc = np.zeros(1, complex)
     def res(ps):
-        if any(l < 0.05 or l > 60 for _, l in ps): return None
+        if any(l < 0.05 or l > 20 for _, l in ps): return None
         Ts = sorted(T for T, _ in ps)
         if any(b - a < 1.5 for a, b in zip(Ts, Ts[1:])): return None
         return solve(ps, 1.0, dc, dy, 0.0, 1.0)[1]
@@ -156,7 +156,7 @@ def fit3(dy, noise_var, Ts=np.arange(57, 181, 1.0), ridge=1e-3, rel=0.1, log=pri
     def R(p):
         ps = [(p[2 * i], np.exp(p[2 * i + 1])) for i in range(len(params))]
         Tsrt = sorted(T for T, _ in ps)
-        if any(l < 0.05 or l > 60 for _, l in ps) or any(b - a < 1.5 for a, b in zip(Tsrt, Tsrt[1:])): return np.full(len(dy) + 2, 1e6)
+        if any(l < 0.05 or l > 20 for _, l in ps) or any(b - a < 1.5 for a, b in zip(Tsrt, Tsrt[1:])): return np.full(len(dy) + 2, 1e6)
         return solve(ps, 1.0, dc, dy, 0.0, 1.0)[1]
     p, c = lm(R, np.concatenate([[T, np.log(l)] for T, l in params]), iters=400)
     params = [(p[2 * i], np.exp(p[2 * i + 1])) for i in range(len(params))]
@@ -182,7 +182,7 @@ def colour_stage2(dc, params_y, g_y, noise_var, Tgrid=np.arange(15, 56.5, 0.5), 
         return s[0], s[1:], r
     def ok(extra):
         Ts = sorted([T for T, _ in extra] + known_T)
-        return all(0.05 <= l <= 60 for _, l in extra) and all(b - a >= 1.5 for a, b in zip(Ts, Ts[1:]))
+        return all(0.05 <= l <= 20 for _, l in extra) and all(b - a >= 1.5 for a, b in zip(Ts, Ts[1:]))
     extra = []; _, _, r = colour_fit(extra); cur = float(np.sum(np.abs(r) ** 2)); floor_ = max(noise_var, 1e-7 * cur / len(dc))
     for k in range(kmax):
         best = None
@@ -219,7 +219,7 @@ def joint_refine(echoes, kappa, dc, dy, wc, wy, iters=500):
     def unpack(p): return [(p[2 * i], np.exp(p[2 * i + 1])) for i in range(len(params))], p[-2] + 1j * p[-1]
     def R(p):
         ps, k = unpack(p); Ts = sorted(T for T, _ in ps)
-        if any(l < 0.05 or l > 60 for _, l in ps) or any(b - a < 1.5 for a, b in zip(Ts, Ts[1:])): return np.full(2 * len(dc) + len(dy), 1e6)
+        if any(l < 0.05 or l > 20 for _, l in ps) or any(b - a < 1.5 for a, b in zip(Ts, Ts[1:])): return np.full(2 * len(dc) + len(dy), 1e6)
         return solve(ps, k, dc, dy, wc, wy)[1]
     p0 = np.concatenate([np.concatenate([[T, np.log(l)] for T, l in params]), [kappa.real, kappa.imag]])
     p, c = lm(R, p0, iters=iters); ps, k = unpack(p); g = solve(ps, k, dc, dy, wc, wy)[0]

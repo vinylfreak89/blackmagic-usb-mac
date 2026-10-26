@@ -1,6 +1,6 @@
 # known answer, independent generator: 16x finer grid, FFT (band-limited) upsampling, continuous exponential ghost
-import numpy as np, sys; S=sys.argv[1]; sys.path.insert(0,S+'/an'); import ghostx as X
-rng=np.random.default_rng(int(sys.argv[2]) if len(sys.argv)>2 else 1); R,n=120,360; UP=32
+import numpy as np, sys, os; sys.path.insert(0,os.path.dirname(os.path.abspath(__file__))); import ghostx as X
+rng=np.random.default_rng(1); R,n=120,360; UP=32
 TRUE=[(41.25,3.0,0.064,-97),(58.25,3.0,0.171,70),(74.25,3.0,0.164,-161),(90.25,0.6,0.086,90),(103.25,1.5,0.217,127),(113.25,3.0,0.127,-168)]
 gtrue=[(T,l,m*np.exp(1j*np.radians(p))) for T,l,m,p in TRUE]
 def vhs(z,s=4.5):

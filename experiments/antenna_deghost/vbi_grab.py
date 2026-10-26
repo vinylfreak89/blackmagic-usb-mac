@@ -3,7 +3,7 @@ import numpy as np, sys, csv
 log, out = sys.argv[1], sys.argv[2]
 M = {}
 for r in csv.DictReader(open(log)):
-    if r['markers']: M[int(r['field'])] = [int(float(x)) for x in r['markers'].split('/')]
+    if r['markers']: M[int(r['field'])] = [int(float(x)) for x in r['markers'].split(';')]
 FR = 480 * 1440; inp = sys.stdin.buffer; n = 0; rows = []; meta = []
 while True:
     b = inp.read(FR)

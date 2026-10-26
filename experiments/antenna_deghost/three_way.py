@@ -6,8 +6,8 @@ sys.path.insert(0,S+'/an'); import unwind as U, gclean as G_
 gh=np.load(S+'/an/ghosts_sharp.npy'); gc=[(T.real,l.real,b) for T,l,a,b in gh if T.real>=40]; kc=U.ghost_kernel(gc,200,2.0,False)
 env=np.concatenate([np.zeros(290),U.burst_env()]); leak1=np.convolve(np.concatenate([env,np.zeros(360)])*U.B0,np.concatenate([[0],kc[1:]]))[400:760]
 def rgbc(C):
-    Y=np.full(C.shape,128.0); u=np.repeat(C.real,2,1); v=np.repeat(C.imag,2,1)
-    return np.clip(np.stack([Y+1.4*u*0+1.4*v,Y-0.34*u-0.71*v,Y+1.77*u],-1),0,255).astype(np.uint8)
+    u=np.repeat(C.real,2,1); v=np.repeat(C.imag,2,1); Y=np.full(u.shape,128.0)
+    return np.clip(np.stack([Y+1.4*v,Y-0.34*u-0.71*v,Y+1.77*u],-1),0,255).astype(np.uint8)
 rows=[]
 for f in fields:
     rt=er.H.field(np.ascontiguousarray(er.V[f//2][f%2::2]),f); C=U.tone_cancel(G_.chroma(rt[2:238]))
