@@ -339,13 +339,19 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             # change point between the two alignments
             lo = max(300, sA - 3000); hi = min(len(S.mono) - 300, sB + 3000); idx = np.arange(lo, hi)
             e1 = np.abs(S.mono[idx] - D_mono[idx + d1]); e2 = np.abs(S.mono[idx] - D_mono[idx + d2])
-            cost = np.concatenate([[0], np.cumsum(e1)]) + (e2.sum() - np.concatenate([[0], np.cumsum(e2)])); cp = int(np.argmin(cost)) + lo
+            cost = np.concatenate([[0], np.cumsum(e1)]) + (e2.sum() - np.concatenate([[0], np.cumsum(e2)]))
+            # the samples are missing between the resyncs either side (sA, sB), so the splice is too: searched over the whole
+            # window, a weak match between two plays put it before sA (2026-10-26: 2 samples went into the interval before
+            # a 1600-sample one, making it 1604)
+            in_lo, in_hi = max(lo + 80, sA + 80), min(hi - 80, sB - 80)
+            assert in_lo < in_hi, ('the gap\'s interval is too short to splice in', name, sA, sB)
+            cp = int(np.argmin(cost[in_lo - lo:in_hi - lo + 1])) + in_lo
             box = lambda x: np.convolve(x, np.ones(48) / 48, 'same')
             e1s, e2s = box(e1), box(e2); base = np.median(np.concatenate([e1s[:max(50, cp - lo - 400)], e2s[min(len(e2s) - 50, cp - lo + 400):]])) + 1
             b1 = cp
-            while b1 - 1 > lo + 80 and e1s[b1 - 1 - lo] > 4 * base: b1 -= 1
+            while b1 - 1 > in_lo and e1s[b1 - 1 - lo] > 4 * base: b1 -= 1
             b2 = cp
-            while b2 + 1 < hi - 80 and e2s[b2 - lo] > 4 * base: b2 += 1
+            while b2 + 1 < in_hi and e2s[b2 - lo] > 4 * base: b2 += 1
             w1 = np.arange(b1 - 72, b1 - 8); j1 = w1[np.argmin(np.abs(S.mono[w1 - 1] - D_mono[w1 - 1 + d1]) + np.abs(S.mono[w1] - D_mono[w1 + d1]))]
             w2 = np.arange(b2 + 8, b2 + 72); j2 = w2[np.argmin(np.abs(S.mono[w2 - 1] - D_mono[w2 - 1 + d2]) + np.abs(S.mono[w2] - D_mono[w2 + d2]))]
             cut1, cut2 = int(j1), int(j2)
