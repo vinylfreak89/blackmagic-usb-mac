@@ -15,6 +15,12 @@ So the proof is made at read time, against the store:
     the local cache or else downloaded (4 MiB), after those bytes are themselves checked against the listed SHA-1.
   - A read that does not match is re-read up to 3 times, bypassing the kernel page cache (the bad bytes stick there);
     every mismatch is reported, never hidden.
+  - JuiceFS compacts a fragmented chunk when it is read: it writes the chunk as one new slice, points the metadata at it
+    and deletes the old slices' objects. A layout taken before that names objects that are gone. So a piece whose object
+    is neither listed nor held locally is not yet a failure: the chunk's layout is read again, and if it changed, the rest
+    of the chunk is proven from the new slices (the bytes are the same; only where they are stored moved). A layout that
+    did not change, or keeps changing, fails as before. (2026-10-26: a 108 GB render stopped at 88 GB on a slice JuiceFS
+    had compacted 20 seconds earlier, during the read; the merged slice was stored and listed.)
 FILE is read through JuiceFS's own FUSE mount, so the bytes checked are exactly what JuiceFS returned.
 --bytes-from COPY reads the bytes from a local copy of FILE instead (same size), still proving each piece against FILE's layout
 and the store's listing: a render from the copy needs no downloads, and the copy itself is proven identical to the stored file.
@@ -28,6 +34,10 @@ CHUNK = 64 << 20; F_NOCACHE = 48
 # Test hook: CHECKED_READ_TEST_FLIP=PIECE,ATTEMPTS corrupts the first byte of piece PIECE on its first ATTEMPTS reads,
 # so the mismatch, retry and stop paths can be exercised. Never set outside a test.
 FLIP = tuple(int(x) for x in os.environ['CHECKED_READ_TEST_FLIP'].split(',')) if os.environ.get('CHECKED_READ_TEST_FLIP') else None
+# Test hook: CHECKED_READ_TEST_GONE=CHUNK[,always] makes the first layout of chunk CHUNK name slices that do not exist, as a
+# layout taken just before JuiceFS compacted that chunk does; with ",always" every re-read of it does too (a lost slice).
+GONE = os.environ.get('CHECKED_READ_TEST_GONE', '').split(',') if os.environ.get('CHECKED_READ_TEST_GONE') else None
+RELAYOUTS = 3                                               # re-reads of one chunk's layout before its missing object fails it
 MOUNT = os.environ.get('CHECKED_READ_MOUNT', os.path.expanduser('~/.juicemount/fuse-internal'))
 
 def die(msg, code=2): print('checked_read: ' + msg, file=sys.stderr, flush=True); sys.exit(code)
@@ -52,17 +62,20 @@ class Redis:
         raise RuntimeError('bad redis reply %r' % line)
     def cmd(self, *a): self.send(*a); return self.reply()
 
-def layout(r, ino, size):
-    """[(file_off, length, slice_id, slice_size, slice_off)] covering [0, size), in order. Gaps (holes) have slice_id 0."""
+def layout(r, ino, size, chunks=None):
+    """[(file_off, length, slice_id, slice_size, slice_off)] covering [0, size) (or only the given chunk numbers), in order.
+    Gaps (holes) have slice_id 0."""
     n = (size + CHUNK - 1) // CHUNK
-    for i in range(n): r.send('LRANGE', 'c%d_%d' % (ino, i), 0, -1)
+    chunks = range(n) if chunks is None else chunks
+    for i in chunks: r.send('LRANGE', 'c%d_%d' % (ino, i), 0, -1)
     out = []
-    for i in range(n):
+    for i in chunks:
         segs = []                                             # (start, end, id, size, off at start), within the chunk
         for v in r.reply() or []:
             if len(v) != 24: die('corrupt slice record in c%d_%d' % (ino, i))
             pos, sid, ssz, off, ln = (int.from_bytes(v[0:4], 'big'), int.from_bytes(v[4:12], 'big'), int.from_bytes(v[12:16], 'big'),
                                       int.from_bytes(v[16:20], 'big'), int.from_bytes(v[20:24], 'big'))
+            if GONE and int(GONE[0]) == i and sid and (len(GONE) > 1 or not layout.gone_done): sid += 10 ** 12   # test hook only
             a, b = pos, pos + ln; nxt = []
             for s, e, k, kz, o in segs:
                 if e <= a or s >= b: nxt.append((s, e, k, kz, o)); continue
@@ -76,6 +89,16 @@ def layout(r, ino, size):
             if s > cur: out.append((i * CHUNK + cur, s - cur, 0, 0, 0))
             out.append((i * CHUNK + s, e - s, k, kz, o)); cur = e
         if cur < end: out.append((i * CHUNK + cur, end - cur, 0, 0, 0))
+        if GONE and int(GONE[0]) == i: layout.gone_done = True
+    return out
+layout.gone_done = False
+
+def from_offset(lay, start):
+    """the layout entries from file offset start on (an entry that starts before it is cut there)"""
+    out = []
+    for foff, ln, sid, ssz, off in lay:
+        if foff + ln <= start: continue
+        d = max(0, start - foff); out.append((foff + d, ln - d, sid, ssz, off + d if sid else 0))
     return out
 
 def pieces(lay, bs):
@@ -91,6 +114,9 @@ class Truth:
     """SHA-1s listed by the object store, per directory, fetched once each; plus the local cache and staging copies."""
     def __init__(self, remote, cache_dirs):
         self.remote, self.dirs, self.listed, self.seconds, self.fetched, self.fetched_bytes = remote, cache_dirs, {}, 0.0, {}, 0
+    def forget(self, key):
+        """list key's directory again on the next look-up (a newly written slice may not have been in the earlier listing)"""
+        self.listed.pop(key.rsplit('/', 1)[0], None)
     def sha1(self, key):
         d, name = key.rsplit('/', 1)
         if d not in self.listed:
@@ -143,10 +169,11 @@ def main():
     fd = os.open(data_src, os.O_RDONLY); fcntl.fcntl(fd, F_NOCACHE, 1)
     out = open(opt['--out'], 'wb', buffering=0) if '--out' in opt else sys.stdout.buffer
     stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0, proven_by_download=0,
-                 holes=0, retried=0, mismatches=[], bytes_written=0, started=time.strftime('%F %T'))
-    t0 = time.time(); last = t0
+                 holes=0, retried=0, relayouts=[], mismatches=[], bytes_written=0, started=time.strftime('%F %T'))
+    t0 = time.time(); last = t0; piece_no = -1; relaid = {}
     try:
-        for piece_no, (foff, ln, key, boff, osz) in enumerate(plan):
+        while piece_no + 1 < len(plan):
+            piece_no += 1; foff, ln, key, boff, osz = plan[piece_no]
             if key is None:
                 data = os.pread(fd, ln, foff)
                 if data != bytes(len(data)): stats['mismatches'].append(dict(offset=foff, length=ln, reason='hole not zero')); break
@@ -159,7 +186,21 @@ def main():
                 if ref is None and truth.sha1(key) is None: ref = truth.local('rawstaging', key, osz); how = 'staging'
                 if ref is None and truth.sha1(key): ref = truth.fetch(key, osz); how = 'download'
                 if ref is None:
-                    stats['mismatches'].append(dict(offset=foff, length=ln, key=key, reason='no listed SHA-1 and no local copy to compare with'))
+                    # the layout may be older than the chunk: JuiceFS compacts a chunk when it is read. Read this chunk's
+                    # layout again; if it changed, prove the rest of the chunk from it.
+                    ci = foff // CHUNK; cend = min(size, (ci + 1) * CHUNK)
+                    rest = [p for p in pieces(from_offset(layout(r, ino, size, [ci]), foff), bs)]
+                    old = [p for p in plan[piece_no:] if p[0] < cend]
+                    if relaid.get(ci, 0) < RELAYOUTS and rest != old and sum(p[1] for p in rest) == cend - foff:
+                        relaid[ci] = relaid.get(ci, 0) + 1
+                        stats['relayouts'].append(dict(offset=foff, chunk=ci, gone=key, now=rest[0][2], at=time.strftime('%F %T')))
+                        print('checked_read: %s is gone; chunk %d was rewritten (compacted) since its layout was read: proving the rest of it from %s' % (
+                            key, ci, rest[0][2]), file=sys.stderr, flush=True)
+                        for p in rest:
+                            if p[2]: truth.forget(p[2])
+                        plan[piece_no:piece_no + len(old)] = rest; piece_no -= 1; continue
+                    stats['mismatches'].append(dict(offset=foff, length=ln, key=key, reason='no listed SHA-1 and no local copy to compare with' + (
+                        ' (the chunk\'s layout, read again, still names it)' if rest == old else ' (the chunk\'s layout kept changing)')))
                     break
             ok = False
             for attempt in range(4):
@@ -187,9 +228,10 @@ def main():
     stats['complete'] = stats['bytes_written'] == size and not any(m.get('attempt') == 4 or 'reason' in m for m in stats['mismatches'])
     stats['seconds'] = round(time.time() - t0, 1); stats['listing_seconds'] = round(truth.seconds, 1); stats['listings'] = len(truth.listed); stats['downloaded_bytes'] = truth.fetched_bytes
     if '--report' in opt: json.dump(stats, open(opt['--report'], 'w'), indent=1)
-    print('checked_read: %s: %d pieces, %d by listed SHA-1, %d by cache copy, %d by downloaded block (%.0f MB), %d by staged copy, %d holes; %d mismatching reads; %s' % (
-        a[0], len(plan), stats['proven_by_listing'], stats['proven_by_cache'], stats['proven_by_download'], truth.fetched_bytes / 1e6, stats['proven_by_staging'], stats['holes'], len(stats['mismatches']),
+    stats['pieces'] = len(plan)
+    print('checked_read: %s: %d pieces, %d by listed SHA-1, %d by cache copy, %d by downloaded block (%.0f MB), %d by staged copy, %d holes; %d chunks compacted during the read; %d mismatching reads; %s' % (
+        a[0], len(plan), stats['proven_by_listing'], stats['proven_by_cache'], stats['proven_by_download'], truth.fetched_bytes / 1e6, stats['proven_by_staging'], stats['holes'], len(stats['relayouts']), len(stats['mismatches']),
         'ALL BYTES PROVEN' if stats['complete'] else 'STOPPED: %d of %d bytes written' % (stats['bytes_written'], size)), file=sys.stderr, flush=True)
     sys.exit(0 if stats['complete'] else (0 if stats.get('reader_closed') else 3))
 
-main()
+if __name__ == '__main__': main()

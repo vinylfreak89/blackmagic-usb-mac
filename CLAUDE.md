@@ -598,6 +598,15 @@ state by its **observable signal properties** (luma/chroma statistics, coherence
 behaviour), not by "what the HM-DHX2 does" — deck-specific knowledge may *inform* an inference
 layer, never define a state.
 
+**Frame synchroniser without the tape's vertical sync (measured 2026-10-24, a 28 s capture of an off-air tape whose picture
+rolls).** The Shuttle needs the synchroniser (owner: without it there is no lock at all). Locked, it writes tape line n to
+slot n. Unlocked, it starts its own input fields every ~290 lines, keeps ~262.5 and **drops ~27.5 lines of picture per
+field**; the tape's own blanking then rises 27.5 lines per field, and a field (or its lower part) repeats every ~10.5. Deciding
+test: at 18 lock-to-roll transitions the picture sits 27-28 / 55 / 82-84 lines lower in the first three rolling fields (0 / 27.5
+/ 55 if nothing were dropped). It re-catches sync at times, for a field or for many. The tape's blanking is intact in the
+picture (≈15 lines at blanking level, a bright marker line ≈ line 16, picture from ≈ 22), so the roll can be undone; the
+dropped lines cannot. The `recovery/` submodule does this (its README carries the method and limits).
+
 **Device NO-INPUT behaviour — MEASURED (2026-09-03, `captures/shuttle_no_input_45s.tpc`, 1.13 GB,
 45 s S-Video with the deck powered off; transport byte-complete: 743,727 records, GAPS 0,
 HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in one state:
