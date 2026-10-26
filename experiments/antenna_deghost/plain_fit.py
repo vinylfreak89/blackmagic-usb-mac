@@ -60,10 +60,24 @@ def fit(groups, kind, grid=np.arange(30, 260, 3.0), maxn=10, stop=0.03, start=No
         if (c - cq) / c < stop: break                       # a ghost must cut the CURRENT misfit by stop (3 %)
         p, c, n = q, cq, n + 1; log('  + ghost %d at %.1f: misfit per sample %.2f' % (n, q[3 * (n - 1)], c / m))
     gh, p0, sig, lev = unpack(p, n, ng); return sorted(gh, key=lambda t: t[0]), p0, sig, lev, c / m
-def pool_groups(sel):
-    """sel: list of (window line (720,), level) -> groups [(level, mean over 0..WIN, se)] for the BANDS with >= 40 lines"""
+def content_lines(ls, k):
+    """lines of one level band (and one stretch) whose start carries picture content.  The start of a plain line is set by
+    transmitter, ghosts and tuner alike for every line of the band, so it follows the band's per-sample median; a line is
+    content if, with its own level (220-300) removed, its mean departure over 0-200 or the RMS of that departure smoothed
+    over 15 samples lies more than k robust sigma (1.4826 MAD over the band's lines) from the band's median.  The known
+    answer separated object lines this way at k 3-6 with no plain line lost at k >= 4 (sel_census.py)."""
+    D = ls - np.median(ls, 0); D0 = D[:, :200] - D[:, 220:300].mean(1)[:, None]; dv = D0.mean(1)
+    rv = np.sqrt(np.mean(np.apply_along_axis(lambda r: np.convolve(r, np.ones(15) / 15, 'valid'), 1, D0) ** 2, 1))
+    c1 = np.median(dv); s1 = 1.4826 * np.median(np.abs(dv - c1)); c2 = np.median(rv); s2 = 1.4826 * np.median(np.abs(rv - c2))
+    return (np.abs(dv - c1) > k * s1) | (rv > c2 + k * s2)
+def pool_groups(sel, reject_k=None, stats=None):
+    """sel: list of (window line (720,), level) -> groups [(level, mean over 0..WIN, se)] for the BANDS with >= 40 lines.
+    reject_k: drop lines whose start carries content (content_lines) before pooling; stats gets (band, lines, dropped)"""
     groups = []
     for a, b in BANDS:
         ls = np.array([y for y, L in sel if a <= L < b])
+        if reject_k is not None and len(ls) >= 40:
+            bad = content_lines(ls, reject_k); ls = ls[~bad]
+            if stats is not None: stats.append(((a, b), len(bad), int(bad.sum())))
         if len(ls) >= 40: groups.append((float(np.median([L for y, L in sel if a <= L < b])), ls[:, :WIN].mean(0), max(ls[:, :WIN].std(0).mean() / np.sqrt(len(ls)), 0.05)))
     return groups

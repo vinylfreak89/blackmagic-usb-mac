@@ -3,7 +3,7 @@
 # selection per stretch; fit (synchronous search, then envelope refine with delays held) and compare with the truth.
 import numpy as np, sys, io, time; sys.path.insert(0,'.'); sys.path.insert(0,'er')
 import rf_sim as F, hretime as H, tuner_fit as TF, plain_fit as PF, plain_stretch as PS
-S=sys.argv[1]; NFLD=int(sys.argv[2]); NST=int(sys.argv[3]); DK=sys.argv[4] if len(sys.argv)>4 else 'envelope'; FLAT='flat' in sys.argv[5:]; NOGHOST='noghost' in sys.argv[5:]; rng=np.random.default_rng(11)
+S=sys.argv[1]; NFLD=int(sys.argv[2]); NST=int(sys.argv[3]); DK=sys.argv[4] if len(sys.argv)>4 else 'envelope'; FLAT='flat' in sys.argv[5:]; NOGHOST='noghost' in sys.argv[5:]; NOEDGE='noedge' in sys.argv[5:]; rng=np.random.default_rng(11)
 TT=[73.0,95.0,108.0,137.0,165.0,203.0]; G0=np.array([0.10*np.exp(1j*np.radians(114)),0.20*np.exp(1j*np.radians(-20)),0.15*np.exp(1j*np.radians(30)),
       0.10*np.exp(1j*np.radians(-157)),0.10*np.exp(1j*np.radians(-94)),0.13*np.exp(1j*np.radians(-34))])
 scale=rng.uniform(0.3,1.6,(NST,len(TT))); scale[rng.random((NST,len(TT)))<0.2]=0.0          # some ghosts absent in some stretches
@@ -17,17 +17,18 @@ for s in range(NST):
     for k in ks[s*per:(s+1)*per]:
         rt=H.field(np.ascontiguousarray(V[k//2][k%2::2]),k,log=io.StringIO()); y=rt[:,1::2].astype(float); d=np.clip((y[:,4:]-1.5)/2.19,0,110)
         d=np.concatenate([d,np.repeat(d[:,-1:],4,1)],1); tex=d-np.apply_along_axis(lambda r: np.convolve(r,k1,'same'),1,d)
+        if NOEDGE: tex[:,:15]=0   # noedge: without the dub's own left-edge bump (+2 IRE over 0-6)
         p=np.zeros_like(d)
         for b0 in range(0,len(d),24): p[b0:b0+24]=rng.uniform(10,70)+(0 if FLAT else 0.5)*tex[b0:b0+24]
         obj=rng.random(len(d))<(0 if FLAT else 0.3); p[obj,:200]=d[obj,:200]; p=np.clip(p,0,110)
         o=F.run(p,list(zip(TT,GT[s])),DK,TF.DSYNC); w=o[:,F.ACT0-4:F.ACT0-4+712]*2.19+0.9; w=np.concatenate([w,np.repeat(w[:,-1:],8,1)],1)
         w=np.maximum(w+5.0*rng.normal(size=w.shape),TF.FLOOR)
         for r,L in PF.select(w,np.zeros(len(w))): sel.append((w[r],L))
-    stretches.append(PF.pool_groups(sel))
+    st=[]; stretches.append(PF.pool_groups(sel,4.0,st)); print('stretch %d: content lines dropped per band %s'%(s,' '.join('%d-%d:%d/%d'%(ab[0],ab[1],nb,n) for ab,n,nb in st)),flush=True)
 import multiprocessing as mp; PS.POOL=mp.get_context('fork').Pool(4)   # fork: workers must not re-run this script
 print('%d stretches, groups per stretch %s  (%.0f s)'%(NST,[len(g) for g in stretches],time.time()-t0),flush=True)
 T,G,Q,m=PS.fit(stretches,'sync',log=lambda s: print(s,flush=True))
-Q2,c2=PS.total(T,Q,'envelope',stretches,200); m2=c2/sum(len(p) for gr in stretches for L,p,se in gr)
+Q2,c2=PS.total(T,Q,'envelope',stretches,200); m2=c2/sum(len(p)-PS.SKIP for gr in stretches for L,p,se in gr)
 G2=np.array([[q[2*j]+1j*q[2*j+1] for j in range(len(T))] for q in Q2])
 print('envelope refine (delays held): misfit per sample %.2f'%m2)
 print('truth delays', TR); print('found delays', ['%.2f'%t for t in T])

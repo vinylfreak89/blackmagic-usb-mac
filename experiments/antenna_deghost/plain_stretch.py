@@ -17,12 +17,15 @@ from scipy.optimize import least_squares
 GMAX = 0.5
 MINSEP = 6.0       # two ghosts closer than the copies' blur (~6 samples) share one ghost between them
 POOL = None        # worker processes for the per-stretch solves (set by the caller)
+SKIP = 15          # samples at the line start left out of the misfit: the chain after the tuner (deck peaking, edge
+                   # overshoot) shapes the left edge, which the model does not carry; a +2 IRE bump over 0-6 there made
+                   # false ghosts of 0.035 / 0.019 / 0.012 at 71.5 / 136.5 / 204 in the no-ghost known answer
 def model(T, g, kind, groups, p0, sig, lev):
     gh = list(zip(T, g)); return [TF.soft_clip(PF.level_raw(gh, kind, v, p0), s) for (L, prof, se), s, v in zip(groups, sig, lev)]
 def resid_stretch(q, T, kind, groups):
     n = len(T); ng = len(groups); g = q[0:2 * n:2] + 1j * q[1:2 * n:2]; p0 = q[2 * n]; sig = np.abs(q[2 * n + 1:2 * n + 1 + ng]); lev = q[2 * n + 1 + ng:]
     out = model(T, g, kind, groups, p0, sig, lev)
-    return np.concatenate([(o - prof) / se for o, (L, prof, se) in zip(out, groups)])
+    return np.concatenate([((o - prof) / se)[SKIP:] for o, (L, prof, se) in zip(out, groups)])
 def solve_stretch(T, q0, kind, groups, nfev=60):
     n = len(T); ng = len(groups)
     lo = np.concatenate([np.full(2 * n, -GMAX), [-3.0], np.full(ng, 0.3), np.zeros(ng)])
@@ -43,12 +46,13 @@ def screen(T, Q, kind, stretches, grid, eps=0.02):
     n = len(T); score = np.zeros(len(grid)); coef = np.zeros((len(grid), len(stretches)), complex)
     for si, (q, gr) in enumerate(zip(Q, stretches)):
         g = q[0:2 * n:2] + 1j * q[1:2 * n:2]; p0 = q[2 * n]; ng = len(gr); sig = np.abs(q[2 * n + 1:2 * n + 1 + ng]); lev = q[2 * n + 1 + ng:]
-        base = np.concatenate(model(T, g, kind, gr, p0, sig, lev)); w = np.concatenate([np.full(len(prof), 1 / se) for L, prof, se in gr])
-        prof = np.concatenate([p for L, p, se in gr]); r = (prof - base) * w
+        cut = lambda xs: np.concatenate([x[SKIP:] for x in xs])
+        base = cut(model(T, g, kind, gr, p0, sig, lev)); w = cut([np.full(len(prof), 1 / se) for L, prof, se in gr])
+        prof = cut([p for L, p, se in gr]); r = (prof - base) * w
         for ci, Tc in enumerate(grid):
             if any(abs(Tc - t) < MINSEP for t in T): continue
-            d1 = (np.concatenate(model(list(T) + [Tc], np.append(g, eps), kind, gr, p0, sig, lev)) - base) * w / eps
-            d2 = (np.concatenate(model(list(T) + [Tc], np.append(g, 1j * eps), kind, gr, p0, sig, lev)) - base) * w / eps
+            d1 = (cut(model(list(T) + [Tc], np.append(g, eps), kind, gr, p0, sig, lev)) - base) * w / eps
+            d2 = (cut(model(list(T) + [Tc], np.append(g, 1j * eps), kind, gr, p0, sig, lev)) - base) * w / eps
             A = np.stack([d1, d2], 1); x, *_ = np.linalg.lstsq(A, r, rcond=None)
             score[ci] += np.sum(r ** 2) - np.sum((r - A @ x) ** 2); coef[ci, si] = x[0] + 1j * x[1]
     return score, coef
@@ -67,7 +71,7 @@ def refine(T, Q, c, kind, stretches):
                     if cn < c * (1 - 1e-4): T, Q, c, improved = Tn, Qn, cn, True
     return T, Q, c
 def fit(stretches, kind, grid=np.arange(30, 260, 2.0), maxn=10, stop=0.03, top=4, log=print):
-    T = []; Q = [init_q(0, gr) for gr in stretches]; Q, c = total(T, Q, kind, stretches); m = sum(len(p) for gr in stretches for L, p, se in gr)
+    T = []; Q = [init_q(0, gr) for gr in stretches]; Q, c = total(T, Q, kind, stretches); m = sum(len(p) - SKIP for gr in stretches for L, p, se in gr)
     log('no ghost: misfit per sample %.2f' % (c / m))
     while len(T) < maxn:
         score, coef = screen(T, Q, kind, stretches, grid); best = None
@@ -97,4 +101,4 @@ def fit(stretches, kind, grid=np.arange(30, 260, 2.0), maxn=10, stop=0.03, top=4
     G = np.array([[q[2 * j] + 1j * q[2 * j + 1] for j in range(len(T))] for q in Q])
     return T, G, Q, c / m
 def stretch_misfits(T, Q, kind, stretches):
-    return [solve_stretch(T, q, kind, gr, 1)[1] / sum(len(p) for L, p, se in gr) for q, gr in zip(Q, stretches)]
+    return [solve_stretch(T, q, kind, gr, 1)[1] / sum(len(p) - SKIP for L, p, se in gr) for q, gr in zip(Q, stretches)]
