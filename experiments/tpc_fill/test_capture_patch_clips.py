@@ -16,6 +16,7 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            counts units the tape never had), and a host loss punched in at 60%, one clip: placed at the glitch with a
            smaller offset after it and at the gap with that offset, the three filled by the sound, every later counter
            lowered by 5 again; the assembler's writes split into 1 MB runs
+  run-ahead-placed  the same, the clip's placement given (--placed TIME CLIP same 1000:995) instead of found
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -88,9 +89,9 @@ def clip(src, S, name, by=1000, frac=None, audio_shift=0):
     if audio_shift: shift_resyncs(tp, audio_shift)
     sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
 
-def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None):
+def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None):
     W = os.path.join(S, 'work-' + label)
-    r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W] + [x for c in clips for x in ('--donor', c)],
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W] + (args or [x for c in clips for x in ('--donor', c)]),
                        capture_output=True, text=True, env=env)
     print('\n'.join(l for l in r.stdout.splitlines() if any(k in l for k in ('clip ', 'append', 'joined', 'FAILED', 'VERIFIED', 'gap at', 'lines up')))[-3000:])
     if expect_fail:
@@ -148,6 +149,10 @@ def main():
     csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
     print('run-ahead: units %s broken in place, counters after them raised by 5, a host loss at 60%%' % broken)
     run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)))
+    S = os.path.join(S0, 'run-ahead-placed'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    c = clip(src, S, 'clipQ'); at = '0:%02d' % (broken[1] / 29.97)
+    run_case('run-ahead-placed', S, T, [c], good, gL, gR, dict(os.environ), args=['--placed', at, c, 'same', '1000:995'])
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)

@@ -2,7 +2,14 @@
 """capture_patch.py run TARGET --work DIR --donor CLIP [--donor CLIP ...]     (clips in any order; each is placed where it fits)
    capture_patch.py run TARGET --work DIR [--at TIME DONOR ...] [--join DONOR ...]
    capture_patch.py run TARGET DONOR --at TIME [--at TIME ...] --work DIR        (one donor for every --at)
+   capture_patch.py run TARGET --work DIR --placed TIME DONOR PAIRING OFF[:OFF_AFTER] ...
    capture_patch.py swap DIR
+
+--placed gives an event's line-up measured beforehand, for an event where the tool's own line-up cannot decide (2026-10-26:
+two plays of a damaged tape whose fields differ by 7-11 codes everywhere and whose sound matches at r 0.5-0.65, against
+the 0.8 the line-up asks): the donor's pairing (same or shifted), FILL_OFF, and for a glitch whose counters ran ahead the
+offset after it. Everything after the line-up checks the placement as it checks its own: the builder against the
+glitch's sound, the structure check, the replay and the sidecar gate.
 
 Given only --donor clips, the tool works out where each belongs (locate.py): a clip that lines up with the units before
 a disconnect joins it, one that lines up either side of a gap inside a part fills it, and one that lines up with the
@@ -355,7 +362,7 @@ def stage(W, name, inputs, fn):
         if j.get('inputs') == json.loads(json.dumps(inputs)): log('%s: done in an earlier run, reused' % name); return j['result']   # as stored (tuples become lists)
     r = fn(); json.dump(dict(inputs=inputs, result=r), open(p + '.new', 'w'), indent=1); os.replace(p + '.new', p); return r
 
-def run(T, ats, joins_d, W, clips=None):
+def run(T, ats, joins_d, W, clips=None, placed=()):
     """ats: [(TIME, DONOR)] gaps inside the capture; joins_d: [DONOR] one per disconnect between its parts; or clips: [DONOR]
     in any order, each placed where it lines up (locate.py): at a disconnect, a gap, or past the end (an append)"""
     from stretches import event_groups
@@ -363,22 +370,23 @@ def run(T, ats, joins_d, W, clips=None):
     from joined import capture_size
     T = os.path.abspath(T); W = os.path.abspath(W); os.makedirs(W, exist_ok=True)
     ats = [(t, os.path.abspath(d)) for t, d in ats]; joins_d = [os.path.abspath(d) for d in joins_d]; clips = [os.path.abspath(d) for d in clips or []]
-    if clips and (ats or joins_d): fail('give the clips alone (--donor), or name each one (--at / --join), not both')
+    placed = [(t, os.path.abspath(d), k, o, oa) for t, d, k, o, oa in placed]
+    if clips and (ats or joins_d or placed): fail('give the clips alone (--donor), or name each one (--at / --join / --placed), not both')
     if not T.endswith(KINDS['tpc']): fail('the target must be a %s file' % KINDS['tpc'])
     d, name = os.path.dirname(T), os.path.basename(T)[:-len(KINDS['tpc'])]
     ORIG = {k: os.path.join(d, name + v) for k, v in KINDS.items()}; PATCH = {k: os.path.join(d, name + ' patched' + v) for k, v in KINDS.items()}
     parts = J.parts_of(T)
     if not clips and len(joins_d) != len(parts) - 1: fail('%s has %d parts, so %d --join donors are needed (one per disconnect), not %d' % (name, len(parts), len(parts) - 1, len(joins_d)))
-    if not ats and not joins_d and not clips: fail('nothing to patch: give the recaptures (--donor), or --at TIME DONOR / --join DONOR')
+    if not ats and not joins_d and not clips and not placed: fail('nothing to patch: give the recaptures (--donor), or --at TIME DONOR / --join DONOR')
     for tp, csv in parts:
         if not os.path.exists(csv): fail('no live sidecar %s' % csv)
-    donors = sorted({x for _, x in ats} | set(joins_d) | set(clips))
+    donors = sorted({x for _, x in ats} | set(joins_d) | set(clips) | {x[1] for x in placed})
     for x in [p for pc in parts for p in pc] + donors:
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
     for x in donors:
         if os.path.getsize(x) > DONOR_MAX: fail('the donor %s is %.1f GB; a recapture of the passages is expected (at most %.0f GB)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
     st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
-    inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, donors={x: st(x) for x in donors})
+    inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, placed=placed, donors={x: st(x) for x in donors})
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
     # 0. where each clip goes, when the clips are given alone
     append_d = None; auto_gaps = []
@@ -430,6 +438,12 @@ def run(T, ats, joins_d, W, clips=None):
         lu = stage(W, 'lineup-%d' % g, dict(inputs, donor=D), lambda: lineup(VT, D, groups[g], per))
         log('%s: the event at %d:%02d, donor %s: pairing %s, FILL_OFF %d' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), lu['pairing'], lu['off']))
         events.append((g, D, lu['pairing'], lu['off'], None, None, None))
+    for a, D, pairing, off, off_after in placed:
+        t = parse_time(a); g = min(range(len(groups)), key=lambda i: abs(groups[i][0] / 29.97 - t)) if groups else None
+        if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
+        log('%s: the event at %d:%02d, donor %s placed beforehand: pairing %s, FILL_OFF %d%s' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), pairing, off,
+            ', FILL_OFF_AFTER %d (a glitch whose counters ran ahead)' % off_after if off_after is not None else ''))
+        events.append((g, D, pairing, off, None, None, off_after))
     for k, D in enumerate(joins_d + ([append_d] if append_d else [])):
         r0 = part_rows[k + 1]
         g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] + 400 else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
@@ -602,7 +616,7 @@ def main():
     a = sys.argv[1:]
     try:
         if a[:1] == ['run']:
-            target = shared = W = None; ats, joins_d, clips = [], [], []; b = a[1:]; i = 0
+            target = shared = W = None; ats, joins_d, clips, placed = [], [], [], []; b = a[1:]; i = 0
             while i < len(b):
                 x = b[i]
                 if x in ('--work', '--join', '--donor') and i + 1 < len(b):
@@ -610,6 +624,10 @@ def main():
                     elif x == '--join': joins_d.append(b[i + 1])
                     else: clips.append(b[i + 1])
                     i += 2
+                elif x == '--placed' and i + 4 < len(b):
+                    if b[i + 3] not in ('same', 'shifted'): raise ValueError('--placed: pairing is same or shifted, not %r' % b[i + 3])
+                    o, _, oa = b[i + 4].partition(':'); parse_time(b[i + 1])
+                    placed.append((b[i + 1], b[i + 2], b[i + 3], int(o), int(oa) if oa else None)); i += 5
                 elif x == '--at' and i + 1 < len(b):
                     dn = b[i + 2] if i + 2 < len(b) and b[i + 2].endswith('.tpc') else None    # a donor of its own, or the shared one
                     ats.append((b[i + 1], dn)); i += 3 if dn else 2
@@ -619,7 +637,7 @@ def main():
             ats = [(t, dn or shared) for t, dn in ats]
             if not target or not W or any(dn is None for _, dn in ats): print(__doc__.split('\n\n')[0]); sys.exit(2)
             for t, _ in ats: parse_time(t)
-            run(target, ats, joins_d, W, clips)
+            run(target, ats, joins_d, W, clips, placed)
         elif a[:1] == ['swap'] and len(a) == 2: swap(a[1])
         else: print(__doc__.split('\n\n')[0]); sys.exit(2)
     except Failed as e: log('FAILED: %s' % e); sys.exit(1)
