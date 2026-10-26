@@ -1,0 +1,3 @@
+[submodule "recovery"]
+	path = recovery
+	url = https://github.com/vinylfreak89/vhs-recovery.git
