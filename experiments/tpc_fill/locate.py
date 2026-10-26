@@ -12,8 +12,9 @@
 #     there replaces its broken units, but no clip is required (most captures start with a few short units).
 # A clip is placed at a place when it lines up with the capture's units just before it (joins.line_up_before: picture when
 # decisive, otherwise sound; both must agree when both can tell); at a gap, also just after it, with the same offset. At a
-# glitch the offset after may be smaller, by at most RUN_AHEAD_MAX: the Shuttle losing lock counts units the tape never had
-# (2026-10-26: 28 counts ahead across 18 units), and the builder checks the difference against the glitch's sound.
+# glitch (or a gap whose stretch also holds units the Shuttle flagged) the offset after may be smaller, by at most
+# RUN_AHEAD_MAX: the Shuttle losing lock counts units the tape never had (2026-10-26: 28 counts ahead across 18 units), and
+# the builder checks the difference against the glitch's sound.
 # Every clip must land somewhere, no place may get two clips, and every disconnect and every gap needs one (a patched capture
 # with a hole left in it fails the replay check at the end, so a missing clip is named before any work is done); a glitch
 # does not.
@@ -26,9 +27,10 @@ JOIN_EDGE_ROWS = 600          # a Hole this close to a part's end is the loss be
 RUN_AHEAD_MAX = 2000          # counts a glitch may run ahead (a lock loss of about a minute)
 DAMAGE = {'Short', 'ShortShown', 'Unframed', 'OtherShown', 'Complete'}   # the Shuttle's own: sent, but not a whole NTSC picture
 
-def hole_groups(csv, damage=False):
+def hole_groups(csv, damage=False, flagged=False):
     """event stretches of a live sidecar that hold a Hole row (or, with damage=True, no Hole but a row the Shuttle flagged
-    as damaged): [(first row, last row)], and the sidecar's row count"""
+    as damaged): [(first row, last row)], and the sidecar's row count. flagged=True: [(first row, last row, whether the
+    stretch also holds a row the Shuttle flagged)] for the Hole stretches"""
     groups, nrows = event_groups(csv); holes = set(); bad = set(); hdr = None; n = 0
     with open(csv) as f:
         for line in f:
@@ -39,6 +41,7 @@ def hole_groups(csv, damage=False):
             elif d in DAMAGE: bad.add(n)
             n += 1
     if damage: return [(g[0], g[-1]) for g in groups if not any(r in holes for r in g) and any(r in bad for r in g)], nrows
+    if flagged: return [(g[0], g[-1], any(r in bad for r in g)) for g in groups if any(r in holes for r in g)], nrows
     return [(g[0], g[-1]) for g in groups if any(r in holes for r in g)], nrows
 
 def places(parts, log):
@@ -49,8 +52,8 @@ def places(parts, log):
         def end(tp=tp, size=size):
             R = J.load(tp, max(0, size - J.EDGE), min(J.EDGE, size)); return R, J.last_whole(R)[1], None
         out.append(dict(kind='join' if k < len(parts) - 1 else 'end', part=k, label='the %s of %s' % ('disconnect at the end' if k < len(parts) - 1 else 'end', os.path.basename(tp)), load=end))
-        hg, nrows = hole_groups(csv); dg, _ = hole_groups(csv, damage=True)
-        for (a, b), glitch in [(x, False) for x in hg] + [(x, True) for x in dg]:
+        hg, nrows = hole_groups(csv, flagged=True); dg, _ = hole_groups(csv, damage=True)
+        for (a, b), glitch, flagged in [((x[0], x[1]), False, x[2]) for x in hg] + [(x, True, True) for x in dg]:
             if k < len(parts) - 1 and nrows - b <= JOIN_EDGE_ROWS: continue
             def gap(tp=tp, size=size, a=a, b=b, nrows=nrows):
                 lo, hi = stretch_range([a, b], size / nrows, size); R = load(tp, lo, hi - lo)
@@ -61,7 +64,7 @@ def places(parts, log):
                     rc = [c for _, _, c in R.resyncs]; hs = [(x, y) for x, y in zip(rc, rc[1:]) if (y - x) % 65536 != 1]
                 if not hs: raise ValueError('no missing picture unit or audio resync around sidecar rows %d-%d' % (a, b))
                 return R, hs[0][0] % 65536, hs[-1][1] % 65536
-            out.append(dict(kind='gap', part=k, rows=[a, b], optional=glitch, load=gap,
+            out.append(dict(kind='gap', part=k, rows=[a, b], optional=glitch, run_ahead=flagged, load=gap,
                             label='the %s at %d:%02d of %s' % ('glitch' if glitch else 'gap', a / 29.97 // 60, a / 29.97 % 60, os.path.basename(tp))))
     return out
 
@@ -85,7 +88,7 @@ def locate(parts, donors, log):
                 if after is not None:
                     k2, o2, b2 = J.line_up_before(R, after, df, ch, quiet.append, after=True)
                     ahead = (off - o2) % 65536
-                    if k2 == kind and p.get('optional') and 0 < ahead <= RUN_AHEAD_MAX: off_after = o2
+                    if k2 == kind and p.get('run_ahead') and 0 < ahead <= RUN_AHEAD_MAX: off_after = o2
                     elif (k2, o2) != (kind, off): raise ValueError('it lines up at %s before the %s and %s after' % ((kind, off), 'glitch' if p.get('optional') else 'gap', (k2, o2)))
                 found.setdefault(i, []).append((D, kind, off, basis, off_after))
                 log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d%s)' % (p['label'], os.path.basename(D), basis, kind, off,

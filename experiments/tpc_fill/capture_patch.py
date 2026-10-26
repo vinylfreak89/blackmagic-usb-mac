@@ -423,7 +423,7 @@ def run(T, ats, joins_d, W, clips=None):
         log('joined: %d parts%s read as one capture of %d bytes, sidecar of %d rows (%s)' % (len(parts), ' and the appended clip' if append_d else '', capture_size(VT), nrows_j, VT))
     groups, nrows = event_groups(LIVE); size = capture_size(VT); per = size / nrows
     # 1. which event each gap is, and how its donor lines up
-    events = []                       # (group, donor, pairing, off, byte range or None)
+    events = []                       # (group, donor, pairing, off, byte range or None, append seam or None, offset after a run-ahead glitch or None)
     for a, D in ats:
         t = parse_time(a); g = min(range(len(groups)), key=lambda i: abs(groups[i][0] / 29.97 - t)) if groups else None
         if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
@@ -454,6 +454,10 @@ def run(T, ats, joins_d, W, clips=None):
     for g, D, pairing, off, rng, app_at, off_after in events:
         if g in merged:
             g0, D0, p0, o0, r0, a0, oa0 = merged[g]
+            # a gap and a run-ahead glitch of one clip: the gap at the glitch's offset before it or after it is planned with
+            # the glitch (the builder takes the stretch's clusters in order: those after the glitch at the offset after)
+            for (o1, x1), (o2, x2) in (((o0, oa0), (off, off_after)), ((off, off_after), (o0, oa0))):
+                if x1 is not None and x2 is None and o2 in (o1, x1): o0, oa0, off, off_after = o1, x1, o1, x1
             if (D0, p0, o0, oa0) != (D, pairing, off, off_after): fail('two places to patch fall in one stretch of the sidecar (rows %d-%d) with different clips or offsets (%s, %s): the planner takes one clip per stretch' % (
                 groups[g][0], groups[g][-1], os.path.basename(D0), os.path.basename(D)))
             from stretches import stretch_range                  # the merged range covers both, and the stretch's own rows

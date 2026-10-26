@@ -45,7 +45,15 @@ mods = [m for m in mods if m['file_to'] <= size]      # with a limit, ranges bey
 # the renumbering runs only when a range asks for it: it holds back the records at the end of each write that may hold the
 # start of a picture header, until the header is whole
 Z = renum.Renumberer() if any(m.get('counter_shift') for m in mods) else None
-def emit(b): put(Z.push(b) if Z else b)
+RENUM_RUN = int(os.environ.get('ASSEMBLE_RENUM_RUN', 48 << 20))      # (tests set it small, so writes are split)
+def emit(b):
+    if not Z or len(b) <= RENUM_RUN: put(Z.push(b) if Z else b); return
+    p = 0; n = len(b)                  # a large fill in runs of whole records: the renumberer copies what it is given
+    while p < n:
+        q = p
+        while q < n and (q == p or q - p < RENUM_RUN):
+            m_, t_, e_, i_, s_, st_, r_, al_ = H.unpack_from(b, q); q += 24 + (al_ if t_ in (0, 3) else 0)
+        put(Z.push(memoryview(b)[p:q])); p = q
 def at(): return Z.pos + len(Z.pend) if Z else written      # where the stream has reached: written, and held back
 fin = open_capture(src); resume_len = 0; vfd = None
 if resume:

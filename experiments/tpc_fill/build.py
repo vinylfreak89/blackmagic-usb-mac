@@ -23,6 +23,7 @@ APPEND_AT = int(os.environ['FILL_APPEND_AT']) if os.environ.get('FILL_APPEND_AT'
 # counter_shift, and the assembler carries it to the end of the capture): the parser takes a unit only at counter + 1, so a
 # jump kept in the file cost the unit on each side of it (2026-10-26), and the counters then count the tape's units.
 OFF_AFTER = int(os.environ['FILL_OFF_AFTER']) if os.environ.get('FILL_OFF_AFTER') else None
+JUMP_DONE = False     # the glitch has been built: the stretch's later clusters (built in order) are all at FILL_OFF_AFTER
 F_LONG = 0.5124                   # usual share of 2848-byte video packets
 F_EIGHT = 0.50094                 # usual share of 8-record audio packets
 VREQ, AREQ = 15360, 192
@@ -133,9 +134,11 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     DU = D.whole_units(); dv = D.v
     def donor_rows(a): 
         o = DU[a % 65536]; return np.frombuffer(bytes(dv[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
+    global JUMP_DONE
     jump = {}                                                   # the run-ahead glitch: c1, c2 (whole units either side), k (its units)
+    past = OFF_AFTER is not None and JUMP_DONE                  # a cluster after the glitch: every counter is at FILL_OFF_AFTER
     after_jump = lambda c: bool(jump) and ((c - jump['c2']) % 65536) < 32768
-    def off_for(c): return OFF_AFTER if after_jump(c) else OFF
+    def off_for(c): return OFF_AFTER if past or after_jump(c) else OFF
     def new_c(c): return (c - jump['ahead']) % 65536 if after_jump(c) and 'ahead' in jump else c % 65536   # a counter as the patched capture has it
     def make_rows(c, row7):
         o = off_for(c)
@@ -153,10 +156,10 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             """the units the sound says lie between g's whole units: samples from the resync of the unit after c1 to c2's"""
             a, b = (g['c1'] + 1) % 65536, g['c2'] % 65536
             return (rsa[b] - rsa[a]) / 1601.6 if a in rsa and b in rsa else None
-        if OFF_AFTER is not None:
+        if OFF_AFTER is not None and not past:
             cand = [g for g in vgs if by_sound(g) is not None and g['n'] - by_sound(g) > 0.5]
-            assert len(cand) == 1, ('FILL_OFF_AFTER: %d gaps whose counters run ahead of their sound, not one' % len(cand), [(g['c1'], g['c2'], by_sound(g)) for g in vgs])
-            jump.update(c1=cand[0]['c1'], c2=cand[0]['c2'], g=cand[0])   # c2 decides which offset a counter takes; widening below may move both edges
+            assert len(cand) <= 1, ('FILL_OFF_AFTER: %d gaps whose counters run ahead of their sound, not one' % len(cand), [(g['c1'], g['c2'], by_sound(g)) for g in vgs])
+            if cand: jump.update(c1=cand[0]['c1'], c2=cand[0]['c2'], g=cand[0])   # c2 decides which offset a counter takes; widening below may move both edges
         # widen each gap over neighbouring whole units that do not match what the donor shows at that moment (torn units)
         for g in vgs:
             def damaged(c):
@@ -479,7 +482,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         # where the renumbering starts: the first header or resync from the glitch's end on; every one before it is earlier
         its = renum.items(bytes(out)); pre = [p for p, c, _ in its if not after_jump(c)]; post = [p for p, c, _ in its if after_jump(c)]
         assert post and (not pre or max(pre) < min(post)), ('the units and resyncs either side of the glitch interleave in the file', name)
-        cshift = dict(at=min(post), counts=jump['ahead']); rep['counter_shift'] = cshift
+        cshift = dict(at=min(post), counts=jump['ahead']); rep['counter_shift'] = cshift; JUMP_DONE = True
     return dict(file_from=f_lo, file_to=f_hi, data=bytes(out), kv=kv, ka=ka, rep=rep, counter_shift=cshift)
 
 def cluster_gaps(vg, ag, span=24000):

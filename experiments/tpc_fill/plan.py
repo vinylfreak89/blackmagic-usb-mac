@@ -55,17 +55,26 @@ for g, grp in enumerate(groups):
             p += 24 + (al if t in (0, 3) else 0)
         seam = {c % 65536 for g1, g2 in m['rep'].get('append_audio_gaps', []) for c in range(g1, g1 + ((g2 - g1) % 65536))}
         # renumbered as the assembler will: by every run-ahead glitch before this range, and from its own on
-        shifts = ([(0, cum)] if cum else []) + ([(len(pre) + m['counter_shift']['at'], m['counter_shift']['counts'])] if m.get('counter_shift') else [])
+        # renumbered from the range's own run-ahead glitch on, as the assembler will (an earlier one lowers this whole
+        # buffer alike, which the check, testing continuity within it, does not see)
+        shifts = [(len(pre) + m['counter_shift']['at'], m['counter_shift']['counts'])] if m.get('counter_shift') else []
         whole = pre + m['data'] + bytes(post)
         ok, N = check(renumber(whole, shifts) if shifts else whole, a0, print, seam); del N, whole
+        cum_before = cum
         if m.get('counter_shift'): cum += m['counter_shift']['counts']
         if m['rep'].get('append_seam'): print('  %s: append seam; the donor\'s sound sits %s samples off the capture\'s against the picture, taken up in the seam\'s resync intervals' % (m['rep']['name'], m['rep'].get('append_av_shift_samples')), flush=True)
         fn = m['rep']['name'] + '.bin'; put_file(os.path.join(WORK, fn), m['data'])
+        rj = json.loads(json.dumps(m['rep'], default=str))
+        if cum_before:          # the units as the patched capture numbers them: lowered by every run-ahead glitch before this range
+            rj['video_units_filled'] = [[(a - cum_before) % 65536, (b - cum_before) % 65536] for a, b in rj.get('video_units_filled', [])]
         entries.append(dict(name=m['rep']['name'], filled=True, structure_ok=bool(ok), file=fn, bytes=len(m['data']), sha256=hashlib.sha256(m['data']).hexdigest(),
-                            file_from=m['file_from'], file_to=m['file_to'], kv=m['kv'], ka=m['ka'], counter_shift=m.get('counter_shift'), rep=json.loads(json.dumps(m['rep'], default=str))))
+                            file_from=m['file_from'], file_to=m['file_to'], kv=m['kv'], ka=m['ka'], counter_shift=m.get('counter_shift'), rep=rj))
         print('  %s: structure %s, %d -> %d bytes, +%d video +%d audio transfers, units %s, samples %s' % (m['rep']['name'], 'PASSED' if ok else 'FAILED', m['file_to'] - m['file_from'], len(m['data']),
               m['kv'], m['ka'], m['rep'].get('video_units_filled'), [s.get('M', 'kept') for s in m['rep'].get('seams', [])]), flush=True)
     del mods, minis; gc.collect()
     plan[str(g)] = entries; json.dump(plan, open(plan_path + '.tmp', 'w'), indent=1); os.replace(plan_path + '.tmp', plan_path)
     print('stretch %d (%d:%02d): %d of %d clusters filled, %.0f s, peak memory %d MB' % (g, grp[0] / 29.97 // 60, grp[0] / 29.97 % 60, sum(1 for e in entries if e['filled']), len(cl), time.time() - t0, rss() >> 20), flush=True)
+import build as B
+if B.OFF_AFTER is not None and not B.JUMP_DONE:
+    sys.exit('STOPPED: FILL_OFF_AFTER was given, but no gap in the stretch has counters that run ahead of its sound')
 print('PLAN DONE')

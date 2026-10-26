@@ -13,8 +13,9 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
   glitch-optional  the same glitch, a clip of only the first 30%: refused for lining up nowhere, not for the glitch
            having no clip (a glitch needs none)
   run-ahead  the Shuttle losing lock at 50%: three units broken in place and every counter after them raised by 5 (it
-           counts units the tape never had), one clip: placed at the glitch with a smaller offset after it, the three
-           filled by the sound, every later counter lowered by 5 again
+           counts units the tape never had), and a host loss punched in at 60%, one clip: placed at the glitch with a
+           smaller offset after it and at the gap with that offset, the three filled by the sound, every later counter
+           lowered by 5 again; the assembler's writes split into 1 MB runs
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -143,9 +144,10 @@ def main():
     run_case('glitch-optional', S, T, [clip(src, S, 'clipY', frac=0.3)], good, gL, gR, dict(os.environ), expect_fail='lines up with no disconnect, gap, glitch or the end')
     # run-ahead: the Shuttle's counters run ahead across a glitch, one clip
     S = os.path.join(S0, 'run-ahead'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
-    broken = run_ahead(src, T); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
-    print('run-ahead: units %s broken in place, counters after them raised by 5' % broken)
-    run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ))
+    broken = run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra')
+    csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
+    print('run-ahead: units %s broken in place, counters after them raised by 5, a host loss at 60%%' % broken)
+    run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)))
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)
