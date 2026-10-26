@@ -11,7 +11,9 @@
 #     moment). Every byte arrived, so the units either side frame it like a gap. A glitch is optional: a clip that lines up
 #     there replaces its broken units, but no clip is required (most captures start with a few short units).
 # A clip is placed at a place when it lines up with the capture's units just before it (joins.line_up_before: picture when
-# decisive, otherwise sound; both must agree when both can tell); at a gap, also just after it, with the same offset.
+# decisive, otherwise sound; both must agree when both can tell); at a gap, also just after it, with the same offset. At a
+# glitch the offset after may be smaller, by at most RUN_AHEAD_MAX: the Shuttle losing lock counts units the tape never had
+# (2026-10-26: 28 counts ahead across 18 units), and the builder checks the difference against the glitch's sound.
 # Every clip must land somewhere, no place may get two clips, and every disconnect and every gap needs one (a patched capture
 # with a hole left in it fails the replay check at the end, so a missing clip is named before any work is done); a glitch
 # does not.
@@ -21,6 +23,7 @@ from region import load, UNIT
 from stretches import event_groups, stretch_range
 
 JOIN_EDGE_ROWS = 600          # a Hole this close to a part's end is the loss before its disconnect
+RUN_AHEAD_MAX = 2000          # counts a glitch may run ahead (a lock loss of about a minute)
 DAMAGE = {'Short', 'ShortShown', 'Unframed', 'OtherShown', 'Complete'}   # the Shuttle's own: sent, but not a whole NTSC picture
 
 def hole_groups(csv, damage=False):
@@ -78,11 +81,15 @@ def locate(parts, donors, log):
             df, ch = feats[D]; quiet = []
             try:
                 kind, off, basis = J.line_up_before(R, before, df, ch, quiet.append, sound_alone=p['kind'] == 'end')
+                off_after = None
                 if after is not None:
                     k2, o2, b2 = J.line_up_before(R, after, df, ch, quiet.append, after=True)
-                    if (k2, o2) != (kind, off): raise ValueError('it lines up at %s before the gap and %s after' % ((kind, off), (k2, o2)))
-                found.setdefault(i, []).append((D, kind, off, basis))
-                log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d)' % (p['label'], os.path.basename(D), basis, kind, off))
+                    ahead = (off - o2) % 65536
+                    if k2 == kind and p.get('optional') and 0 < ahead <= RUN_AHEAD_MAX: off_after = o2
+                    elif (k2, o2) != (kind, off): raise ValueError('it lines up at %s before the %s and %s after' % ((kind, off), 'glitch' if p.get('optional') else 'gap', (k2, o2)))
+                found.setdefault(i, []).append((D, kind, off, basis, off_after))
+                log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d%s)' % (p['label'], os.path.basename(D), basis, kind, off,
+                    '; after it %+d: the capture\'s counters ran %d ahead' % (off_after, (off - off_after) % 65536) if off_after is not None else ''))
             except ValueError as e: log('%s: not %s (%s)' % (p['label'], os.path.basename(D), e))
         del R
     for i, ds in found.items():
@@ -96,7 +103,7 @@ def locate(parts, donors, log):
             if i not in found: raise ValueError('%s has no clip: a recapture across it is needed to join the parts' % p['label'])
             joins.append(found[i][0][0])
     end = [found[i][0][0] for i, p in enumerate(pl) if p['kind'] == 'end' and i in found]
-    gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3])
+    gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3], off_after=found[i][0][4])
             for i, p in enumerate(pl) if p['kind'] == 'gap' and i in found]
     left = [p['label'] for i, p in enumerate(pl) if p['kind'] == 'gap' and not p.get('optional') and i not in found]
     if left: raise ValueError('%s %s no clip: the patched capture would still have %s; add a recapture across %s' % (

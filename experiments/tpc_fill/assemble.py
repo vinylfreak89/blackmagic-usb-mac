@@ -1,5 +1,7 @@
 # Write the filled capture as a new file: the original copied through, each gap's file range replaced by its rebuilt bytes,
-# and every later record's transfer sequence number raised by the transfers added before it.
+# and every later record's transfer sequence number raised by the transfers added before it. A range with a counter_shift (a
+# run-ahead glitch, build.py) lowers every picture-unit and resync counter from its position to the end of the output
+# (renum.py), on top of any earlier one.
 # usage: assemble.py <source> <destination> <mods.pkl ... | work folder> [--resume]   (TEST_BASE=<offset> treats the source as a stretch starting at that file offset)
 #   --resume: <destination> is a partial output of an earlier run with the same inputs. The stream is regenerated from the start and
 #   every byte up to the partial file's length is compared with it (a mismatch stops the run); only the rest is appended.
@@ -18,6 +20,7 @@
 import sys, os, struct, pickle, hashlib, json, time, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from joined import open_capture, capture_size       # the source may be a NAME.join.json: the parts read as one capture
+import renum
 H = struct.Struct('<IBBHIIII'); MAGIC = 0x31504143; U32 = struct.Struct('<I')
 defer = '--resume-defer-check' in sys.argv; resume = defer or '--resume' in sys.argv
 sys.argv = [a for a in sys.argv if a not in ('--resume', '--resume-defer-check')]
@@ -39,6 +42,11 @@ def data_of(m):
 for a, b in zip(mods, mods[1:]): assert a['file_to'] <= b['file_from'], 'overlapping ranges'
 size = min(capture_size(src), int(os.environ.get('LIMIT_BYTES', 1 << 62))) + base      # LIMIT_BYTES: stop after this much of the source (tests); cut at the last whole record
 mods = [m for m in mods if m['file_to'] <= size]      # with a limit, ranges beyond it are left out (without this the limit was ignored and the whole file was copied)
+# the renumbering runs only when a range asks for it: it holds back the records at the end of each write that may hold the
+# start of a picture header, until the header is whole
+Z = renum.Renumberer() if any(m.get('counter_shift') for m in mods) else None
+def emit(b): put(Z.push(b) if Z else b)
+def at(): return Z.pos + len(Z.pend) if Z else written      # where the stream has reached: written, and held back
 fin = open_capture(src); resume_len = 0; vfd = None
 if resume:
     assert dst != '-', '--resume needs a file'
@@ -163,7 +171,7 @@ def copy(a, b, ov, oa):
             else:
                 assert left, 'range does not end on a record'
                 carry = bytes(bb[p:]); del bb[p:]
-        nrec += k; put(bb)
+        nrec += k; emit(bb)
         if written - last_report > (256 << 20):      # often enough that the backlog overshoots by at most this
             last_report = written; throttle()
             import resource
@@ -172,10 +180,13 @@ def copy(a, b, ov, oa):
                 print('%.0f s: %.2f GB written, %d records, %.1f MB/s' % (time.time() - t0, written / 1e9, nrec, written / 1e6 / (time.time() - t0)), file=sys.stderr, flush=True)
 pos = base; ov = oa = 0
 for m in mods:
-    copy(pos, m['file_from'], ov, oa); segs.append(dict(kind='copy', src=[pos, m['file_from']], dst_end=written, ov=ov, oa=oa))
-    d = bytearray(data_of(m)); nrec += shift(d, ov, oa); put(d); segs.append(dict(kind='fill', name=m['rep']['name'], src=[m['file_from'], m['file_to']], dst=[written - len(d), written], kv=m['kv'], ka=m['ka'])); del d
+    copy(pos, m['file_from'], ov, oa); segs.append(dict(kind='copy', src=[pos, m['file_from']], dst_end=at(), ov=ov, oa=oa))
+    d = bytearray(data_of(m)); nrec += shift(d, ov, oa); d0 = at()
+    if m.get('counter_shift'): Z.shift(d0 + m['counter_shift']['at'], m['counter_shift']['counts'])
+    emit(d); segs.append(dict(kind='fill', name=m['rep']['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], counter_shift=m.get('counter_shift'))); del d
     pos = m['file_to']; ov += m['kv']; oa += m['ka']
-copy(pos, size, ov, oa); segs.append(dict(kind='copy', src=[pos, size], dst_end=written, ov=ov, oa=oa))
+copy(pos, size, ov, oa); segs.append(dict(kind='copy', src=[pos, size], dst_end=at(), ov=ov, oa=oa))
+if Z: put(Z.push(b'', final=True))
 if tee is not None: os.close(tee)
 if dst != '-': os.fsync(fd)
 os.close(fd)
@@ -185,6 +196,7 @@ if proof:
     except write_proof.Failed as e:
         raise SystemExit('STOPPED: the output is not proven stored as written: %s (the file is kept; rerun with --resume-defer-check and '
                          'ASSEMBLE_WRITE_PROOF=1 to prove it again without rewriting it)' % e)
-res = dict(write_proof=proven, source=src, destination=dst, resumed_from=resume_len, source_bytes=size - base, bytes=written, sha256=sha.hexdigest(), records=nrec, fills=len(mods), video_transfers_added=ov, audio_transfers_added=oa, seconds=time.time() - t0, segments=segs)
+res = dict(write_proof=proven, source=src, destination=dst, resumed_from=resume_len, source_bytes=size - base, bytes=written, sha256=sha.hexdigest(), records=nrec, fills=len(mods), video_transfers_added=ov, audio_transfers_added=oa, seconds=time.time() - t0, segments=segs,
+           renumbered=dict(headers=Z.headers, resyncs=Z.resyncs) if Z else None)
 json.dump(res, open(os.environ.get('ASSEMBLY_JSON', 'ev/test_assembly.json' if base else dst.split('/')[-1] + '.assembly.json'), 'w'), indent=1)
 print('done: %d bytes, sha256 %s, %d records, %d fills, +%d video and +%d audio transfers, %.0f s' % (written, sha.hexdigest(), nrec, len(mods), ov, oa, time.time() - t0), file=sys.stderr)

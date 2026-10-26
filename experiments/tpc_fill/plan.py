@@ -6,6 +6,7 @@
 import sys, os, json, time, hashlib, bisect, resource, gc
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build import *
+from renum import renumber
 T, SIDECAR, WORK = sys.argv[1], sys.argv[2], sys.argv[3]
 g_first = int(sys.argv[4]) if len(sys.argv) > 4 else 1; g_last = int(sys.argv[5]) if len(sys.argv) > 5 else 10 ** 6
 RANGE = (int(sys.argv[6]), int(sys.argv[7])) if len(sys.argv) > 7 else None
@@ -45,6 +46,7 @@ for g, grp in enumerate(groups):
         a0 = pos[max(k0, 1)]; a1 = pos[min(k1, len(pos) - 2)]
         minis.append((a0, bytes(R.b[a0 - R.p0:m['file_from'] - R.p0]), bytes(R.b[m['file_to'] - R.p0:a1 - R.p0])))
     del S, R, b; gc.collect()
+    cum = sum(e['counter_shift']['counts'] for gg, es in plan.items() if int(gg) < g for e in es if e.get('counter_shift'))   # earlier stretches' run-ahead
     for m, (a0, pre, post) in zip(mods, minis):
         post = bytearray(post); p = 0
         while p < len(post):
@@ -52,13 +54,17 @@ for g, grp in enumerate(groups):
             if t in (0, 2): struct.pack_into('<I', post, p + 8, sq + (m['kv'] if ep == 0x83 else m['ka'] if ep == 0x84 else 0))
             p += 24 + (al if t in (0, 3) else 0)
         seam = {c % 65536 for g1, g2 in m['rep'].get('append_audio_gaps', []) for c in range(g1, g1 + ((g2 - g1) % 65536))}
-        ok, N = check(pre + m['data'] + bytes(post), a0, print, seam); del N
+        # renumbered as the assembler will: by every run-ahead glitch before this range, and from its own on
+        shifts = ([(0, cum)] if cum else []) + ([(len(pre) + m['counter_shift']['at'], m['counter_shift']['counts'])] if m.get('counter_shift') else [])
+        whole = pre + m['data'] + bytes(post)
+        ok, N = check(renumber(whole, shifts) if shifts else whole, a0, print, seam); del N, whole
+        if m.get('counter_shift'): cum += m['counter_shift']['counts']
         if m['rep'].get('append_seam'): print('  %s: append seam; the donor\'s sound sits %s samples off the capture\'s against the picture, taken up in the seam\'s resync intervals' % (m['rep']['name'], m['rep'].get('append_av_shift_samples')), flush=True)
         fn = m['rep']['name'] + '.bin'; put_file(os.path.join(WORK, fn), m['data'])
         entries.append(dict(name=m['rep']['name'], filled=True, structure_ok=bool(ok), file=fn, bytes=len(m['data']), sha256=hashlib.sha256(m['data']).hexdigest(),
-                            file_from=m['file_from'], file_to=m['file_to'], kv=m['kv'], ka=m['ka'], rep=json.loads(json.dumps(m['rep'], default=str))))
+                            file_from=m['file_from'], file_to=m['file_to'], kv=m['kv'], ka=m['ka'], counter_shift=m.get('counter_shift'), rep=json.loads(json.dumps(m['rep'], default=str))))
         print('  %s: structure %s, %d -> %d bytes, +%d video +%d audio transfers, units %s, samples %s' % (m['rep']['name'], 'PASSED' if ok else 'FAILED', m['file_to'] - m['file_from'], len(m['data']),
-              m['kv'], m['ka'], m['rep'].get('video_units_filled'), [s['M'] for s in m['rep'].get('seams', [])]), flush=True)
+              m['kv'], m['ka'], m['rep'].get('video_units_filled'), [s.get('M', 'kept') for s in m['rep'].get('seams', [])]), flush=True)
     del mods, minis; gc.collect()
     plan[str(g)] = entries; json.dump(plan, open(plan_path + '.tmp', 'w'), indent=1); os.replace(plan_path + '.tmp', plan_path)
     print('stretch %d (%d:%02d): %d of %d clusters filled, %.0f s, peak memory %d MB' % (g, grp[0] / 29.97 // 60, grp[0] / 29.97 % 60, sum(1 for e in entries if e['filled']), len(cl), time.time() - t0, rss() >> 20), flush=True)

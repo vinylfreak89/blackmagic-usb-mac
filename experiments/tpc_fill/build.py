@@ -1,6 +1,7 @@
 # Fill the device gaps in one saved stretch of the target's raw file from the donor capture.
 # Output: for each gap cluster, the file range to replace, its new bytes, and how many transfers were added per endpoint.
 import sys, os, json, numpy as np
+import renum
 sys.path.insert(0, '.')
 from region import *
 from donor import load_donor
@@ -13,6 +14,15 @@ PAIRING = os.environ.get('FILL_PAIRING', 'shifted'); assert PAIRING in ('shifted
 # after it the sound is the donor's own pass, not the target's, so both sides are lined up by ear and nothing is split as
 # drift; the resync intervals inside it absorb the two passes' different audio offsets (hundreds of samples, a few ms)
 APPEND_AT = int(os.environ['FILL_APPEND_AT']) if os.environ.get('FILL_APPEND_AT') else None
+# FILL_OFF_AFTER=<n>: the offset after a glitch whose counters ran ahead of the tape (the Shuttle losing lock counts its
+# no-signal and other-format units: 2026-10-26, 44 counters across 16 units of sound). The gap whose counters say more units
+# than its sound is that glitch: it is filled with the units its sound says, from the donor at FILL_OFF, numbered on from
+# the unit before it; the capture's own samples are kept and only its resync records are put back on the cadence. Counters
+# at and after the glitch's end are FILL_OFF_AFTER from the donor's; the two must differ by the run-ahead the sound
+# measures. From the glitch's end on, every counter is lowered by that run-ahead (renum.py; the range gives the position as
+# counter_shift, and the assembler carries it to the end of the capture): the parser takes a unit only at counter + 1, so a
+# jump kept in the file cost the unit on each side of it (2026-10-26), and the counters then count the tape's units.
+OFF_AFTER = int(os.environ['FILL_OFF_AFTER']) if os.environ.get('FILL_OFF_AFTER') else None
 F_LONG = 0.5124                   # usual share of 2848-byte video packets
 F_EIGHT = 0.50094                 # usual share of 8-record audio packets
 VREQ, AREQ = 15360, 192
@@ -123,22 +133,43 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     DU = D.whole_units(); dv = D.v
     def donor_rows(a): 
         o = DU[a % 65536]; return np.frombuffer(bytes(dv[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
+    jump = {}                                                   # the run-ahead glitch: c1, c2 (whole units either side), k (its units)
+    after_jump = lambda c: bool(jump) and ((c - jump['c2']) % 65536) < 32768
+    def off_for(c): return OFF_AFTER if after_jump(c) else OFF
+    def new_c(c): return (c - jump['ahead']) % 65536 if after_jump(c) and 'ahead' in jump else c % 65536   # a counter as the patched capture has it
     def make_rows(c, row7):
+        o = off_for(c)
         if PAIRING == 'same':
-            u = donor_rows(c + OFF).copy(); u[PAD, 0::2] = 128; u[PAD, 1::2] = 16; return u
-        return synth_rows(donor_rows(c + OFF - 1), donor_rows(c + OFF), row7)
+            u = donor_rows(c + o).copy(); u[PAD, 0::2] = 128; u[PAD, 1::2] = 16; return u
+        return synth_rows(donor_rows(c + o - 1), donor_rows(c + o), row7)
     TU = R.whole_units()
     def t_rows(c):
         o = TU[c % 65536]; return np.frombuffer(bytes(R.v[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
     # ================= video
     vnew = None; kv = 0; vwin = None
     if vgs:
+        rsa = {c: smp for _, smp, c in R.resyncs}
+        def by_sound(g):
+            """the units the sound says lie between g's whole units: samples from the resync of the unit after c1 to c2's"""
+            a, b = (g['c1'] + 1) % 65536, g['c2'] % 65536
+            return (rsa[b] - rsa[a]) / 1601.6 if a in rsa and b in rsa else None
+        if OFF_AFTER is not None:
+            cand = [g for g in vgs if by_sound(g) is not None and g['n'] - by_sound(g) > 0.5]
+            assert len(cand) == 1, ('FILL_OFF_AFTER: %d gaps whose counters run ahead of their sound, not one' % len(cand), [(g['c1'], g['c2'], by_sound(g)) for g in vgs])
+            jump.update(c1=cand[0]['c1'], c2=cand[0]['c2'], g=cand[0])   # c2 decides which offset a counter takes; widening below may move both edges
         # widen each gap over neighbouring whole units that do not match what the donor shows at that moment (torn units)
         for g in vgs:
             def damaged(c):
+                """rows of the capture's unit c that differ from the donor's moment (and the worst), each field compared at
+                its best vertical shift up to 16 lines: a field the DONOR shows jumped (its own vertical instability) is the
+                same picture moved, not damage in the capture (2026-10-26: a re-record jumping 12-16 lines next to a glitch)"""
                 try: s = make_rows(c, t_rows(c)[7]); t = t_rows(c)
                 except KeyError: return None
-                d = np.abs(s.astype(np.int16) - t.astype(np.int16)).mean(1); return int((d > 14).sum()), float(d.max())
+                s16, t16 = s.astype(np.int16), t.astype(np.int16); rows = []
+                for f0, f1 in ((30, 240), (292, 505)):            # each field's picture rows, 16 clear of the raster's ends
+                    best = min((np.abs(s16[f0:f1] - t16[f0 + k:f1 + k]).mean(1) for k in range(-16, 17)), key=lambda d: d.mean())
+                    rows.append(best)
+                d = np.concatenate(rows); return int((d > 14).sum()), float(d.max())
             g['checked'] = {}
             for side, c in (('before', g['c1']), ('after', g['c2'])):
                 step = -1 if side == 'before' else 1; moved = 0
@@ -152,6 +183,14 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                     if side == 'before': g['c1'] = c; g['s_from'] = TU[c % 65536] + UNIT
                     else: g['c2'] = c; g['s_to'] = TU[c % 65536]
                     g['n'] = (g['c2'] - g['c1']) % 65536 - 1; g['widened_' + side] = moved
+        if jump:
+            g = jump['g']; real = by_sound(g); k = int(round(real))
+            assert abs(real - k) < 0.05, ('the glitch\'s sound is not a whole number of units', real)
+            ahead = (OFF - OFF_AFTER + 32768) % 65536 - 32768
+            assert g['n'] - k == ahead, ('the counters run %d units ahead across the glitch, the two offsets say %d' % (g['n'] - k, ahead))
+            jump.update(c1=g['c1'], c2=g['c2'], k=k, ahead=ahead); g['n'] = k; g['jump'] = True
+            rep['counter_jump'] = dict(after_unit=(g['c1'] + k) % 65536, to=g['c2'], ahead=ahead, renumbered_to=(g['c2'] - ahead) % 65536, units_by_sound=round(real, 3))
+            S.log('  %s: counters run %d ahead across units %d-%d; filled with %d units by the sound; %d and every counter after it lowered by %d' % (name, ahead, g['c1'], g['c2'], k, g['c2'], ahead))
         rep['video_gaps_final'] = [(g['c1'], g['c2'], g['n'], g.get('checked')) for g in vgs]
         s_first = vgs[0]['s_from']; s_last = vgs[-1]['s_to']
         q0 = S.vseq_of_stream(s_first); q1 = S.vseq_of_stream(s_last)
@@ -199,7 +238,7 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         assert sum(sizes) == len(ns), (sum(sizes), len(ns))
         vnew = (ns, sizes); vwin = (q0, q1)
         rep.update(video_window=[q0, q1], video_added_transfers=kv, video_long_share=round(f, 4), video_odd_bytes=odd, video_bytes_added=len(ns) - (win_stream(q1) - so0),
-                   video_units_filled=[[g['c1'] + 1, g['c2'] - 1] for g in vgs])
+                   video_units_filled=[[new_c(g['c1'] + 1), new_c(g['c1'] + g['n'])] for g in vgs])
     # ================= audio
     anew = None; ka = 0; awin = None
     if ags:
@@ -222,13 +261,26 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         t_recs = R.arec[~R.isr]; d_recs = D.arec[~D.isr]
         for g in ags:
             sA, sB = g['sA'], g['sB']; ga = at_seam(g)
+            span = (g['c2'] - g['c1']) % 65536
+            if jump and 0 < (jump['c2'] - g['c1']) % 65536 <= span:
+                # the run-ahead glitch: the capture's own samples are kept (the tape played on; only the Shuttle's counting
+                # broke), and its resyncs from c1+1 to the last unit filled go back on the cadence; c2's resync stays put
+                last = (jump['c1'] + jump['k']) % 65536; new_n = (last - g['c1']) % 65536; steps = new_n + 1; n = sB - sA
+                assert 1601 * steps <= n <= 1602 * steps, ('the glitch\'s %d samples do not fit %d unit intervals' % (n, steps), name)
+                ints = [1602 if b else 1601 for b in spread(n - 1601 * steps, steps)]
+                p = sA + shift
+                for j in range(steps - 1): p += ints[j]; new_res.append((p, (g['c1'] + j + 1) % 65536))
+                g.update(M=0, cp=sB, shift_before=shift, intervals=ints, kc=steps, jump=True)
+                seams.append(dict(counter_jump=True, kept_samples=n, resyncs_on_cadence=new_n, jump=[last, g['c2']]))
+                continue
             c1u = res_un[g['r1']]; exp = sum(tab[(c1u + j) % 5] for j in range(g['kc'])) if all((c1u + j) % 5 in tab for j in range(g['kc'])) else None
             # where the donor capture should be, from the two captures' unit clocks: the target's resync c sits 800 samples after the donor's resync c+OFF-1
             dres = {c: s for _, s, c in D.resyncs}
             def predicted(s_t, c):
+                o = off_for(c)                                       # a gap after a run-ahead glitch sits at FILL_OFF_AFTER
                 if PAIRING == 'same':
-                    a = (c + OFF) % 65536; return dres[a] - s_t if a in dres else None
-                a = (c + OFF - 1) % 65536
+                    a = (c + o) % 65536; return dres[a] - s_t if a in dres else None
+                a = (c + o - 1) % 65536
                 return dres[a] + 800 - s_t if a in dres else None
             pr1 = predicted(sA, g['c1']); pr2 = predicted(sB, g['c2'])
             assert pr1 is not None and pr2 is not None, ('the donor capture has no resync for this moment', name)
@@ -422,7 +474,13 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         out += VT[j] if e == 0 else AT[j]
     while ni < len(done_frac): out += done_frac[ni][1]; ni += 1
     rep.update(file_from=f_lo, file_to=f_hi, old_bytes=f_hi - f_lo, new_bytes=len(out), order=''.join('V' if e == 0 else 'A' for _, e, j in ev)[:80])
-    return dict(file_from=f_lo, file_to=f_hi, data=bytes(out), kv=kv, ka=ka, rep=rep)
+    cshift = None
+    if jump:
+        # where the renumbering starts: the first header or resync from the glitch's end on; every one before it is earlier
+        its = renum.items(bytes(out)); pre = [p for p, c, _ in its if not after_jump(c)]; post = [p for p, c, _ in its if after_jump(c)]
+        assert post and (not pre or max(pre) < min(post)), ('the units and resyncs either side of the glitch interleave in the file', name)
+        cshift = dict(at=min(post), counts=jump['ahead']); rep['counter_shift'] = cshift
+    return dict(file_from=f_lo, file_to=f_hi, data=bytes(out), kv=kv, ka=ka, rep=rep, counter_shift=cshift)
 
 def cluster_gaps(vg, ag, span=24000):
     items = sorted([(g['k'], 'v', g) for g in vg] + [(g['k'], 'a', g) for g in ag], key=lambda x: x[0]); cl = []

@@ -12,6 +12,9 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            false marker half-way through another (a short unit, then an oversized one), one clip: placed at the glitch
   glitch-optional  the same glitch, a clip of only the first 30%: refused for lining up nowhere, not for the glitch
            having no clip (a glitch needs none)
+  run-ahead  the Shuttle losing lock at 50%: three units broken in place and every counter after them raised by 5 (it
+           counts units the tape never had), one clip: placed at the glitch with a smaller offset after it, the three
+           filled by the sound, every later counter lowered by 5 again
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -59,6 +62,21 @@ def glitch(src, dst, at_frac=0.5):
     hdr4 = bytes(R.v[o4:o4 + 48])
     put(o_m, b'\x11' * 4); put(o4, b'\x11' * 4); put(o3 + UNIT // 2, hdr4)
     open(dst, 'wb').write(b); return [whole[i + j][1] for j in (-1, 0, 3, 4)]
+
+def run_ahead(src, dst, at_frac=0.5, ahead=5):
+    """the Shuttle losing lock for three units: their markers destroyed in place (with the unit before them they run together),
+    and every picture-unit and resync counter from the unit after them on raised by `ahead`"""
+    from region import load, UNIT
+    import renum
+    b = bytearray(open(src, 'rb').read()); R = load(src, 0, len(b))
+    whole = [(o, c) for o, c, fm, ok in R.marks if ok and fm == 0xe801]; i = int(len(whole) * at_frac)
+    assert all(whole[i + j][0] == whole[i][0] + j * UNIT for j in range(5)), 'the source is not clean where the glitch goes'
+    for j in range(3):
+        so = whole[i + j][0]
+        for q in range(so, so + 4): k = R.vpk[R.vrec_of(q)]; b[R.recs[k[1]][0] + 24 + (q - k[0])] = 0x11
+    c3 = whole[i + 3][1]; at = min(p for p, c, _ in renum.items(bytes(b)) if c == c3)
+    assert all(c < c3 for p, c, _ in renum.items(bytes(b)) if p < at), 'a counter of the units after the glitch comes before its first'
+    open(dst, 'wb').write(renum.renumber(b, [(at, -ahead)])); return [whole[i + j][1] for j in range(-1, 4)]
 
 def clip(src, S, name, by=1000, frac=None, audio_shift=0):
     """a recapture: SOURCE (or its first frac) with its counters raised by `by` (and its resyncs moved audio_shift samples),
@@ -123,6 +141,11 @@ def main():
     S = os.path.join(S0, 'glitch-optional'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     glitch(src, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     run_case('glitch-optional', S, T, [clip(src, S, 'clipY', frac=0.3)], good, gL, gR, dict(os.environ), expect_fail='lines up with no disconnect, gap, glitch or the end')
+    # run-ahead: the Shuttle's counters run ahead across a glitch, one clip
+    S = os.path.join(S0, 'run-ahead'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = run_ahead(src, T); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
+    print('run-ahead: units %s broken in place, counters after them raised by 5' % broken)
+    run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ))
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)
