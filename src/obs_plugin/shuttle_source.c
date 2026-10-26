@@ -43,6 +43,7 @@
 #include <IOKit/IOKitLib.h>
 #include <IOKit/IOMessage.h>
 #include <IOKit/pwr_mgt/IOPMLib.h>
+#include <dlfcn.h>
 #include <dispatch/dispatch.h>
 #include <util/dstr.h>
 #include <pthread.h>
@@ -162,9 +163,9 @@ typedef struct {
      * reset without a panic). A live session is stopped before the Mac sleeps and restarted after it wakes, through the
      * reconnect path; nothing is captured with the lid shut. asleep: from WillSleep to the wake; while set a reconnect
      * attempt does nothing (the wake posts one). sleep_stopped (under s->m): this sleep stopped a session. */
-    IONotificationPortRef pm_port; io_object_t pm_notifier; io_connect_t pm_root; dispatch_queue_t pm_q;
+    IONotificationPortRef pm_port; io_object_t pm_notifier; io_connect_t pm_root;
     _Atomic int asleep, wake_resume; int sleep_stopped; _Atomic uint64_t woke_ns;
-    void *wake_observer;   /* NSWorkspaceDidWakeNotification: the full wake (IOKit's HasPoweredOn also comes on dark wakes) */
+    void *wake_observer, *screens_observer;   /* NSWorkspace DidWake / ScreensDidWake tokens (retained) */
     pthread_mutex_t ctl_m; pthread_cond_t ctl_c;   /* guards the queue and the probe request only; never held while taking s->m */
     int ctl_quit;
     struct { int act; int64_t ms; } q[MEDIA_QUEUE]; unsigned q_head, q_n;
@@ -631,7 +632,9 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
             if (atomic_load(&s->reconnect_wanted)){
                 if (atomic_exchange(&s->arrival_reset, 0)) s->reconnect_tries = 0;
                 shuttle_stop(s);
-                if (shuttle_start(s, settings) == 0){
+                int rc = shuttle_start(s, settings);
+                if (rc > 0){}   /* the Mac went to sleep meanwhile: held, the wake tries again (not an attempt) */
+                else if (rc == 0){
                     atomic_store(&s->reconnect_wanted, 0);
                     if (atomic_exchange(&s->wake_resume, 0))
                         blog(LOG_INFO, "[shuttle-source] resumed the Shuttle %.1f s after the Mac woke (attempt %u)",
@@ -652,8 +655,10 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
         }
         /* The user takes over: cancel reconnecting AFTER the stop, since a session ending in a disconnect reports it
          * from inside shuttle_stop and would otherwise re-arm reconnecting against the user's stop. */
-        if (act == ACT_RESTART){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0); if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
-        else if (act == ACT_STOP){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0); }
+        /* a user action is proof the Mac is awake (nobody presses anything in a dark wake): it ends a missed wake too */
+        if (act == ACT_RESTART || act == ACT_STOP){ atomic_store(&s->asleep, 0); s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0); }
+        if (act == ACT_RESTART){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; if (shuttle_start(s, settings) < 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
+        else if (act == ACT_STOP){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; }
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
         obs_data_release(settings); return;
     }
@@ -924,6 +929,7 @@ static void shuttle_stop(shuttle_src *s){
     atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
 }
 
+/* 0 started, -1 failed, 1 held for the wake (a live start while the Mac is asleep) */
 static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     if (s->fs){ blog(LOG_ERROR, "[shuttle-source] start refused: a capture session is already running"); return -1; }   /* one owner of the device, one session */
     fs_config cfg; memset(&cfg, 0, sizeof cfg);
@@ -986,7 +992,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     if (!s->replaying && atomic_load(&s->asleep)){   /* the Mac is asleep (or in a dark wake): a live start waits for the wake */
         s->sleep_stopped = 1;
         blog(LOG_INFO, "[shuttle-source] the Mac is asleep: the Shuttle session starts when it wakes");
-        return -1;
+        return 1;   /* held, not failed */
     }
     if (test_refuse || fs_open(&s->fs, &cfg) != 0){
         blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL;
@@ -1050,14 +1056,25 @@ static void usb_watch_stop(shuttle_src *s){
     if (s->usb_q){ dispatch_release(s->usb_q); s->usb_q = NULL; }
 }
 
-/* System sleep and wake, on pm_q (IORegisterForSystemPower). macOS waits for the acknowledgement of a sleep it may
+/* System sleep and wake, on g_pm_q (IORegisterForSystemPower). macOS waits for the acknowledgement of a sleep it may
  * not refuse (WillSleep) up to 30 s, so the session is stopped first and the acknowledgement sent after. An idle-sleep
- * query (CanSystemSleep) is allowed: the stop happens at the WillSleep that follows it. */
+ * query (CanSystemSleep) is allowed: the stop happens at the WillSleep that follows it.
+ * The queue lives as long as the process and the wake handler reaches the source only through g_power_src, which
+ * destroy clears first: a wake notification already running on the main thread when the source goes finds nothing.
+ * (One source per process: g_instances.) */
+static dispatch_queue_t g_pm_q;
+static _Atomic(shuttle_src *) g_power_src;
+static void pm_queue_make(void *x){ (void)x; g_pm_q = dispatch_queue_create("shuttle-power", DISPATCH_QUEUE_SERIAL); }
+static dispatch_queue_t pm_queue(void){ static dispatch_once_t once; dispatch_once_f(&once, NULL, pm_queue_make); return g_pm_q; }
 #ifdef SHUTTLE_TEST_HOOKS
-int shuttle_test_power_acks, shuttle_test_ack_with_session, shuttle_test_sleep_replays;
+int shuttle_test_power_acks, shuttle_test_ack_with_session, shuttle_test_sleep_replays, shuttle_test_display_on;
 static void power_allow(shuttle_src *s, void *arg){ (void)arg; shuttle_test_power_acks++; if (s->fs) shuttle_test_ack_with_session++; }
+static int display_on(void){ return shuttle_test_display_on; }
 #else
 static void power_allow(shuttle_src *s, void *arg){ IOAllowPowerChange(s->pm_root, (long)arg); }
+/* The user's session is awake when the main display is: a dark wake (lid shut) leaves the displays asleep. */
+extern uint32_t CGMainDisplayID(void); extern int CGDisplayIsAsleep(uint32_t);   /* CoreGraphics (linked through AppKit) */
+static int display_on(void){ return !CGDisplayIsAsleep(CGMainDisplayID()); }
 #endif
 static int power_stops(const shuttle_src *s){
 #ifdef SHUTTLE_TEST_HOOKS
@@ -1076,71 +1093,80 @@ static void power_sleep(shuttle_src *s){
     }
     pthread_mutex_unlock(&s->m);
 }
-/* The full wake (NSWorkspaceDidWakeNotification, re-posted onto pm_q). Not IOKit's HasPoweredOn: that also comes on
- * the dark wakes a Mac makes with its lid shut (Wi-Fi/Bluetooth, maintenance), which is when the Mac hung. */
-static void power_wake(shuttle_src *s){
-    pthread_mutex_lock(&s->m);
-    if (!atomic_exchange(&s->asleep, 0)){ pthread_mutex_unlock(&s->m); return; }
+/* The end of a sleep: the user's session awake again. Every trigger (NSWorkspace's DidWake and ScreensDidWake, and
+ * IOKit's HasPoweredOn) is taken only with the main display on at that moment: HasPoweredOn also comes on the dark
+ * wakes a Mac makes with its lid shut, which is when the Mac hung, and a wake notification delivered late can arrive
+ * after the next sleep has begun. Under s->m. */
+static void power_wake_locked(shuttle_src *s, const char *why){
+    if (!atomic_load(&s->asleep)) return;
+    if (!display_on()) return;   /* a dark wake, or a stale notification: still asleep */
+    atomic_store(&s->asleep, 0);
     int stopped = s->sleep_stopped; s->sleep_stopped = 0;
     atomic_store(&s->woke_ns, os_gettime_ns());
     if (stopped){ atomic_store(&s->wake_resume, 1); atomic_store(&s->gone_ns, os_gettime_ns()); atomic_store(&s->reconnect_wanted, 1); }
-    int post = atomic_load(&s->reconnect_wanted);   /* a session this sleep stopped (or held), or a disconnect already being retried */
-    if (post) atomic_store(&s->arrival_reset, 1);   /* the Shuttle may take a moment to come back on USB: a fresh run of attempts */
-    pthread_mutex_unlock(&s->m);
-    if (post) media_post(s, ACT_RECONNECT, 0);
+    if (atomic_load(&s->reconnect_wanted)){   /* a session this sleep stopped (or held), or a disconnect already being retried */
+        atomic_store(&s->arrival_reset, 1);    /* the Shuttle may take a moment to come back on USB: a fresh run of attempts */
+        media_post(s, ACT_RECONNECT, 0);       /* takes ctl_m: s->m then ctl_m, the established order */
+    }
+    blog(LOG_INFO, "[shuttle-source] the Mac woke (%s)%s", why, stopped ? ": resuming the Shuttle" : "");
 }
-static void power_wake_f(void *ctx){ power_wake(ctx); }
+static void power_wake(shuttle_src *s, const char *why){ pthread_mutex_lock(&s->m); power_wake_locked(s, why); pthread_mutex_unlock(&s->m); }
+static void power_wake_g(void *why){ shuttle_src *s = atomic_load(&g_power_src); if (s) power_wake(s, why); }
 static void power_event(shuttle_src *s, natural_t msg, void *arg){
     switch (msg){
     case kIOMessageCanSystemSleep: power_allow(s, arg); break;
     case kIOMessageSystemWillSleep: power_sleep(s); power_allow(s, arg); break;
-    /* kIOMessageSystemWillNotSleep only follows an idle-sleep query that was refused, and nothing here refuses one;
-     * kIOMessageSystemHasPoweredOn comes on dark wakes too. Neither ends the sleep for this source: the full wake does. */
+    case kIOMessageSystemHasPoweredOn: power_wake(s, "powered on, display on"); break;   /* also covers a sleep aborted after WillSleep */
+    /* kIOMessageSystemWillNotSleep only follows an idle-sleep query that was refused, and nothing here refuses one. */
     default: break;
     }
 }
 static void power_cb(void *ctx, io_service_t svc, natural_t msg, void *arg){ (void)svc; power_event(ctx, msg, arg); }
-static void power_watch_start(shuttle_src *s){
-#ifdef SHUTTLE_TEST_HOOKS
-    return;   /* tests drive power_event directly: a real sleep must not wait 30 s for a counted acknowledgement */
-#endif
-    s->pm_q = dispatch_queue_create("shuttle-power", DISPATCH_QUEUE_SERIAL);
-    s->pm_root = s->pm_q ? IORegisterForSystemPower(s, &s->pm_port, power_cb, &s->pm_notifier) : MACH_PORT_NULL;
-    if (s->pm_root == MACH_PORT_NULL){
-        blog(LOG_WARNING, "[shuttle-source] no system sleep notifications: a live session keeps running when the Mac sleeps");
-        if (s->pm_q){ dispatch_release(s->pm_q); s->pm_q = NULL; } return;
-    }
-    IONotificationPortSetDispatchQueue(s->pm_port, s->pm_q);
-    /* NSWorkspace posts its wake notification on the main thread when the user's session is awake again; re-posted onto
-     * pm_q so sleep and wake are handled in order on one queue. */
+/* NSWorkspace's wake notifications, by their exported AppKit names (a typed copy of a name could silently never match) */
+static void *wake_observe(const char *sym, const char *why){
+    id *name = dlsym(RTLD_DEFAULT, sym);
     id ws = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
     id nc = ws ? ((id (*)(id, SEL))objc_msgSend)(ws, sel_registerName("notificationCenter")) : NULL;
-    dispatch_queue_t q = s->pm_q;
-    void (^on_wake)(id) = ^(id note){ (void)note; dispatch_async_f(q, s, power_wake_f); };
-    id tok = nc ? ((id (*)(id, SEL, id, id, id, id))objc_msgSend)(nc, sel_registerName("addObserverForName:object:queue:usingBlock:"),
-                                                              (id)CFSTR("NSWorkspaceDidWakeNotification"), NULL, NULL, (id)on_wake) : NULL;
-    if (tok) s->wake_observer = ((void *(*)(id, SEL))objc_msgSend)(tok, sel_registerName("retain"));
-    else blog(LOG_WARNING, "[shuttle-source] no wake notifications: after a sleep, restart the source to resume the Shuttle");
+    if (!name || !*name || !nc) return NULL;
+    void (^on_wake)(id) = ^(id note){ (void)note; dispatch_async_f(g_pm_q, (void *)why, power_wake_g); };   /* captures nothing of the source */
+    id tok = ((id (*)(id, SEL, id, id, id, id))objc_msgSend)(nc, sel_registerName("addObserverForName:object:queue:usingBlock:"), *name, NULL, NULL, (id)on_wake);
+    return tok ? ((void *(*)(id, SEL))objc_msgSend)(tok, sel_registerName("retain")) : NULL;
+}
+static void wake_unobserve(void **tok){
+    if (!*tok) return;
+    id ws = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
+    id nc = ((id (*)(id, SEL))objc_msgSend)(ws, sel_registerName("notificationCenter"));
+    ((void (*)(id, SEL, id))objc_msgSend)(nc, sel_registerName("removeObserver:"), (id)*tok);
+    ((void (*)(id, SEL))objc_msgSend)((id)*tok, sel_registerName("release")); *tok = NULL;
+}
+static void power_watch_start(shuttle_src *s){
+#ifdef SHUTTLE_TEST_HOOKS
+    return;   /* tests drive power_event and power_wake directly: a real sleep must not wait 30 s for a counted acknowledgement */
+#endif
+    dispatch_queue_t q = pm_queue();
+    s->pm_root = q ? IORegisterForSystemPower(s, &s->pm_port, power_cb, &s->pm_notifier) : MACH_PORT_NULL;
+    if (s->pm_root == MACH_PORT_NULL){ blog(LOG_WARNING, "[shuttle-source] no system sleep notifications: a live session keeps running when the Mac sleeps"); return; }
+    atomic_store(&g_power_src, s);
+    IONotificationPortSetDispatchQueue(s->pm_port, q);
+    s->wake_observer = wake_observe("NSWorkspaceDidWakeNotification", "wake notification");
+    s->screens_observer = wake_observe("NSWorkspaceScreensDidWakeNotification", "screens woke");
+    if (!s->wake_observer && !s->screens_observer)
+        blog(LOG_WARNING, "[shuttle-source] no wake notifications: after a sleep the Shuttle resumes at IOKit's power-on with the display on, or when the source is restarted");
 }
 static void power_watch_stop(shuttle_src *s){
-    if (s->wake_observer){
-        id ws = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
-        id nc = ((id (*)(id, SEL))objc_msgSend)(ws, sel_registerName("notificationCenter"));
-        ((void (*)(id, SEL, id))objc_msgSend)(nc, sel_registerName("removeObserver:"), (id)s->wake_observer);
-        ((void (*)(id, SEL))objc_msgSend)((id)s->wake_observer, sel_registerName("release")); s->wake_observer = NULL;
-    }
     if (s->pm_root == MACH_PORT_NULL) return;
+    atomic_store(&g_power_src, NULL);   /* first: a wake handler running from here on finds no source */
+    wake_unobserve(&s->wake_observer); wake_unobserve(&s->screens_observer);
     IONotificationPortSetDispatchQueue(s->pm_port, NULL);
-    dispatch_sync_f(s->pm_q, NULL, usb_watch_noop);   /* a callback already running finishes before s goes */
+    dispatch_sync_f(g_pm_q, NULL, usb_watch_noop);   /* a sleep or wake handler already on the queue finishes before s goes */
     IODeregisterForSystemPower(&s->pm_notifier); IOServiceClose(s->pm_root); IONotificationPortDestroy(s->pm_port);
     s->pm_root = MACH_PORT_NULL; s->pm_port = NULL;
-    dispatch_release(s->pm_q); s->pm_q = NULL;
 }
 
 #ifdef SHUTTLE_TEST_HOOKS
 /* Tests: system sleep and wake as IOKit delivers them (the acknowledgement is counted, not sent). */
 void shuttle_test_power(void *d, unsigned msg){ power_event(d, (natural_t)msg, (void *)(intptr_t)0x1234); }
-void shuttle_test_full_wake(void *d){ power_wake(d); }
+void shuttle_test_full_wake(void *d){ power_wake(d, "test"); }
 int shuttle_test_asleep(void *d){ return atomic_load(&((shuttle_src *)d)->asleep); }
 /* Tests: a disconnect as the capture core reports it, and the reconnect state. */
 void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
@@ -1200,7 +1226,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
         atomic_store(&s->session_kind, KIND_STREAMING);
         if (stream_path(s) == 0) s->sidecar_part = 0;
     }
-    if (shuttle_start(s, settings) != 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
+    if (shuttle_start(s, settings) < 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
     pthread_mutex_unlock(&s->m);
     return s;
 }
@@ -1233,7 +1259,8 @@ static void shuttle_update(void *data, obs_data_t *settings){
     s->restart_pending = 0; s->record_gap = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
     shuttle_stop(s);
     atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;   /* a settings change starts the device itself (after the stop: see ACT_STOP) */
-    s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0);          /* ... or, while asleep, shuttle_start holds it for the wake */
+    s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0);          /* a settings change is a user action: the Mac is awake */
+    atomic_store(&s->asleep, 0);
     /* the end-of-file stop follows the current settings; a restart here begins the file again */
     if (atomic_load(&s->stop_on_eof) && !(obs_data_get_bool(settings, S_REPLAY_RESTART) && obs_data_get_bool(settings, S_REPLAY_STOP))) atomic_store(&s->stop_on_eof, 0);
     shuttle_start(s, settings);
