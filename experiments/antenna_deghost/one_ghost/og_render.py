@@ -7,8 +7,9 @@
 import numpy as np, sys, os, multiprocessing as mp
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE); sys.path.insert(0, HERE + '/../an'); sys.path.insert(0, HERE + '/../an/er')
 import seq2, og_remove as RM
-S, LOG, PER = sys.argv[1], sys.argv[2], int(sys.argv[3]); NFR = int(sys.argv[4]) if len(sys.argv) > 4 else None
-NR = 236; BL = 1.5; sh = np.load(S + '/tape_sh.npy'); NF = len(sh) if NFR is None else NFR
+S, LOG, PER = sys.argv[1], sys.argv[2], int(sys.argv[3])
+F0 = int(sys.argv[4]) if len(sys.argv) > 4 else 0; F1 = int(sys.argv[5]) if len(sys.argv) > 5 else None   # fields F0..F1-1
+NR = 236; BL = 1.5; sh = np.load(S + '/tape_sh.npy'); F1 = len(sh) if F1 is None else F1
 Yy = np.memmap(S + '/tape_y.f32', np.float32, 'r', shape=(len(sh), NR, 720)); Cc = np.memmap(S + '/tape_c.c64', np.complex64, 'r', shape=(len(sh), NR, 360))
 z = np.load(S + '/tape_chain.npz'); Ts = list(z['Ts']); ch = dict(Gy=z['Gy'], Gc=z['Gc'], start=(z['gy0'], z['gc0'], float(z['B'])))
 if 'Tc' in z.files: ch['cp'] = dict(Tc=list(z['Tc']), sig_c=float(z['sig_c']), lam_c=float(z['lam_c']))
@@ -38,7 +39,7 @@ if __name__ == '__main__':
     log = open(LOG, 'w'); log.write('field,g_abs,g_deg,rms_change_codes\n'); out = sys.stdout.buffer; n = 0
     print('delay %.3f; stretches used %d of %d' % (T, use.sum(), len(use)), file=sys.stderr, flush=True)
     with mp.get_context('fork').Pool(4) as pool:
-        for f, b, g, ch_ in pool.imap(one, range(NF), chunksize=2):
-            assert f == n, (f, n); out.write(b); log.write('%d,%.4f,%.1f,%.2f\n' % (f, abs(g), np.degrees(np.angle(g)), ch_)); n += 1
+        for f, b, g, ch_ in pool.imap(one, range(F0, F1), chunksize=2):
+            assert f == F0 + n, (f, F0 + n); out.write(b); log.write('%d,%.4f,%.1f,%.2f\n' % (f, abs(g), np.degrees(np.angle(g)), ch_)); n += 1
             if n % 200 == 0: print('og_render: %d fields' % n, file=sys.stderr, flush=True)
     log.close(); print('og_render: %d fields written' % n, file=sys.stderr)
