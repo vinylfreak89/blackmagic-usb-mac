@@ -40,6 +40,20 @@ python3 render_placed.py CACHE_DIR --log placed.csv | ffmpeg -f rawvideo -pix_fm
     -framerate 60000/1001 -i - -c:v prores_videotoolbox -profile:v standard -aspect 640:525 OUT.mov
 ```
 
+## The lean of the dark strokes and the vertical wander are one timebase error
+
+- The dark slanted strokes are the tape's sync pulses (about 60 samples wide, in segments of 30-60 rows). `hband2.py`
+  finds them by adding darkness along slanted lines; on scrambled fields with a band cut in it finds 99% (lean exact,
+  place within a sample) and fires on 1% of windows with none. On the capture a clean stroke is rarer (6% of windows).
+- `hband3.py` gives the lean per field (spectra averaged over neighbouring fields); `vtrack.py` follows the thin
+  landmark that recurs every 525 tape lines through the pass-counted fold (known answer: within 0.4 rows).
+- If the synchroniser's line clock runs free of the tape (tape line = device line x (1 + e)), the sync slides -858 e
+  samples per row and the landmark -290 e rows per pass: lean = 2.96 x landmark rate. Measured (`lean_vs_v.py`):
+  correlation 0.67, slope 2.3-2.7, same sign in 83% of passes. The landmark's mean rate (-0.36 rows/pass, e = +0.13%)
+  matches the field period fitted from the repeats alone (262.15 of 262.5).
+- The error swings between about -0.26% and +0.53% with a period of 0.98-1.00 s, steady over the clip, on a steady
+  drift of 20 lines a second.
+
 ## First look
 
 ```

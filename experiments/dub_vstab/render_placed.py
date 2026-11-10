@@ -2,11 +2,12 @@
 # captured field, raw UYVY 720x526 on stdout.  The frame is the tape's whole vertical cycle: 262.5 tape lines = 525 frame
 # lines, each delivered row drawn on two frame lines at L = round(2 * (tape line mod 262.5)), so the half line between
 # the tape's two fields is kept without interpolation.  Rows the synchroniser did not deliver are black.  A field that
-# only repeats the last one repeats the last frame; repeated rows of a partly new field are black.  Passes placed by an
-# assumption after the synchroniser restarted its write (passes.py: 'cut', 'step') carry a white strip at the right edge.
+# only repeats the last one repeats the last frame; repeated rows of a partly new field are black.  With --mark, passes
+# placed by an assumption after the synchroniser restarted its write (passes.py: 'cut', 'step') carry a white strip at
+# the right edge (off by default: it reads as a fault in the picture).
 # The cycle's zero is arbitrary (the first pass's start): where the picture's top falls is not known from this.
 # --mono: brightness only (colour bytes neutral).
-# usage: render_placed.py CACHE_DIR [--log FILE] [--mono] [--selftest] > frames.uyvy
+# usage: render_placed.py CACHE_DIR [--log FILE] [--mono] [--mark] [--selftest] > frames.uyvy
 import numpy as np, sys
 import passes as P
 W, H, CYC = 720, 526, 525; R0, R1 = 18, 254
@@ -29,7 +30,7 @@ def selftest():
     print('selftest passed: every row on its own two frame lines, no overlap', file=sys.stderr)
 if __name__ == '__main__':
     if '--selftest' in sys.argv: selftest(); sys.exit(0)
-    MONO = '--mono' in sys.argv
+    MONO = '--mono' in sys.argv; MARK = '--mark' in sys.argv
     S = sys.argv[1]; LOG = sys.argv[sys.argv.index('--log') + 1] if '--log' in sys.argv else None
     U = np.load(S + '/uyvy.npy', mmap_mode='r'); N = int(np.load(S + '/n.npy')[0])
     def field(f): return U[f // 2, 262 * (f % 2) + R0:262 * (f % 2) + R1]
@@ -43,7 +44,7 @@ if __name__ == '__main__':
         if kind != 'none':
             last = place(np.asarray(field(f)), t)
             if MONO: last[:, 0::2] = 128
-            if how[fp[f]] in ('cut', 'step'): last[:, -16:] = np.tile(np.array([128, 235], np.uint8), 8)
+            if MARK and how[fp[f]] in ('cut', 'step'): last[:, -16:] = np.tile(np.array([128, 235], np.uint8), 8)
         out.write(last.tobytes())
         if log:
             fin = t[np.isfinite(t)]; log.write('%d,%s,%d,%s,%s,%d\n' % (f, kind, fp[f], how[fp[f]] if kind != 'none' else 'repeat', ('%.1f' % (fin[0] - np.nonzero(np.isfinite(t))[0][0])) if len(fin) else '', len(fin)))
