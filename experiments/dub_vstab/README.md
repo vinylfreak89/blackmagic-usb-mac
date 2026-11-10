@@ -127,12 +127,41 @@ structure shared between fields. Measured, each against a known answer made from
 - The capture has a pattern of its own across its columns (an arch of about +-1 code, the same in both halves of the
   clip); taking it out changes none of the above.
 
-Not tried: following the blanking through several passes at once on a smooth path (a search over place, slope and
-bend per group of passes). The numbers above put it at the edge of what the noise allows.
+### Followed through all passes at once (`blank_track.py`): still not there
+
+The tape's place along the line is continuous in write time, so a blanking band's place and lean in one pass fix where
+it is in the next. Per pass, a score for every place and lean of a dark band 147 samples wide (63 for the sync tip
+alone) the height of the field; the best path through all 711 + 713 free-running passes under the continuity rule is
+found exactly (dynamic programming; the rule's one uncertain constant, the pass length, is scanned). Depth in points =
+how many more of the band's samples sit at the floor than elsewhere; the capture's vertical blanking is 5 to 10 points
+darker than its picture. "Followed" = path within 40 samples of the band (9% by chance).
+
+| | followed | score per pass | even passes' path meets odd passes' |
+|---|---|---|---|
+| known answer, no band (rows slid at random) | | 1.42-1.44 | 8-10% |
+| known answer, band 1.8 / 3 / 5 / 10 points | 33-38% / 69-76% / 88-91% / 92-95% | 1.5 / 1.7-1.8 / 2.3-2.4 / 3.0 | 11-13 / 19-29 / 48-58 / 64-70% |
+| 10 points, sideways jump of 80 / 200 samples at every head switch | 81-85% / 51-56% | 2.7-2.8 / 2.2-2.3 | |
+| 5 points, pass length constant off by 11% | 86-93% (scan peaks where it must, -36) | 2.3-2.4 | 50-54% |
+| band cut into the capture's own rows, 3 / 5 / 10 points | 26% / 67% / 98% | 1.39 / 1.56 / 2.31 | 11 / 19 / 82% |
+| the same, score limited per block of rows (`BLOCKS` 8) | 33% / 79% / 98% | 1.42 / 1.67 / 2.43 | 12 / 33 / 86% |
+| **the capture** (and with blocks) | | **1.38** (1.38) | **8.6%** (9.3%) |
+| the capture, every field's samples on another field's timebase | | 1.35 | 10.5% |
+
+The known answers are a tape with the band in the first 147 samples of every line, sampled on a write clock swinging
++-0.5% at 1 Hz, the timebase estimated from a landmark drawn into the capture's own scattered fold; two seeds. With the
+sync tip's width the picture is the same (capture 1.65 against 1.68 with rows slid; 5 points followed in 82-90%).
+The capture's paths from even rows and from odd rows do agree in 25-35% of passes, but as often (21-30%) when every
+field's samples are drawn on another field's timebase: that is the short dark pieces inside one field, not something
+running on along the tape.
+
+So a band 5 or more points darker than the picture, running the height of the field on a path that smooth, is not in
+the capture; the clip's own dark pieces hide a 3-point band from this search, and a band that jumped sideways by much
+more than 200 samples at every head switch (or jittered that much from line to line) would escape it too.
 
 ```
 python3 stroke_height.py CACHE_DIR raw && python3 stroke_height.py CACHE_DIR drawn
 python3 pair_closure.py CACHE_DIR 16 40 60 30
+python3 blank_track.py CACHE_DIR ka && python3 blank_track.py CACHE_DIR inject 147 0 8 && python3 blank_track.py CACHE_DIR capture 147 0 8
 ```
 
 ## First look
