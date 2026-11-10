@@ -18,6 +18,10 @@ by Q for the slow drift of fp, and intersects.  An empty intersection is a break
   - the same delay before its read as the last pass was before its own (written in step with the read),
 moved into its own interval if outside.  These two are assumptions, not measurements: passes placed by them are flagged.
 
+Units (measured later, timebase.py / hband4.py): times here count LP = 290 from one pass to the next, so the fitted fp
+(262.12-262.20 on the capture) says a pass is really about 290.4 output lines long, not that the tape's lines are
+longer than the output's.  Row offsets inside a pass are written lines either way.
+
 Input: per output field, which visible rows are new (differ from the previous field's same row; classify()).
 Output: per field, per row, the tape line (float, multiples of 0.5) or NaN where the row is a repeat.
 """
