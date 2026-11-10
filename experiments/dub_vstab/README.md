@@ -46,8 +46,10 @@ The synchroniser never sees the tape's sync, so it writes on its own steady cloc
 With rho = how much longer a written line is than a tape line, the tape's sync slides -858 rho samples per written row
 (the lean of the dark strokes) and the tape's vertical landmark slides -290 rho rows per pass against pass counting.
 
-- The dark slanted strokes are the tape's sync pulses (about 60 samples wide, in segments of 30-60 rows). `hband2.py`
-  finds single strokes (known answer: 99% found, 1% false); a clean one is rare on the capture (6% of windows).
+- The dark slanted strokes (about 60 samples wide, pieces of 20-80 rows) lean as anything recorded on the tape must.
+  `hband2.py` finds single strokes (known answer: 99% found, 1% false); a clean one is rare on the capture (6% of
+  windows). They were first taken for the tape's sync pulses; they are not a line of sync running down the field
+  (see "The sideways place" below).
 - `fold525.py` + `vtrack.py`: the thin landmark that recurs every 525 lines, followed through the pass-counted fold
   (known answer: within 0.4 rows). Locked to it, the capture's rows show the tape's vertical structure: a dark band of
   about 20 lines after the landmark and again 262.5 lines later, the same in both free-running stretches.
@@ -85,7 +87,7 @@ fields. `--no-skew` places whole rows only (720 wide).
   -0.8 to +0.5).
 - Not pinned: the sideways place of a field. It needs D to a thousandth of a line and the landmark gives half a line,
   so fields stand upright but each at its own sideways offset (known answer: 50 samples median jump field to field,
-  over 200 in 5%). The strokes themselves would have to pin it.
+  over 200 in 5%). Nothing in the capture pins it: next section.
 - Not known: what the landmark is; the 215 fields where the synchroniser kept restarting (797-1011) are locked only as
   well as their assumed placement.
 
@@ -95,6 +97,41 @@ python3 fold525.py CACHE_DIR && python3 vtrack.py CACHE_DIR            # after r
 python3 hband4.py CACHE_DIR run && python3 hband4.py CACHE_DIR compare
 python3 render_locked.py CACHE_DIR --mono --kappa 0.001166 | ffmpeg -f rawvideo -pix_fmt uyvy422 -video_size 858x526 \
     -framerate 60000/1001 -i - -c:v prores_videotoolbox -profile:v standard -aspect 763:526 OUT.mov
+```
+
+## The sideways place of a field: not in this capture
+
+Pinning a field sideways needs something at a fixed place on every tape line (sync tip, blanking, burst) or at least
+structure shared between fields. Measured, each against a known answer made from the capture's own noise:
+
+- `stroke_height.py`: darkness piled up along slanted lines over windows of 40 to 236 rows. A band the height of the
+  field gains with the window (cut in at depth 0.2, i.e. one sample in five of it forced dark: z 2.8, 3.3, 3.7, 4.9
+  against 2.7, 2.9, 3.0, 3.2 with none; depth 0.1 is not found). The capture as drawn: 3.1, 3.3, 3.4, 3.5, the same
+  +0.4 over no band at every height: pieces a few tens of lines tall, nothing the height of a field. On the raw rows
+  (no timebase involved, leans -10 to +10) the capture does gain with height, but the lean of each field's tallest
+  full-height pile-up matches the timebase's prediction within 1 sample per row in 16-24% of fields against 14-16% for
+  unrelated fields: not the tape's line.
+- Parts of the same drawn field 80 or more lines apart share nothing at the same place on the line, in darkness,
+  brightness or colour strength (correlation under 0.1% of the variance, either sign; 0.6% at 40 lines).
+- Locked to the landmark, the tape's vertical blanking is only a little darker than its picture: 45-51% of samples
+  at the floor against 40.5%. Horizontal blanking and sync can be expected to be as faint, which is at or below what
+  one field can show.
+- `pair_closure.py`: sideways offset of a field against the next from everything they share (rows that are vertical
+  neighbours, cross-correlated over shift), checked without any truth by closure over three passes. Known picture at
+  3% / 1% / 0.3% of the variance: offsets right within 30 samples in 94% / 74% / 35% (fields averaged over 16 lines
+  first; 85% / 29% / 11% without). The capture: triples close within 30 samples in 20% (7% by chance), the offsets are
+  spread evenly over the line, and of the closing ones 35% sit at the difference of the two capture windows' places
+  (23% by chance): partly the capture's own columns, not the tape. So what two consecutive fields share of the tape is
+  about 0.3% of the variance or less.
+- The capture has a pattern of its own across its columns (an arch of about +-1 code, the same in both halves of the
+  clip); taking it out changes none of the above.
+
+Not tried: following the blanking through several passes at once on a smooth path (a search over place, slope and
+bend per group of passes). The numbers above put it at the edge of what the noise allows.
+
+```
+python3 stroke_height.py CACHE_DIR raw && python3 stroke_height.py CACHE_DIR drawn
+python3 pair_closure.py CACHE_DIR 16 40 60 30
 ```
 
 ## First look
