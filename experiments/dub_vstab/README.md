@@ -17,6 +17,31 @@ What the capture showed:
 - In the dead-reckoned frame a thin line recurs every 525 tape lines and wanders by tens of rows over tens of fields. It
   is the candidate landmark for the tape's own vertical wander, not yet identified or tracked.
 
+## Placing rows by the synchroniser's own behaviour (`passes.py`)
+
+Inside a free run a row's tape line follows from counting passes (290 tape lines each). The read side is used only to
+notice when the synchroniser restarted its write: every field's new/repeated pattern bounds when its pass started, the
+bounds are carried forward, and an empty intersection is a break. The output field period in tape lines is fitted per
+stretch (262.12-262.20 on the capture: tape lines are 0.14% longer than output lines, which is also why the roll measures
+27.9 rows per pass and not 27.5).
+
+- `test_passes.py`: a synchroniser simulated from its mechanism. Free runs (equal, longer, shorter and drifting line
+  lengths) and a single restart come back exact. A stretch written in step with the read, or several restarts in a
+  row, cannot be told from a free run by repeats alone until an expected repeat fails to come: the passes just before
+  such a break can sit up to the size of the break off.
+- On the capture: 1,644 passes, free for fields 0-796 and 1012-1811; 29 passes between fields 797 and 1011 placed by
+  assumption (13 at a cut, 16 in step with the read).
+- `render_placed.py`: one progressive frame per captured field, the tape's whole vertical cycle (525 frame lines), rows
+  not delivered black, assumed placements marked by a white strip at the right edge.
+
+```
+python3 test_passes.py && python3 render_placed.py --selftest
+python3 render_placed.py CACHE_DIR --log placed.csv | ffmpeg -f rawvideo -pix_fmt uyvy422 -video_size 720x526 \
+    -framerate 60000/1001 -i - -c:v prores_videotoolbox -profile:v standard -aspect 640:525 OUT.mov
+```
+
+## First look
+
 ```
 python3 extract.py CAPTURE.tpc CACHE_DIR ../          # ../ = this repository's experiments directory
 python3 look1.py CACHE_DIR && python3 look2.py CACHE_DIR
