@@ -5,7 +5,8 @@
 # only repeats the last one repeats the last frame; repeated rows of a partly new field are black.  Passes placed by an
 # assumption after the synchroniser restarted its write (passes.py: 'cut', 'step') carry a white strip at the right edge.
 # The cycle's zero is arbitrary (the first pass's start): where the picture's top falls is not known from this.
-# usage: render_placed.py CACHE_DIR [--log FILE] [--selftest] > frames.uyvy
+# --mono: brightness only (colour bytes neutral).
+# usage: render_placed.py CACHE_DIR [--log FILE] [--mono] [--selftest] > frames.uyvy
 import numpy as np, sys
 import passes as P
 W, H, CYC = 720, 526, 525; R0, R1 = 18, 254
@@ -28,6 +29,7 @@ def selftest():
     print('selftest passed: every row on its own two frame lines, no overlap', file=sys.stderr)
 if __name__ == '__main__':
     if '--selftest' in sys.argv: selftest(); sys.exit(0)
+    MONO = '--mono' in sys.argv
     S = sys.argv[1]; LOG = sys.argv[sys.argv.index('--log') + 1] if '--log' in sys.argv else None
     U = np.load(S + '/uyvy.npy', mmap_mode='r'); N = int(np.load(S + '/n.npy')[0])
     def field(f): return U[f // 2, 262 * (f % 2) + R0:262 * (f % 2) + R1]
@@ -40,6 +42,7 @@ if __name__ == '__main__':
         kind = info['kind'][f]; t = tape[f]
         if kind != 'none':
             last = place(np.asarray(field(f)), t)
+            if MONO: last[:, 0::2] = 128
             if how[fp[f]] in ('cut', 'step'): last[:, -16:] = np.tile(np.array([128, 235], np.uint8), 8)
         out.write(last.tobytes())
         if log:
