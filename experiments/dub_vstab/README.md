@@ -118,8 +118,9 @@ structure shared between fields. Measured, each against a known answer made from
   one field can show.
 - `pair_closure.py`: sideways offset of a field against the next from everything they share (rows that are vertical
   neighbours, cross-correlated over shift), checked without any truth by closure over three passes. Known picture at
-  3% / 1% / 0.3% of the variance: offsets right within 30 samples in 94% / 74% / 35% (fields averaged over 16 lines
-  first; 85% / 29% / 11% without). The capture: triples close within 30 samples in 20% (7% by chance), the offsets are
+  3% / 1% / 0.3% of the variance: offsets right within 30 samples in 94% / 74% / 35% (shapes of about 60 samples by
+  30 frame rows, fields averaged over 16 lines first; 85% / 29% / 11% for shapes of 20 by 10 without averaging). The
+  capture: triples close within 30 samples in 20% (9% without averaging; 7% by chance), the offsets are
   spread evenly over the line, and of the closing ones 35% sit at the difference of the two capture windows' places
   (23% by chance): partly the capture's own columns, not the tape. So what two consecutive fields share of the tape is
   about 0.3% of the variance or less.
