@@ -81,6 +81,8 @@ static const IOUSBConfigurationDescriptor fake_config={.bLength=9,.bDescriptorTy
 @implementation IHFakePending
 @end
 
+@class IOUSBHostPipe;
+static void fake_due_(IOUSBHostPipe *pipe, IHFakePending *p, NSUInteger n, int64_t wait_ns);
 @implementation IOUSBHostPipe {
     IOUSBHostIOSourceDescriptors _d; int _ep; dispatch_queue_t _q; NSMutableArray<IHFakePending*> *_pending; NSLock *_lock;
 }
@@ -117,18 +119,40 @@ static NSError *io_err_(IOReturn r){ return [NSError errorWithDomain:@"IOKit" co
     [_lock lock]; [_pending addObject:p]; [_lock unlock];
     uint64_t due=abs_at_frame_(f+frames)+100000/abs_ns, now=mach_absolute_time();
     int64_t wait_ns=due>now?(int64_t)((due-now)*abs_ns):0;
-    __weak IOUSBHostPipe *wp=self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,wait_ns),_q,^{
-        if(atomic_exchange(&p->done,1)) return;
-        IOUSBHostPipe *sp=wp; if(sp){ [sp->_lock lock]; [sp->_pending removeObject:p]; [sp->_lock unlock]; }
-        int ep=sp?sp->_ep:0;
-        if(atomic_fetch_add(&ih_fake.completions[ep],1)+1==atomic_load(&ih_fake.late_at[ep])){
-            uint64_t target=atomic_load(&ih_fake.queue_end[ep])+(uint64_t)atomic_load(&ih_fake.late_k[ep]);
-            while(ih_fake_frame_now()<target) usleep(100);
-        }
-        p.h(kIOReturnSuccess,p.tl);
-    });
+    fake_due_(self,p,n,wait_ns);
     return YES;
+}
+/* the completion of p, wait_ns from now. Under a dead link it fails, at the next free slot of the procession: the
+ * slot is reserved when p falls due (so each endpoint's transfers keep their order) and p is rescheduled to it, never
+ * blocking the backend's queue meanwhile */
+static void fake_finish_(IOUSBHostPipe *sp, IHFakePending *p, NSUInteger n, IOReturn st);
+static void fake_due_(IOUSBHostPipe *pipe, IHFakePending *p, NSUInteger n, int64_t wait_ns){
+    __weak IOUSBHostPipe *wp=pipe;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,wait_ns),pipe->_q,^{
+        if(atomic_load(&p->done)) return;
+        IOUSBHostPipe *sp=wp;
+        int left=sp?atomic_load(&ih_fake.dead_left[sp->_ep]):0;
+        if(left>0) atomic_fetch_sub(&ih_fake.dead_left[sp->_ep],1);
+        if(!sp || (!atomic_load(&ih_fake.link_dead) && left<=0)){ fake_finish_(sp,p,n,kIOReturnSuccess); return; }
+        uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW), gap=(uint64_t)atomic_load(&ih_fake.dead_spacing_ms)*NSEC_PER_MSEC;
+        uint64_t cur=atomic_load(&ih_fake.dead_next_ns), slot;
+        do slot=cur<now?now:cur; while(!atomic_compare_exchange_weak(&ih_fake.dead_next_ns,&cur,slot+gap));
+        if(slot<=now){ fake_finish_(sp,p,n,kIOReturnNoResources); return; }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(slot-now)),sp->_q,^{ fake_finish_(wp,p,n,kIOReturnNoResources); });
+    });
+}
+static void fake_finish_(IOUSBHostPipe *sp, IHFakePending *p, NSUInteger n, IOReturn st){
+    if(atomic_exchange(&p->done,1)) return;
+    if(st!=kIOReturnSuccess){ IOReturn ps=atomic_load(&ih_fake.dead_pkt_ok)?kIOReturnSuccess:st;
+        for(NSUInteger i=0;i<n;i++){ p.tl[i].status=ps; p.tl[i].completeCount=0; } }
+    if(sp){ [sp->_lock lock]; [sp->_pending removeObject:p]; [sp->_lock unlock]; }
+    int ep=sp?sp->_ep:0;
+    if(st!=kIOReturnSuccess) atomic_fetch_add(&ih_fake.dead_completions[ep],1);
+    if(atomic_fetch_add(&ih_fake.completions[ep],1)+1==atomic_load(&ih_fake.late_at[ep])){
+        uint64_t target=atomic_load(&ih_fake.queue_end[ep])+(uint64_t)atomic_load(&ih_fake.late_k[ep]);
+        while(ih_fake_frame_now()<target) usleep(100);
+    }
+    p.h(st,p.tl);
 }
 - (BOOL)abortWithOption:(IOUSBHostAbortOption)option error:(NSError**)error { (void)option; (void)error;
     [_lock lock]; NSArray *all=[_pending copy]; [_pending removeAllObjects]; [_lock unlock];

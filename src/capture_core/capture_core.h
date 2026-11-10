@@ -107,7 +107,8 @@ typedef struct {
     const char *replay_path;    // non-NULL => replay backend reading this .tpc
     int replay_pace_us;         // replay: usleep per transfer (0 = as fast as possible;
                                 // 16000 ~= the device's real video cadence)
-    int resubmit_deadline_ms;   // device: 0 => 2000; persistent failure ends the whole session.
+    int resubmit_deadline_ms;   // device: 0 => 2000; persistent failure ends the whole session. IOUSBHost: also how long
+                                // an endpoint's transfers may deliver nothing, failing, before the session ends (a dead link).
                                 // This is deliberately stricter than host-overflow continuation:
                                 // one parked transfer means future scheduled slots are absent.
     int fail_stop_on_control_loss; // 0: mark not-clean once and continue; nonzero: marker + stop

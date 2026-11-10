@@ -65,6 +65,9 @@
     BOOL running;                      /* ih_go has run: completions are handed over; refusals are retried */
     BOOL suspended;                    /* q is suspended (ih_start .. ih_go); touched by the caller's thread only */
     BOOL discard;                      /* stopped without ih_go: completions are dropped, never handed over */
+    uint64_t dead_since_ms[2]; uint32_t dead_n[2];   /* per endpoint: consecutive transfers that delivered nothing */
+    uint32_t dead_gen[2]; BOOL dead_check[2];        /* deliveries so far (a pending end is cancelled by one); an end pending */
+    BOOL empty_logged[2];                           /* this run of empty transfers has been logged */
     ih_stats st; int live[2];
     uint64_t last_ts[2]; double abs_ns;
     IHCounter *freed;
@@ -132,6 +135,62 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochron
     }
     d->last_ts[ep]=status==kIOReturnSuccess && !old?ts:0;
     x.gap=0;
+    /* A link that died without the device being terminated (measured 2026-11-10, a Shuttle on a USB 3 hub: the port
+     * logged a state change, then the kernel completed the queued reads one at a time, about 2 s apart, each with
+     * "missed service error" 0xe00002be or "transaction error" 0xe00002ed; every requeue at its frame was refused as
+     * too old and accepted 8 frames ahead; no termination notice came for 22 minutes, until the process let go of
+     * the device, and other devices on the hub ran at a few percent of their speed until then). A transfer that
+     * delivered no byte and failed for a reason other than lateness starts a streak on its endpoint; any byte
+     * delivered on it ends the streak. A streak reaching the deadline (at least two transfers) ends the session:
+     * the device is then released, and the caller reconnects once it is back. The streak is timed where this queue
+     * processes completions, so a queue stall between two failed transfers stretches it: the end is therefore
+     * decided behind whatever completions are already waiting on the queue, and one of them delivering cancels it.
+     * The first transfer of each run that delivers nothing is logged with its statuses, whether or not it counts as
+     * failed: a kernel answer this test misses still leaves its evidence. */
+    { uint32_t delivered=0, nst=0; IOReturn why=status!=kIOReturnSuccess && status!=kIOReturnUnderrun && status!=kIOReturnIsoTooOld?status:kIOReturnSuccess;
+      IOReturn sv[3]={0}; uint32_t sc[3]={0}, other=0;
+      for(int i=0;i<d->npk[ep];i++){
+          IOReturn ps=tl[i].status;
+          if((ps==kIOReturnSuccess || ps==kIOReturnUnderrun) && tl[i].completeCount){ delivered++; continue; }
+          if(ps!=kIOReturnSuccess && ps!=kIOReturnUnderrun && ps!=kIOReturnIsoTooOld){ if(why==kIOReturnSuccess) why=ps; }
+          uint32_t k=0; while(k<nst && sv[k]!=ps) k++;
+          if(k<nst) sc[k]++; else if(nst<3){ sv[nst]=ps; sc[nst++]=1; } else other++;
+      }
+      if(delivered){ d->dead_n[ep]=0; d->dead_since_ms[ep]=0; d->dead_gen[ep]++; d->empty_logged[ep]=NO; }
+      else {
+          if(!d->empty_logged[ep] && d->cb.on_diag){ char line[320], h[160]=""; size_t o=0;
+              d->empty_logged[ep]=YES;
+              for(uint32_t k=0;k<nst && o<sizeof h;k++) o+=(size_t)snprintf(h+o,sizeof h-o,"%s%u x 0x%08x",k?", ":"",sc[k],(unsigned)sv[k]);
+              if(other && o<sizeof h) snprintf(h+o,sizeof h-o,", %u other",other);
+              snprintf(line,sizeof line,"capture_iousbhost: %s transfer seq %u delivered nothing: transfer 0x%08x, packets %s%s",
+                       ep?"audio":"video",x.seq,(unsigned)status,h,why!=kIOReturnSuccess?"; counted as failed (the Shuttle may not be answering)":"");
+              d->cb.on_diag(d->cb.ctx,line); }
+          if(why!=kIOReturnSuccess){
+              uint64_t now=ih_ms_();
+              d->st.dead_transfers[ep]++;
+              if(!d->dead_n[ep]++) d->dead_since_ms[ep]=now;
+              else if(now-d->dead_since_ms[ep]>=(uint64_t)d->deadline_ms && !d->dead_check[ep]
+                      && !atomic_load(&d->stopping) && !d->fatal_sent && !ih_off_(d)){
+                  uint32_t gen=d->dead_gen[ep], n=d->dead_n[ep], seq=x.seq; uint64_t span=now-d->dead_since_ms[ep];
+                  __weak IHDev *wd=d;
+                  d->dead_check[ep]=YES; dispatch_group_enter(d->inflight);
+                  dispatch_async(d->q,^{   /* behind the completions already waiting */
+                      IHDev *sd=wd; if(!sd) return;
+                      sd->dead_check[ep]=NO;
+                      if(sd->dead_gen[ep]==gen && !atomic_load(&sd->stopping) && !sd->fatal_sent && !ih_off_(sd)){
+                          if(sd->cb.on_diag){ char line[240];
+                              snprintf(line,sizeof line,"capture_iousbhost: %s: %u transfers in a row delivered nothing over %llu ms (last 0x%08x): ending the session to release the device",
+                                       ep?"audio":"video",n,(unsigned long long)span,(unsigned)why);
+                              sd->cb.on_diag(sd->cb.ctx,line); }
+                          ih_fatal_(sd,3,(int)why,ep,seq);
+                      }
+                      dispatch_group_leave(sd->inflight);
+                  });
+              }
+          }
+      }
+    }
+    if(ih_off_(d)){ dispatch_group_leave(d->inflight); return; }
     const uint8_t *base=(const uint8_t*)x.buf.bytes;
     for(int i=0;i<d->npk[ep] && !ih_off_(d);i++){
         IOUSBHostIsochronousTransaction *t=&tl[i];

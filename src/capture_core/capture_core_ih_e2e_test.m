@@ -16,7 +16,7 @@ static int fails;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 
 typedef struct { int started; uint64_t expect; long packets, bad_status, mismatch, unsched, unsched_pk; } ep_rec;
-static ep_rec R[2]; static _Atomic int ended, end_reason, after_stop, late_calls; static int exact_lines, approx_lines;
+static ep_rec R[2]; static _Atomic int ended, end_reason, after_stop, late_calls; static int exact_lines, approx_lines, answer_lines, g_deadline_ms; static _Atomic long enq_at_end_line;
 
 static void on_packet(void *ctx, const cc_packet *p){ (void)ctx;
     if(atomic_load(&after_stop)) atomic_fetch_add(&late_calls,1);
@@ -35,12 +35,15 @@ static void on_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind
 static void on_end(void *ctx, enum cc_end why){ (void)ctx; atomic_store(&end_reason,(int)why); atomic_store(&ended,1); }
 static void diag(void *ctx, const char *line){ (void)ctx;
     if(strstr(line,"HOST LOSS: ~")) approx_lines++; else if(strstr(line,"HOST LOSS:")) exact_lines++;
+    if(strstr(line,"stopped answering")) answer_lines++;
+    if(strstr(line,"ending the session to release")) atomic_store(&enq_at_end_line,atomic_load(&ih_fake.enqueues[0])+atomic_load(&ih_fake.enqueues[1]));
     if(getenv("IH_TEST_VERBOSE")) fprintf(stderr,"  diag: %s\n",line); }
 
 static cc_session *run_(cc_stats *st, int secs_ms, int stop){
     memset(R,0,sizeof R); atomic_store(&ended,0); atomic_store(&after_stop,0); atomic_store(&late_calls,0);
-    exact_lines=approx_lines=0;
+    exact_lines=approx_lines=answer_lines=0;
     cc_config cfg; memset(&cfg,0,sizeof cfg); cfg.usb_backend=CC_USB_IOUSBHOST; cfg.ring_mb=64; cfg.diag_log=diag;
+    cfg.resubmit_deadline_ms=g_deadline_ms;
     cc_callbacks cb; memset(&cb,0,sizeof cb); cb.on_packet=on_packet; cb.on_loss_ex=on_loss_ex; cb.on_end=on_end;
     cc_session *s=NULL;
     CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open");
@@ -96,6 +99,23 @@ int main(void){ @autoreleasepool {
     accounted_("unplug");
     cc_close(s);
     printf("  unplug: the session ended DEVICE_GONE by itself\n");
+
+    /* 2b. a link that dies with the device still attached (2026-11-10): failed reads keep completing, requeues are
+     *     accepted, no removal notice. The session ends TRANSFER_FAILED by itself (the OBS plugin then blanks and
+     *     reconnects), names it, and stops queueing reads */
+    memset(&ih_fake,0,sizeof ih_fake); atomic_store(&ih_fake.dead_spacing_ms,100); g_deadline_ms=300; atomic_store(&enq_at_end_line,0);
+    s=run_(&st,400,0);
+    atomic_store(&ih_fake.link_dead,1);
+    for(int i=0;i<300 && !atomic_load(&ended);i++) usleep(10000);
+    long enq=atomic_load(&enq_at_end_line);   /* sampled as the backend decided, before the fatal transfer could requeue */
+    usleep(300000);
+    CHECK(atomic_load(&ended) && atomic_load(&end_reason)==CC_END_TRANSFER_FAILED,"dead link: ended %d reason %d",atomic_load(&ended),atomic_load(&end_reason));
+    CHECK(answer_lines==1,"dead link: %d 'stopped answering' lines",answer_lines);
+    CHECK(enq>0 && atomic_load(&ih_fake.enqueues[0])+atomic_load(&ih_fake.enqueues[1])==enq,"dead link: reads queued after the decision (%ld at it)",enq);
+    CHECK(cc_stop(s)==CC_OK,"dead link: stop");
+    accounted_("dead link");
+    cc_close(s); g_deadline_ms=0;
+    printf("  dead link, device attached: the session ended TRANSFER_FAILED by itself and queued nothing after\n");
 
     /* 3. the completion queue stalled 1.5 s (inside a completion) while the session stops: the stop returns, marked
      *    incomplete, nothing is delivered after it, and cc_close leaks the session rather than free it under the

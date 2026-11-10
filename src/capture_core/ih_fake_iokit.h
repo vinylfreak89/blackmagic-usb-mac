@@ -35,6 +35,14 @@ typedef struct {
     /* the late_at-th completion (1-based) is held on the completion queue until the bus is late_k frames past the
      * end of what is queued, so that transfer's requeue lands exactly that late (the backlog then catches up) */
     _Atomic long late_at[2]; _Atomic int late_k[2];
+    /* a dead link with the device still attached (as measured 2026-11-10): while set, each transfer that falls due
+     * completes with kIOReturnNoResources on the transfer and every packet, no data, no earlier than dead_spacing_ms
+     * after the previous such completion on either endpoint (the kernel's ~2 s procession); enqueues are accepted */
+    _Atomic int link_dead, dead_spacing_ms;
+    _Atomic int dead_left[2];       /* also fail the next N completions per endpoint (counts down) */
+    _Atomic int dead_pkt_ok;        /* the failed transfers' packets say Success with no data (the transfer still fails) */
+    _Atomic long dead_completions[2];
+    _Atomic uint64_t dead_next_ns;  /* internal: the procession's next free slot */
 } ih_fake_controls;
 extern ih_fake_controls ih_fake;
 void ih_fake_terminate(void);       /* deliver kIOMessageServiceIsTerminated on an internal queue */

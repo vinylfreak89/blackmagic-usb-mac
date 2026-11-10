@@ -887,6 +887,11 @@ static void ihc_submit_failed_(void *ctx, int e, uint32_t seq, int io){
 static void ihc_fatal_(void *ctx, int reason, int io, int e, uint32_t seq){
     cc_session *s=ctx; IHC_ENTER(s);
     int gone=reason==1 || io==kIOReturnNoDevice || io==kIOReturnNotAttached || io==kIOReturnOffline;
+    if(reason==3){   /* the backend's own line names the failure; this one names what the session does about it */
+        char line[200]; snprintf(line,sizeof line,"capture_core: the Shuttle stopped answering (USB %s reads failing, IOReturn 0x%08x): ending the session, which releases the device",
+                                 e?"audio":"video",(unsigned)io);
+        if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+    }
     if(reason==2){ s->xfer_err++; s->resub_fail++; put_meta_(s,REC_XFERERR,e?CC_EP_AUDIO:CC_EP_VIDEO,0xFFFF,seq,(uint32_t)io,NULL,0); }
     /* an unplug can fail a requeue before its notice arrives: the notice still names the end */
     if(gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);
@@ -944,8 +949,9 @@ static void* ih_main(void *arg){
     s->teardown_incomplete=st.incomplete;
     if(st.device_gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);   /* even when a notice came after the queue stopped */
     { char line[240];
-      snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps)%s",
+      snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps); transfers that delivered nothing and failed %llu / %llu%s",
                st.step_dev_ms[0],st.step_dev_ms[1],(unsigned long long)st.steps[0],(unsigned long long)st.steps[1],
+               (unsigned long long)st.dead_transfers[0],(unsigned long long)st.dead_transfers[1],
                st.gap_dev_ms[0]>0||st.gap_dev_ms[1]>0?"; across unread gaps see the lines above":"");
       ihc_diag_(s,line); }
     for(int e=0;e<2;e++) if(st.unread_frames[e]!=st.unread_delivered[e]+st.unread_at_stop[e]){
