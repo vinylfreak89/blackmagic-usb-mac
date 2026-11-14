@@ -317,7 +317,9 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
         b = a + ((b16 - a16) % 65536); spans.append((a, b))
     GAP = set(); AFTER = set()
     for a, b in spans: GAP |= set(range(a - 6, b + 12)); AFTER |= set(range(a - 6, b + 310))   # the live engine reset at each hole
-    HIST = {'audio_residual_ticks', 'vote_engine_anchor', 'vote_count', 'vote_winner_count', 'ordinal'}
+    # each session's own history: the anchor vote carries over until its next confident frame, which can be thousands of units
+    # away (an appended clip's live rows come from the donor's session); placement is still compared through frame_d/applied_d
+    HIST = {'audio_residual_ticks', 'vote_anchor', 'vote_engine_anchor', 'vote_count', 'vote_winner_count', 'ordinal'}
     # the placement columns of a render cropped at the measured first line: the live value moved by the crop, exactly
     f1, f2 = (int(x) for x in first_line.split(',')) if first_line else NOMINAL_FIRST
     crop = {ix[h]: d for h, d in (('applied_d1', f1 - NOMINAL_FIRST[0]), ('frame_d1', f1 - NOMINAL_FIRST[0]),
