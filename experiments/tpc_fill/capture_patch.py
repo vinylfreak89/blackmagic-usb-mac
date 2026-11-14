@@ -27,8 +27,8 @@ numbering (joined.py), each disconnect is patched from its donor like any other 
 sidecar; `swap` then deletes every part and part sidecar it replaces.
 
 Patches gaps in a capture (TARGET: NAME.mov.raw.tpc, its live NAME.mov.registration.csv beside it) with the same moments
-from a recapture of those passages (DONOR: a .raw.tpc of at most 4 GB, cued at least 15 s before and run 15 s past each
-gap). TIME is roughly where a gap is in the target's recording (MM:SS or H:MM:SS); the nearest event in its sidecar is
+from a recapture of those passages (DONOR: a .raw.tpc cued at least 15 s before and run 15 s past each gap; at most 4 GB
+with --at, whose line-up reads it whole, and at most 12 GB of donors in all otherwise, read in chunks). TIME is roughly where a gap is in the target's recording (MM:SS or H:MM:SS); the nearest event in its sidecar is
 patched. These are the steps of the 2026-10-19/20 patch, in order, each gated; a failed gate stops with its reason, and
 `run` changes nothing under TARGET's names:
   1. line up   fields of target units a few seconds either side of each gap, against every field of the donor: the offset
@@ -55,7 +55,13 @@ HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.pa
 sys.path.insert(0, HERE); sys.path.insert(1, os.path.join(REPO, 'scripts', 'juicefs'))
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
 KINDS = {'tpc': '.mov.raw.tpc', 'csv': '.mov.registration.csv', 'mov': '.mov'}
-DONOR_MAX = 4 << 30
+DONOR_MAX = 4 << 30       # --at: its line-up (lineup) reads the whole donor into memory
+# clips (--donor), --join and --placed donors are read in 256 MB chunks (joins.donor_fields / donor_audio). Measured
+# 2026-11-14 on local captures: a fixed ~3.2 GB peak from parsing a chunk (joins.give_back), plus what is kept, ~40 MB per
+# GB of donor (coarse fields and the sound), and the line-up's int16 stack and its difference, ~50 MB per GB more. 12 GB
+# of donors in all (~9 minutes of tape) comes to ~4.4 GB on a Mac with ~5 GB to spare (owner, 2026-11-14: an ending
+# recaptured in one 7.8 GB pass).
+STREAMED_MAX = 12 << 30
 
 def log(m): print(time.strftime('%H:%M:%S ') + m, flush=True)
 class Failed(Exception): pass
@@ -383,8 +389,10 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     donors = sorted({x for _, x in ats} | set(joins_d) | set(clips) | {x[1] for x in placed})
     for x in [p for pc in parts for p in pc] + donors:
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
-    for x in donors:
-        if os.path.getsize(x) > DONOR_MAX: fail('the donor %s is %.1f GB; a recapture of the passages is expected (at most %.0f GB)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
+    for x in sorted({x for _, x in ats}):
+        if os.path.getsize(x) > DONOR_MAX: fail('the --at donor %s is %.1f GB; --at reads it whole, so at most %.0f GB (give it as --donor instead)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
+    streamed = sum(os.path.getsize(x) for x in donors if x not in {d for _, d in ats})
+    if streamed > STREAMED_MAX: fail('the donors come to %.1f GB; at most %.0f GB in all (their line-up needs ~3.2 GB of memory plus ~90 MB per GB)' % (streamed / 1e9, STREAMED_MAX / 1e9))
     st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
     inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, placed=placed, donors={x: st(x) for x in donors})
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}

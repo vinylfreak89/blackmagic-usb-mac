@@ -48,11 +48,21 @@ def fields(R, coarse=True):
             out[c] = (u[20:256:rs, 1::cs].copy(), u[283:519:rs, 1::cs].copy())
     return out
 
+import ctypes
+try:
+    _relief = ctypes.CDLL('/usr/lib/libSystem.B.dylib').malloc_zone_pressure_relief; _relief.restype = ctypes.c_size_t
+except (OSError, AttributeError): _relief = None
+def give_back():
+    """hand a freed chunk's memory back to macOS. Parsing a 256 MB chunk takes ~0.9 GB, and the allocator kept what it
+    freed: reading a 1.1 GB capture four times held 2.4-3.3 GB (peak 4.0 GB) for ~0.2 GB of results; with this after
+    each chunk, 1.6-1.7 GB (peak 3.2 GB). Measured 2026-11-14."""
+    if _relief: _relief(None, 0)
+
 def donor_fields(D):
-    """fields of every whole unit of the donor, read in chunks (a donor is up to 4 GB)"""
+    """fields of every whole unit of the donor, read in chunks"""
     out = {}; size = os.path.getsize(D); at = 0
     while at < size:
-        R = load(D, at, min(DONOR_CHUNK, size - at) + (2 << 20)); out.update(fields(R)); at += DONOR_CHUNK; del R
+        R = load(D, at, min(DONOR_CHUNK, size - at) + (2 << 20)); out.update(fields(R)); at += DONOR_CHUNK; del R; give_back()
     return out
 
 def match(tf, refs, df, log, best=None):
@@ -87,7 +97,7 @@ def donor_audio(D):
     out = []; size = os.path.getsize(D); at = 0
     while True:
         R = load(D, at, min(DONOR_CHUNK, size - at)); L, Rr = R.pcm()
-        out.append(((L + Rr).astype(np.float64), [(s, c) for _, s, c in R.resyncs])); del R
+        out.append(((L + Rr).astype(np.float64), [(s, c) for _, s, c in R.resyncs])); del R, L, Rr; give_back()
         if at + DONOR_CHUNK >= size: return out
         at += DONOR_CHUNK // 2
 
