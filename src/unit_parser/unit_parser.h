@@ -19,9 +19,12 @@ enum {
     /* A unit up to this many bytes longer than a whole one is emitted whole (transport UNFRAMED): the Shuttle can write
      * filler into a unit while it recovers sync, which made units 23 1/3 lines long (measured 2026-11-15 on two units
      * of one capture, +33,600 and +33,584 bytes). Kept whole, its picture can be put back (frameserver unit_repair).
-     * Longer runs are emitted when the buffer fills, as before, flagged COUNTER_DISCONTINUITY. */
+     * A longer run is ended by the next marker unconfirmed and flagged COUNTER_DISCONTINUITY (or by the buffer filling). */
     UNIT_PARSER_VIDEO_LONG_SLACK_BYTES = 64 * 1440,
     UNIT_PARSER_VIDEO_MAX_UNIT_BYTES = UNIT_PARSER_VIDEO_UNIT_BYTES + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES,
+    /* A stall can also write over the next unit's marker: the run then holds two units and the stall's excess, and its
+     * successor's counter is two on. Kept whole up to this length (frameserver unit_repair puts back both). */
+    UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES = 2 * UNIT_PARSER_VIDEO_UNIT_BYTES + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES,
 };
 
 typedef struct unit_parser unit_parser;

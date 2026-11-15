@@ -268,8 +268,11 @@ int main(void)
     for (uint16_t k = 0; k < 4; k++) { feed_format_unit(parser, unit, (uint16_t)(900 + k), 0x0800); feed_audio_unit(parser, (uint16_t)(103 + k)); }
     for (uint16_t c = 107; c <= 111; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
     unit_parser_finish(parser); free(parser);
-    CHECK((s->any_flags[108] & UNIT_FLAG_COUNTER_DISCONTINUITY) && !(s->any_flags[109] & UNIT_FLAG_COUNTER_DISCONTINUITY) && !(s->any_flags[101] & UNIT_FLAG_COUNTER_DISCONTINUITY),
-          "gap flags: 101 0x%x, 108 0x%x, 109 0x%x", s->any_flags[101], s->any_flags[108], s->any_flags[109]);
+    /* 107 itself: the last no-signal unit's run ends at its marker (a whole unit on and not its successor). Before
+     * 2026-11-15 that marker was ignored and the run took 107 with it, so the flag fell on 108. */
+    CHECK(s->any_seen[107] && (s->any_flags[107] & UNIT_FLAG_COUNTER_DISCONTINUITY) && !(s->any_flags[108] & UNIT_FLAG_COUNTER_DISCONTINUITY) &&
+          !(s->any_flags[109] & UNIT_FLAG_COUNTER_DISCONTINUITY) && !(s->any_flags[101] & UNIT_FLAG_COUNTER_DISCONTINUITY),
+          "gap flags: 101 0x%x, 107 0x%x (seen %d), 108 0x%x, 109 0x%x", s->any_flags[101], s->any_flags[107], s->any_seen[107], s->any_flags[108], s->any_flags[109]);
 
     /* 10: a new epoch starts the numbering afresh, whatever the audio stream stood at */
     parser = open_parser(s);

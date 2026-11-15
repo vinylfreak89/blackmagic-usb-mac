@@ -4,9 +4,9 @@
 #include <string.h>
 
 enum {
-    /* The buffer holds a whole long unit (UNIT_PARSER_VIDEO_MAX_UNIT_BYTES) plus the next marker's header, so a
-     * long unit ends at its successor's marker and is confirmed by it. */
-    VIDEO_BUFFER_BYTES = UNIT_PARSER_VIDEO_MAX_UNIT_BYTES + 32,
+    /* The buffer holds two units and the long-unit slack plus the next marker's header, so a long unit, or two
+     * units whose middle marker a stall overwrote, ends at its successor's marker and is confirmed by it. */
+    VIDEO_BUFFER_BYTES = UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES + 32,
     AUDIO_SYNC_BYTES = 20,
     TRANSPORT_HOLE_FLAGS = UNIT_FLAG_HOST_LOSS | UNIT_FLAG_TRANSFER_ERROR |
                            UNIT_FLAG_PACKET_SEQUENCE_GAP |
@@ -289,10 +289,16 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
             parser->video_bytes >= 8) {
             uint16_t previous = load_u16(parser->video + 4);
             uint16_t current = load_u16(parser->video + candidate + 4);
-            plausible = (uint16_t)(current - previous) == 1;
-            /* Past a whole unit, a marker that does not follow ends the run there: the old buffer (a whole unit plus
-             * 32 bytes) ended it by filling, and the long-unit slack must not swallow the units after it. */
-            stale = !plausible && candidate > UNIT_PARSER_VIDEO_UNIT_BYTES;
+            uint16_t step = (uint16_t)(current - previous);
+            /* The successor: one on, within a long unit's length; or two on, two units' length away (a stall wrote
+             * over the marker between them: 2026-11-15, 19 times in one 28-minute capture). At or past a whole unit,
+             * any other marker ends the run there, unconfirmed: the slack must not swallow the units after it (one a
+             * whole unit's length on was ignored before, and the run then took the units after it until the buffer
+             * filled). */
+            plausible = (step == 1 && candidate <= UNIT_PARSER_VIDEO_MAX_UNIT_BYTES) ||
+                        (step == 2 && candidate + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES >= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&
+                         candidate <= UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES);
+            stale = !plausible && candidate >= UNIT_PARSER_VIDEO_UNIT_BYTES;
         }
         parser->video_candidate_valid = false;
         if (plausible)
