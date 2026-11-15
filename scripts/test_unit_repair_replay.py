@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Replay check of FS_REPAIR (frameserver unit repair, src/frameserver/unit_repair.h) through the real parser, frameserver
+and decision log. A synthetic capture of picture-like units (the Shuttle's padding rows, a dark vertical interval, ~20
+samples of blanking at code 1-2 starting every picture line) with the device's measured faults:
+  counter 3: 748 bytes of a line deleted, 524 zeros in their place (a unit 224 bytes short)
+  counter 6: filler packets and zeros over ~100 lines, the unit 33,600 bytes long
+  counter 9: a short unit in sub-blanking black (no evidence: declined, shown as a partial unit instead)
+  counter 12: a long run ended by a marker that does not follow it (unconfirmed: never repaired or published)
+Expected: 3 and 6 published with drop_reason Repaired; 9 ShortShown; 12 unpublished; one report line per attempt on
+stderr; the replay refuses FS_REPAIR with registration on. No captured media is required.
+    test_unit_repair_replay.py path/to/frameserver_replay"""
+import csv, importlib.util, subprocess, sys, tempfile
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('fixture', root / 'src/unit_parser/tests/gen_unit_parser_capture.py')
+fx = importlib.util.module_from_spec(spec); spec.loader.exec_module(fx)
+binary = Path(sys.argv[1]).resolve()
+U, HB, L = 756048, 48, 1440
+
+def header(counter):
+    return b'\x00\x00\xff\xff' + counter.to_bytes(2, 'little') + b'\x01\xe8' + bytes(40)
+def raster(counter, dark=False):
+    rows = []
+    for k in range(525):
+        if k <= 6 or 261 <= k <= 269 or k >= 523: rows.append(b'\x80\x10' * 720); continue
+        if 7 <= k <= 18 or 257 <= k <= 260 or 270 <= k <= 281 or 519 <= k <= 522 or dark:
+            rows.append(bytes(b for c in range(720) for b in (127 + (c * 31 + k * 17) % 3, 1 + (c * 13 + k * 7) % 3 % 2))); continue
+        line = bytearray()
+        for c in range(720):
+            y = 1 + (c + k) % 2 if c < 20 else 30 + (c * 7 + k * 13 + counter * 5) % 180
+            line += bytes((128 + (c * 3 + k) % 9 - 4, y))
+        rows.append(bytes(line))
+    return b''.join(rows)
+
+units = []
+for c in range(16):
+    u = header(c) + raster(c, dark=(c == 9))
+    if c in (3, 9):
+        p = HB + 220 * L + 950; u = u[:p] + bytes(524) + u[p + 748:]
+    if c == 6:
+        p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600
+        u = u[:p] + bytes.fromhex('af8c0008') * (113920 // 4) + bytes(36580) + u[q:]
+    if c == 12:
+        u = u + raster(c)[:20000]           # long, and the next marker (14) does not follow it
+    if c == 13: continue                     # ... because 13 is absent
+    units.append(u)
+video = b''.join(units) + header(16)[:8]
+audio = bytearray()
+for c in range(17):
+    audio += fx.resync(c) + b''.join(fx.pcm(c * 1601 + i) for i in range(1601))
+
+with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d:
+    d = Path(d); cap = d / 'repair.tpc'
+    with cap.open('wb') as out:
+        for ep, stream, packet in ((fx.AUDIO, audio, 2048), (fx.VIDEO, video, 15360)):
+            for seq, off in enumerate(range(0, len(stream), packet)):
+                out.write(fx.record(fx.DATA, ep, 0, seq, 0, packet, stream[off:off + packet]))
+    env = {'FS_REGISTRATION_OFF': '1', 'FS_HRETIME': '0', 'FS_SHOW_PARTIAL': '1', 'FS_REPAIR': '1', 'PATH': '/usr/bin:/bin'}
+    log = d / 'log.csv'
+    r = subprocess.run([str(binary), str(cap), str(log), '--offline', '--pool', '8'], env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, (r.returncode, r.stdout[-2000:], r.stderr[-2000:])
+    rows = list(csv.DictReader(log.open()))
+    by = {}
+    for row in rows:
+        c = row['observed_counter']
+        if c != '' and row['drop_reason'] != 'Unframed': by.setdefault(int(c), []).append(row)
+    def reason(c): return [(x['drop_reason'], x['published']) for x in by.get(c, [])]
+    assert reason(3) == [("Repaired", "1")], (reason(3), r.stderr[-1500:])
+    assert reason(6) == [('Repaired', '1')], reason(6)
+    assert reason(9) == [('ShortShown', '0')], reason(9)
+    # the unconfirmed run's row (after 11, before 14) is unpublished and takes no picture counter of its own
+    i11 = next(i for i, x in enumerate(rows) if x['observed_counter'] == '11')
+    run = rows[i11 + 1]
+    assert run['published'] == '0' and run['drop_reason'] == 'Unframed' and run['counter_extended'] == '', run
+    assert rows[i11 + 2]['observed_counter'] == '14' and rows[i11 + 2]['published'] == '1', rows[i11 + 2]
+    assert not any(x['published'] == '1' and x['counter_extended'] in ('12', '13') for x in rows)
+    for c in (0, 1, 2, 4, 5, 7, 8, 10, 11): assert reason(c) == [('None', '1')], (c, reason(c))
+    lines = [l for l in r.stderr.splitlines() if l.startswith('repair:')]
+    assert len(lines) == 3 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-evidence' in lines[2], lines
+    assert 'units put back from the wrong length: 2' in r.stdout and 'declined: 1' in r.stdout, r.stdout
+    # with registration on the frameserver refuses to repair: rebuilt rows are not geometry evidence
+    env2 = dict(env); env2.pop('FS_REGISTRATION_OFF')
+    r2 = subprocess.run([str(binary), str(cap), '--offline'], env=env2, capture_output=True, text=True, timeout=60)
+    assert r2.returncode != 0 and 'only with registration off' in r2.stderr, (r2.returncode, r2.stderr[-500:])
+print('unit repair replay: PASS (2 repaired, 1 declined to the partial path, 1 unconfirmed run unpublished, refused with registration on)')

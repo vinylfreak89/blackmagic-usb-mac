@@ -103,20 +103,29 @@ int main(void){
         static uint8_t rows[520*FP_LINE_BYTES];
         for(unsigned l=0;l<520;l++) memset(rows+(size_t)l*FP_LINE_BYTES,(int)(l&0xff),FP_LINE_BYTES);   /* every byte of a line is its number */
         int before=c.frames; c.hold=1; c.held=NULL;
-        CHECK(fp_publish_partial(p,rows,245,7000,0,0)==0 && c.frames==before+1 && c.last_counter==7000 && c.held,"a 245-line unit is shown");
+        CHECK(fp_publish_partial(p,rows,245,0,0,7000,0,0)==0 && c.frames==before+1 && c.last_counter==7000 && c.held,"a 245-line unit is shown");
         if(c.held){
             IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(c.held); size_t bpr=IOSurfaceGetBytesPerRow(c.held);
             CHECK(b[0]==0 && b[239*bpr]==(239u*245/480) && b[479*bpr]==(479u*245/480) && b[479*bpr+FP_LINE_BYTES-1]==244,
                   "245 lines stretched over 480 rows: first %u, row 239 %u, last %u",b[0],b[239*bpr],b[479*bpr]);
             IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
         }
-        CHECK(fp_publish_partial(p,rows,504,7001,0,0)==0 && c.held,"a 504-line unit is shown");
-        if(c.held){
+        CHECK(fp_publish_partial(p,rows,504,0,0,7001,0,0)==0 && c.held,"a 504-line unit is shown");
+        if(c.held){   /* both fields in the whole unit's aperture: row 2k = line 19+k, row 2k+1 = line 282+k while the unit has it */
             IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(c.held); size_t bpr=IOSurfaceGetBytesPerRow(c.held);
-            CHECK(b[479*bpr]==(479u*252/480),"504 lines: only the first field (252 lines) is shown, last row %u",b[479*bpr]);
+            CHECK(b[0]==19 && b[1*bpr]==(282&0xff) && b[2*bpr]==20 && b[443*bpr]==((282+221)&0xff) && b[445*bpr]==((19+222)&0xff) &&
+                  b[478*bpr]==((19+239)&0xff) && b[479*bpr]==((19+239)&0xff) && b[479*bpr+FP_LINE_BYTES-1]==((19+239)&0xff),
+                  "504 lines placed as a whole unit, field 2 beyond line 503 from field 1: rows 0/1/2 %u/%u/%u, 443 %u, 445 %u, 479 %u",
+                  b[0],b[bpr],b[2*bpr],b[443*bpr],b[445*bpr],b[479*bpr]);
             IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
         }
-        CHECK(fp_publish_partial(p,rows,0,7002,0,0)==-1 && fp_publish_partial(p,NULL,10,7002,0,0)==-1,"no lines or no rows is refused");
+        CHECK(fp_publish_partial(p,rows,504,-2,3,7001,0,0)==0 && c.held,"a 504-line unit with first lines 21/289 is shown");
+        if(c.held){
+            IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(c.held); size_t bpr=IOSurfaceGetBytesPerRow(c.held);
+            CHECK(b[0]==17 && b[bpr]==(285&0xff),"placement offsets move the aperture: rows 0/1 %u/%u",b[0],b[bpr]);
+            IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
+        }
+        CHECK(fp_publish_partial(p,rows,0,0,0,7002,0,0)==-1 && fp_publish_partial(p,NULL,10,0,0,7002,0,0)==-1,"no lines or no rows is refused");
         c.hold=0;
     }
     // honest exhaustion: consumer holds both surfaces -> third publish is DROPPED and counted

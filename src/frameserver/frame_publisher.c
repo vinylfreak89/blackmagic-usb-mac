@@ -96,17 +96,32 @@ static int publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
     p->sink.on_frame(p->sink.ctx, &f);
     return 0;
 }
-int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, uint64_t counter_ext,
+int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, int d1, int d2, uint64_t counter_ext,
                        int audio_pts_known, uint64_t audio_pts_num){
-    if (!p || !rows || !n_lines){ if (p) p->st.rejected_bad_args++; return -1; }
-    if (n_lines > 300) n_lines /= 2;
+    if (!p || !rows || !n_lines || d1 < INT8_MIN || d1 > INT8_MAX || d2 < INT8_MIN || d2 > INT8_MAX){ if (p) p->st.rejected_bad_args++; return -1; }
     IOSurfaceRef s = NULL;
     for (unsigned i = 0; i < p->n && !s; i++) if (IOSurfaceGetUseCount(p->pool[i]) == 0) s = p->pool[i];
     if (!s){ p->st.dropped_no_free_surface++; return 1; }
     IOSurfaceLock(s, 0, NULL);
     uint8_t *dst = IOSurfaceGetBaseAddress(s); size_t bpr = IOSurfaceGetBytesPerRow(s);
-    for (unsigned r = 0; r < FP_FRAME_HEIGHT; r++)
-        memcpy(dst + (size_t)r * bpr, rows + (size_t)(r * n_lines / FP_FRAME_HEIGHT) * FP_LINE_BYTES, FP_LINE_BYTES);
+    if (n_lines > 300){
+        /* Both fields, as a whole unit's rows: the same aperture a whole unit is published with. Stretching them showed
+         * field 1's whole raster, padding and vertical interval included, over 480 rows: a squashed picture (2026-11-15). */
+        for (int k = 0; k < FP_FIELD_LINES; k++){
+            int r1 = FP_FIELD1_START + d1 + k, r2 = FP_FIELD2_START + d2 + k;
+            int v1 = r1 >= 0 && r1 < FP_FIELD2_FIRST_ROW && (unsigned)r1 < n_lines;
+            int v2 = r2 >= FP_FIELD2_FIRST_ROW && r2 < (int)FP_SOURCE_LINES && (unsigned)r2 < n_lines;
+            for (int f = 0; f < 2; f++){
+                uint8_t *out = dst + (size_t)(2 * k + f) * bpr;
+                int r = f ? (v2 ? r2 : v1 ? r1 : -1) : (v1 ? r1 : v2 ? r2 : -1);   /* a line it lacks: the other field's */
+                if (r >= 0) memcpy(out, rows + (size_t)r * FP_LINE_BYTES, FP_LINE_BYTES);
+                else for (unsigned x = 0; x < FP_LINE_BYTES; x += 2){ out[x] = 128; out[x + 1] = 16; }
+            }
+        }
+    } else {
+        for (unsigned r = 0; r < FP_FRAME_HEIGHT; r++)
+            memcpy(dst + (size_t)r * bpr, rows + (size_t)(r * n_lines / FP_FRAME_HEIGHT) * FP_LINE_BYTES, FP_LINE_BYTES);
+    }
     IOSurfaceUnlock(s, 0, NULL);
     fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext, 0, 0, FP_TRANSPORT_SHORT, (uint8_t)(audio_pts_known != 0), audio_pts_num, 0 };
     p->st.published++;

@@ -20,6 +20,30 @@ checkbox, default on) publishes every field at the nominal (0,0) placement. The 
 and logs its evaluation; only applied_d1/d2 and frame_d1/d2 carry the published 0. H-retiming
 works from that placement.
 
+## Units the Shuttle sent at the wrong length
+
+`fs_config.repair_units` (tools: `FS_REPAIR=1`; the plain render turns it on) puts back a 0xe801
+unit whose length is wrong but whose transport is intact and whose counter the parser confirmed
+(`unit_repair.h` has the method). The device deletes or inserts bytes inside a line, or writes
+filler (whole USB packets of a repeating word, zeros, its own padding rows) over 60-110 lines while
+it recovers sync; the rest of the unit is displaced by exactly the length error and the unit still
+takes one frame of the audio clock. The repaired unit is published as a whole one with transport
+`FP_TRANSPORT_REPAIRED`; its row says `drop_reason=Repaired` (published 1), and `on_repair`
+(`frameserver_replay`: one `repair:` line on stderr per attempt) reports each attempt's split and
+rebuilt rows, put back or declined. Rebuilt rows come from the same field across a gap of one or two
+lines, otherwise from the other field's lines of the same kind (picture, vertical interval, head
+switch); padding is regenerated. Rows that read as picture at both offsets (picture crushed to
+blanking level) count for neither part and are rebuilt next to the damage; picture displaced by a
+third amount (two length errors) declines. A declined unit is counted in `repair_declined` and keeps
+the old handling. Registration off only (`fs_open` refuses it otherwise): rebuilt rows are
+presentation, never geometry evidence. The parser keeps a unit up to 64 lines longer than a whole
+one as one observation so the repair can see all of it; past a whole unit, a marker that does not
+follow ends the run unconfirmed (`counter_confirmed` false), as the old one-unit buffer did by filling.
+
+`show_partial` places a partial unit that holds both fields in the whole unit's aperture (the
+configured first lines), a missing line taken from the other field; it used to stretch field 1's
+whole raster, padding and vertical interval included, over the frame.
+
 ## Optional horizontal retiming (other-field blanking)
 
 `fs_config.hretime` remains OFF by default; tools map `FS_HRETIME`.
