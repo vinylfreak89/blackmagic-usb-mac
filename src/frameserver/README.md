@@ -26,9 +26,11 @@ works from that placement.
 unit whose length is wrong but whose transport is intact and whose counter the parser confirmed,
 from its byte order alone (`unit_repair.h` has the model). Everything the Shuttle writes itself in
 a stall is an exact pattern no tape picture produces (its padding, zeros, one repeated word carrying
-a reserved code); its held-sample insert (one sample held over the length error) is the one pattern
-picture can share, so it is taken only from a unit too long with no stall, as the single held run at
-least that long. Every other byte is decoded picture, one 1440-byte row per line period. With
+a reserved code, or any word running straight into its zeros); its held-sample insert (one sample
+held over the length error) is the one pattern picture can share, so it is taken only from a unit
+too long with no stall, as the single held stretch at least that long between the last padding
+block on the unit's grid and the first displaced one (any other there, a flat line or the vertical
+interval, and it is declined). Every other byte is decoded picture, one 1440-byte row per line period. With
 exactly one stretch of junk, the bytes before it are in place and the bytes after it are the same
 raster displaced (junk running to the unit's end displaces nothing); the Shuttle's padding, which
 always starts on a row boundary of its own line grid, gives the displacement to the byte (a few
@@ -42,8 +44,10 @@ put back as two units (the first's stall runs to its end, the second is stalled 
 Picture never places anything; it only checks the result (where the tape's lines start on blanking
 inside the window, the displaced rows must too, their blanking edge within a sample of the picture
 beside them; where picture reaches the window's edge, the displaced rows must move against the
-previous unit as the rows in place do, to a sample; no tear left), and a unit the bytes cannot
-place, or that fails a check, is declined (`repair_declined`) and keeps the old handling. The
+previous unit as the rows in place do, to a sample; no tear left; no block of rows 24+ samples
+sideways against the other field), and a unit the bytes cannot place, or that fails a check, is
+declined (`repair_declined`) and keeps the old handling. Without a previous unit on a tape whose
+picture reaches the window's edge, only the tear and other-field checks verify the placement. The
 repaired unit is published as a whole one with transport `FP_TRANSPORT_REPAIRED`; its row says
 `drop_reason=Repaired`, and `on_repair` (`frameserver_replay`: one `repair:` line on stderr per
 unit attempted, which the plain render prints) reports the grid offset, lost bytes, rebuilt rows
@@ -197,7 +201,9 @@ targets.
   explicit drop reason; they do not receive fabricated raster measurements.
 
 These rules preserve the conservation relation between ingress observations,
-sidecar rows/ranges, and published or explicitly dropped units.
+sidecar rows/ranges, and published or explicitly dropped units. One exception is counted: a run of
+two units put back as two (`repair_units`) is one observation and two rows sharing its ordinal, so
+rows = observations + such runs; its transport is counted once.
 
 ## Checks and worker budget
 

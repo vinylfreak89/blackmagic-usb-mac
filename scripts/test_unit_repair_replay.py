@@ -28,9 +28,9 @@ def raster(counter, dark=False):
         if k <= 6 or 261 <= k <= 269 or k >= 523: rows.append(b'\x80\x10' * 720); continue
         if 7 <= k <= 18 or 257 <= k <= 260 or 270 <= k <= 281 or 519 <= k <= 522 or dark:
             rows.append(bytes(b for c in range(720) for b in (127 + (c * 31 + k * 17) % 3, 1 + (c * 13 + k * 7) % 3 % 2))); continue
-        line = bytearray()
+        line = bytearray(); fl = 2 * (k - 19) if k < 262 else 2 * (k - 282) + 1   # one image, sampled by both fields
         for c in range(720):
-            y = 1 + (c + k) % 2 if c < 20 else 30 + (c * 7 + k * 13 + counter * 5) % 180
+            y = 1 + (c + k) % 2 if c < 20 else 30 + (c * 7 + fl * 3 + counter * 5) % 180
             line += bytes((128 + (c * 3 + k) % 9 - 4, y))
         rows.append(bytes(line))
     return b''.join(rows)
@@ -92,6 +92,13 @@ with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d
     assert len(lines) == 5 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-fill' in lines[2], lines
     assert ' ok:' in lines[3] and ' ok:' in lines[4] and 'counter 17 ' in lines[4], lines
     assert 'units put back from the wrong length: 4' in r.stdout and 'declined: 1' in r.stdout, r.stdout
+    # paired one unit on (a reversed-pairing capture): the run of two put back weaves straight through, no reset after it
+    log2 = d / 'log2.csv'
+    r3 = subprocess.run([str(binary), str(cap), str(log2), '--offline', '--pool', '8', '--pair-next'], env=env, capture_output=True, text=True, timeout=120)
+    assert r3.returncode == 0, (r3.returncode, r3.stderr[-1500:])
+    rows2 = {x['observed_counter']: x for x in csv.DictReader(log2.open()) if x['drop_reason'] in ('None', 'Repaired')}
+    for c in ('15', '16', '17', '18'):
+        x = rows2[c]; assert (x['f1_unused'], x['f2_unused'], x['reset_before']) == ('0', '0', '0') and x['frame_top_unit'] == str(int(c) + 1), (c, x)
     # with registration on the frameserver refuses to repair: rebuilt rows are not geometry evidence
     env2 = dict(env); env2.pop('FS_REGISTRATION_OFF')
     r2 = subprocess.run([str(binary), str(cap), '--offline'], env=env2, capture_output=True, text=True, timeout=60)

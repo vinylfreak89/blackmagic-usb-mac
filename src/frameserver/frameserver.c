@@ -42,6 +42,7 @@ typedef struct {
     unsigned partial_lines;                // show_partial: whole lines of picture in a unit that is not whole, held in the slot
     int repaired;                          // repair_units: the slot holds this unit put back to a whole raster
     unit_transport_state repaired_from;    // its transport as it arrived (SHORT / UNFRAMED)
+    int second_of_run;                     // the second unit put back from a run of two: its observation is counted with the first
     uint64_t preceding_ring_drops;
     unit_video_observation obs;            // metadata copy; bytes/payload re-pointed to the slot
     /* Decision-log evidence has an input-order cutoff: the parser's video-unit
@@ -107,6 +108,7 @@ struct frameserver {
     _Atomic uint64_t repaired, repair_rows, repair_declined;   // repair_units (delivery thread writes, fs_get_stats reads)
     uint8_t *repair_buf;                   // repair_units: delivery thread's scratch raster; a slot is taken only for a repair that succeeded
     uint8_t *repair_buf2, *repair_scratch; // repair_units: two units put back from one run (ur_repair2), and its working raster
+    int run_next_valid; uint64_t run_next_epoch, run_next_counter;   // the unit after a run of two put back: its counter jump is explained
     uint8_t *repair_prev; int repair_prev_valid; uint64_t repair_prev_epoch, repair_prev_counter;   // repair_units: the last whole unit (delivery thread)
     pthread_mutex_t bp_m; pthread_cond_t bp_c;                      // statically initialised in fs_open
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
@@ -271,10 +273,21 @@ static int try_repair2(frameserver *f, const unit_video_observation *u, fs_item 
     publish_repaired(f, u, &first, f->repair_buf2, u->counter_extended, &r[0]);
     push_item(f, &first);
     publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
+    it->second_of_run = 1;
+    f->run_next_valid = 1; f->run_next_epoch = u->epoch; f->run_next_counter = u->counter_extended + 2;
     return 1;
 }
-static void on_video(void *ctx, const unit_video_observation *u){
+static void on_video(void *ctx, const unit_video_observation *u_in){
     frameserver *f = ctx;
+    /* The parser flags the unit after a run of two (its counter is two on). When that run was put back as two units, the
+     * numbering is whole again: the flag would only make registration and pairing start over. */
+    unit_video_observation u_fixed = *u_in; const unit_video_observation *u = u_in;
+    if (f->run_next_valid){
+        if (u_in->counter_confirmed && u_in->epoch == f->run_next_epoch && u_in->counter_extended == f->run_next_counter){
+            u_fixed.transport_flags &= ~(uint32_t)UNIT_FLAG_COUNTER_DISCONTINUITY; u = &u_fixed;
+        }
+        if (u_in->counter_confirmed || u_in->kind == UNIT_VIDEO_E801) f->run_next_valid = 0;
+    }
     fs_test_before_video(f);
     atomic_fetch_add(&f->video_obs, 1);
     fs_item it; memset(&it,0,sizeof it); it.slot = -1; it.drop = FS_DROP_NONE; it.obs = *u; it.obs.bytes = NULL; it.obs.payload = NULL;
@@ -318,7 +331,8 @@ static void on_video(void *ctx, const unit_video_observation *u){
      * stubs of a few lines are not picture. Offline, it waits for a free slot exactly as a whole unit does: whether
      * it is shown must not depend on how busy the consumer is (2026-10-21: a render skipped 905 of 2,247 such frames
      * while ffmpeg was the slow consumer). Live, a device cannot wait: no slot free means it is not shown, counted. */
-    else if (f->cfg.show_partial && u->bytes && u->transport != UNIT_TRANSPORT_HOLE && (u->format & 0xff00u) == 0xe800u &&
+    else if (f->cfg.show_partial && u->bytes && u->transport != UNIT_TRANSPORT_HOLE && u->transport != UNIT_TRANSPORT_UNFRAMED &&
+             (u->format & 0xff00u) == 0xe800u &&
              u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES && u->byte_count >= UNIT_PARSER_VIDEO_HEADER_BYTES + 32u * FP_LINE_BYTES){
         if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
         int s = take_slot(f);
@@ -788,7 +802,7 @@ static void process_item(frameserver *f, const fs_item *it){
     unit_video_observation obs = it->obs;
     const uint8_t *unit = NULL;
     if (it->slot >= 0 && !it->partial_lines){ unit = f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES; obs.bytes = unit; obs.payload = unit + UNIT_PARSER_VIDEO_HEADER_BYTES; }
-    switch (it->repaired ? it->repaired_from : obs.transport){ case UNIT_TRANSPORT_HOLE: atomic_fetch_add(&f->holes, 1); break;
+    if (!it->second_of_run) switch (it->repaired ? it->repaired_from : obs.transport){ case UNIT_TRANSPORT_HOLE: atomic_fetch_add(&f->holes, 1); break;
         case UNIT_TRANSPORT_SHORT: atomic_fetch_add(&f->shorts, 1); break;
         case UNIT_TRANSPORT_UNFRAMED: atomic_fetch_add(&f->unframed, 1); break; default: break; }
     if (obs.kind == UNIT_VIDEO_DEVICE_NO_SIGNAL_0800) atomic_fetch_add(&f->ns0800, 1);

@@ -306,6 +306,18 @@ place, after it displaced by the padding's phase (8 bytes off the length error a
 its last row: this was a visible 4-sample shift while the placement was inferred from picture). Lost = the gap between the
 parts plus the lines under restart padding. `src/frameserver/unit_repair.h`; the owner saw the short unit as a one-frame
 sideways tear and the long ones as a one-field step back (the render had repeated a frame).
+**A second capture through another chain (2026-11-15, 28 min, 73 wrong-length units) widened the model.** Its picture
+reaches the window's left edge (no line starts on blanking), and flat neutral lines (C128/129, luma dithered by one code,
+often the head-switch rows) look exactly like a held fill: the first engine put back none of its units. The +512 insert is
+one sample held, at whatever value (C135/136 Y129 there), so it is taken only from a unit too long with no stall, and only
+when it is the single held stretch between the padding blocks it lies between (the vertical interval is one too: most
+field-1 inserts are declined); every stale word measured ends `00 08` (a reserved code no picture carries). Picture samples
+that look like padding join padding runs at either edge (about one row in three ends that way before the 261 block): a
+run's true start is anywhere in its excess over whole rows, and an adversarial review found that reading one edge as
+true published 2-sample shifts. Restarts fall anywhere, the top of the unit included,
+and units end up to 12 bytes either side of a row. Stalls also run to the unit's end (7) and over the next unit's marker
+(19: one run two units long, the successor numbered two on), which the parser now keeps whole and the repair splits into
+two. Left declined: two stalls in one unit (5), deletions with no fill (4), signal disruption at play start and two resyncs.
 
 The audio endpoint is also transport-complete, but device audio samples and resync metadata
 have localized deficits (audio census below). Unwrap counters and look anchors up by value,
