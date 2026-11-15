@@ -4,7 +4,9 @@
 #include <string.h>
 
 enum {
-    VIDEO_BUFFER_BYTES = UNIT_PARSER_VIDEO_UNIT_BYTES + 32,
+    /* The buffer holds a whole long unit (UNIT_PARSER_VIDEO_MAX_UNIT_BYTES) plus the next marker's header, so a
+     * long unit ends at its successor's marker and is confirmed by it. */
+    VIDEO_BUFFER_BYTES = UNIT_PARSER_VIDEO_MAX_UNIT_BYTES + 32,
     AUDIO_SYNC_BYTES = 20,
     TRANSPORT_HOLE_FLAGS = UNIT_FLAG_HOST_LOSS | UNIT_FLAG_TRANSFER_ERROR |
                            UNIT_FLAG_PACKET_SEQUENCE_GAP |
@@ -188,9 +190,11 @@ static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
         out.counter16 = load_u16(bytes + 4);
         out.format = load_u16(bytes + 6);
         out.kind = video_kind(out.format);
-        if (confirmed && out.kind != UNIT_VIDEO_DEVICE_NO_SIGNAL_0800)
+        if (confirmed && out.kind != UNIT_VIDEO_DEVICE_NO_SIGNAL_0800) {
             out.counter_extended = extend_video_counter(
                 parser, out.counter16, &out.transport_flags);
+            out.counter_confirmed = true;
+        }
         else
             out.counter_extended = device_position(parser);
         if (out.transport_flags & TRANSPORT_HOLE_FLAGS) {
@@ -233,6 +237,20 @@ static void accept_video_boundary(unit_parser *parser, size_t position)
     parser->video_candidate_valid = false;
 }
 
+/* The run before `position` ends unconfirmed (its marker's successor never came), flagged as a buffer-full cut is;
+ * framing restarts at the marker at `position`. */
+static void end_stale_run(unit_parser *parser, size_t position)
+{
+    emit_video(parser, parser->video, position, true, false,
+               parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY);
+    size_t retained = parser->video_bytes - position;
+    memmove(parser->video, parser->video + position, retained);
+    parser->video_bytes = retained;
+    parser->video_has_marker = true;
+    parser->video_flags = 0;
+    parser->video_candidate_valid = false;
+}
+
 static void feed_video_byte(unit_parser *parser, uint8_t byte)
 {
     if (parser->video_bytes == sizeof(parser->video)) {
@@ -266,15 +284,21 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
         size_t candidate = parser->video_candidate;
         uint16_t format = load_u16(parser->video + candidate + 6);
         bool plausible = plausible_video_format(format);
+        bool stale = false;
         if (plausible && parser->video_has_marker &&
             parser->video_bytes >= 8) {
             uint16_t previous = load_u16(parser->video + 4);
             uint16_t current = load_u16(parser->video + candidate + 4);
             plausible = (uint16_t)(current - previous) == 1;
+            /* Past a whole unit, a marker that does not follow ends the run there: the old buffer (a whole unit plus
+             * 32 bytes) ended it by filling, and the long-unit slack must not swallow the units after it. */
+            stale = !plausible && candidate > UNIT_PARSER_VIDEO_UNIT_BYTES;
         }
         parser->video_candidate_valid = false;
         if (plausible)
             accept_video_boundary(parser, candidate);
+        else if (stale)
+            end_stale_run(parser, candidate);
     }
 }
 

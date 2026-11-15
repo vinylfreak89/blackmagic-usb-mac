@@ -16,6 +16,12 @@ enum {
     UNIT_PARSER_VIDEO_HEADER_BYTES = 48,
     UNIT_PARSER_VIDEO_PAYLOAD_BYTES = 756000,
     UNIT_PARSER_AUDIO_RECORD_BYTES = 24,
+    /* A unit up to this many bytes longer than a whole one is emitted whole (transport UNFRAMED): the Shuttle can write
+     * filler into a unit while it recovers sync, which made units 23 1/3 lines long (measured 2026-11-15 on two units
+     * of one capture, +33,600 and +33,584 bytes). Kept whole, its picture can be put back (frameserver unit_repair).
+     * Longer runs are emitted when the buffer fills, as before, flagged COUNTER_DISCONTINUITY. */
+    UNIT_PARSER_VIDEO_LONG_SLACK_BYTES = 64 * 1440,
+    UNIT_PARSER_VIDEO_MAX_UNIT_BYTES = UNIT_PARSER_VIDEO_UNIT_BYTES + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES,
 };
 
 typedef struct unit_parser unit_parser;
@@ -57,6 +63,10 @@ typedef struct unit_video_observation {
     const uint8_t *payload;
     size_t payload_bytes;
     bool fixed_raster_eligible;
+    /* The unit ended at a marker whose counter is its own plus one: its counter (and counter_extended) is the device
+     * counter. Unconfirmed units (cut when the buffer filled, ended by a marker that did not follow, the final fragment)
+     * are placed at the device position and must not be published as that position's picture. */
+    bool counter_confirmed;
 } unit_video_observation;
 
 typedef enum unit_audio_kind {

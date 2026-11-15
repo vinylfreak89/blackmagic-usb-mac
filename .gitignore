@@ -41,6 +41,7 @@ src/frameserver/tests/audio_publisher_test
 src/frameserver/tests/audio_publisher_asan
 src/frameserver/tests/audio_publisher_tsan
 src/frameserver/tests/frame_publisher_test
+src/frameserver/tests/unit_repair_test
 src/frameserver/tests/frameserver_test
 src/frameserver/tests/test_asan
 src/frameserver/tests/test_tsan
@@ -158,6 +159,7 @@ src/obs_plugin/tests_media_controls
 src/obs_plugin/tests_media_controls_tsan
 src/obs_plugin/tests_media_controls*.dSYM/
 src/unit_parser/tests/counter_excursion_test
+src/unit_parser/tests/long_unit_test
 src/unit_parser/tests/counter_excursion_asan
 src/capture_core/async_sink_bench
 src/obs_plugin/tests_tracking_meter
