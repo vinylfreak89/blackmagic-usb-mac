@@ -620,9 +620,9 @@ done:
  * the stall are the first unit's, in place; the bytes after it end at the second unit's end. Each is then the single-unit
  * case: the first a unit whose stall runs to its end, the second a unit stalled from its top, its grid from the
  * Shuttle's restart padding. Placement does not depend on how the two are laid out in the scratch raster: the second
- * unit's displaced part ends at its end, give or take the padding's phase. The stall over the marker must be the only
- * one starting before the second unit's place in the run (another before it could have taken the marker); each unit is
- * then put back on its own evidence: res[i].status says which, and the result is UR_OK only when both are. */
+ * unit's displaced part ends at its end, give or take the padding's phase. The stall over the marker is the one stall
+ * that leaves no more than a unit after it and no more than a unit and the slack before it (several fitting: declined);
+ * each unit is then put back on its own evidence: res[i].status says which, UR_OK returned only when both are. */
 ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *scratch, uint8_t *out, ur_result res[2]){
     long n = (long)count, d2 = n - 2L * U;
     span sp[MAX_SPANS]; int m;
@@ -636,10 +636,13 @@ ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous,
         if (sp[i].kind == S_JUNK && sp[i + 1].kind == S_DATA && sp[i + 2].kind == S_JUNK && sp[i + 1].end - sp[i + 1].start < ZERO_MIN){
             sp[i].end = sp[i + 2].end; memmove(sp + i + 1, sp + i + 3, sizeof(span) * (size_t)(m - i - 3)); m -= 2; i--;
         }
-    int k = -1, early = 0;
-    for (int i = 0; i < m; i++) if (sp[i].kind == S_JUNK && sp[i].start <= (long)U){ early++; k = i; }
+    /* The stall over the marker leaves at most one unit after it (the second unit, stalled from its top) and at most
+     * one unit and the slack before it (the first, which may hold a stall of its own): exactly one stall must fit. */
+    int k = -1, fits = 0;
+    for (int i = 0; i < m; i++)
+        if (sp[i].kind == S_JUNK && sp[i].start <= (long)U + UR_MAX_DELTA_BYTES && n - sp[i].end + H + ZERO_MIN <= (long)U){ fits++; k = i; }
     if (k < 0){ st = UR_NO_FILL; goto fail; }
-    if (early > 1){ st = UR_SECOND_EVENT; goto fail; }
+    if (fits > 1){ st = UR_SECOND_EVENT; goto fail; }
     long js = sp[k].start, je = sp[k].end;
     if (k > 0 && sp[k - 1].kind == S_DATA){ long b = word_back(unit, sp[k - 1].start, js); js -= b; }
     if (k + 1 < m && sp[k + 1].kind == S_DATA) je += word_fwd(unit, je, sp[k + 1].end);

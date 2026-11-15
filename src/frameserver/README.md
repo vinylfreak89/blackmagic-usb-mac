@@ -206,8 +206,9 @@ targets.
 
 These rules preserve the conservation relation between ingress observations,
 sidecar rows/ranges, and published or explicitly dropped units. One exception is counted: a run of
-two units put back as two (`repair_units`) is one observation and two rows sharing its ordinal, so
-rows = observations + such runs; its transport is counted once.
+two units with either unit put back (`repair_units`) is one observation and two rows sharing its
+ordinal (a unit declined keeps its row, unpublished), so rows = observations + such runs; its
+transport is counted once.
 
 ## Checks and worker budget
 
