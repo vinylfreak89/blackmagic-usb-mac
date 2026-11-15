@@ -319,7 +319,10 @@ unit's end, still fixes the grid for faults in field 2, accepting a 2-sample shi
 522 and the unit ends early, rather than declining every field-2 tear and insert (on the two captures: 4 repairs). Restarts fall anywhere, the top of the unit included,
 and units end up to 12 bytes either side of a row. Stalls also run to the unit's end (7) and over the next unit's marker
 (19: one run two units long, the successor numbered two on), which the parser now keeps whole and the repair splits into
-two. Left declined: two stalls in one unit (5), deletions with no fill (4), signal disruption at play start and two resyncs.
+two. Left declined: deletions with no fill (4) and signal disruption at play start. The Shuttle also loses its input
+mid-unit (no-signal 0x0800 units, their own numbering, after a stall or cut-short picture: 3:04, 19:13, 19:31, 24:53), and
+once framed by field (16:17: half-frame units on the audio clock); every picture marker of those passages arrived with the
+last audio resync at its counter or one before, which is what confirms the units around them.
 
 The audio endpoint is also transport-complete, but device audio samples and resync metadata
 have localized deficits (audio census below). Unwrap counters and look anchors up by value,

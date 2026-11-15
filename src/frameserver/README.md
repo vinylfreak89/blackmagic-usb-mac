@@ -44,7 +44,12 @@ leaves one run two units long, its successor numbered two on: the parser keeps i
 put back as two units (the first's stall runs to its end, the second is stalled from its top), each
 on its own evidence. A picture marker whose counter is the one the audio resyncs stand at (or the
 next) is the device's: it ends a no-signal unit's run, and confirms a picture unit the Shuttle ran
-into a no-signal unit, so both reach the repair.
+into a no-signal unit, so both reach the repair. A no-signal marker inside a vouched picture unit
+(the input lost mid-unit, or a no-signal header the Shuttle wrote inside a stall) is decided by the
+next marker's counter: the unit's own successor, two on at a run of two's length, or the same header
+again mean a stall; a no-signal unit one on or picture further on (or the buffer filling first) mean
+a lost input, and the picture unit ends there. A partial frame holding one field is shown as a bob in
+field 1's aperture, and any partial frame only down to its first 00 byte (never picture).
 Picture never places anything; it only checks the result (where the tape's lines start on blanking
 inside the window, the displaced rows must too, their blanking edge within a sample of the picture
 beside them; where picture reaches the window's edge, the displaced rows must move against the
