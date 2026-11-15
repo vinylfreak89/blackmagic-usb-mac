@@ -69,6 +69,7 @@
     uint32_t dead_gen[2]; BOOL dead_check[2];        /* deliveries so far (a pending end is cancelled by one); an end pending */
     BOOL empty_logged[2];                           /* this run of empty transfers has been logged */
     ih_stats st; int live[2];
+    int retrying[2];                   /* refused transfers waiting on their 1 ms retry: in the fleet, not on the bus */
     uint64_t last_ts[2]; double abs_ns;
     IHCounter *freed;
     NSMutableArray<IHXfer*> *all;
@@ -261,9 +262,10 @@ static void ih_enqueue_(IHDev *d, IHXfer *x){
         if(d->cb.on_submit_failed) d->cb.on_submit_failed(d->cb.ctx,ep,x.seq,io);
     }
     if(now-x.fail_since_ms>=(uint64_t)d->deadline_ms){ ih_fatal_(d,2,io,ep,x.seq); return; }
-    dispatch_group_enter(d->inflight);
+    dispatch_group_enter(d->inflight); d->retrying[ep]++;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_MSEC),d->q,^{
         IHDev *sd=wd; if(!sd) return;
+        sd->retrying[ep]--;
         if(!atomic_load(&sd->stopping) && !ih_off_(sd)) ih_enqueue_(sd,x);
         dispatch_group_leave(sd->inflight);
     });
@@ -385,15 +387,23 @@ void ih_go(ih_dev *dv){
     d->suspended=NO; dispatch_resume(d->q);
 }
 
+/* The stop begins on q, in the step that samples the fleet: every transfer is then either queued (live), waiting on
+ * a retry, or not yet completed, and none can complete and go unrequeued before the count. Set from this thread
+ * instead, a completion already waiting on q ran between the store and the sample, was not requeued, and was
+ * counted as missing from the fleet (measured 2026-11-15: live 31+32 with one such completion, 2 of 8 runs). Off q
+ * only when q never ran (suspended) or did not answer within the backstop. */
+static void ih_stop_on_q_(IHDev *d){
+    atomic_store(&d->stopping,1);
+    for(int ep=0;ep<2;ep++) d->st.fleet[ep]=d->live[ep]+d->retrying[ep];
+    if(d->tick) dispatch_source_cancel(d->tick);
+}
 void ih_stop(ih_dev *dv, ih_stats *st){ @autoreleasepool {
     IHDev *d=D(dv);
-    atomic_store(&d->stopping,1);
     if(d->suspended){                     /* never went: q has run nothing since ih_start, so this thread may write */
-        d->discard=YES; d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1];
-        if(d->tick) dispatch_source_cancel(d->tick);
+        d->discard=YES; ih_stop_on_q_(d);
         d->suspended=NO; dispatch_resume(d->q);
-    } else if(!ih_sync_(d->q,^{ d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1]; if(d->tick) dispatch_source_cancel(d->tick); },IH_BACKSTOP_S)){
-        atomic_store(&d->detached,1); d->st.incomplete=1;
+    } else if(!ih_sync_(d->q,^{ ih_stop_on_q_(d); },IH_BACKSTOP_S)){
+        atomic_store(&d->stopping,1); atomic_store(&d->detached,1); d->st.incomplete=1;
     }
     for(int ep=0;ep<2;ep++) if(d->pipe[ep]) [d->pipe[ep] abortWithOption:IOUSBHostAbortOptionAsynchronous error:nil];
     long left=d->st.incomplete?1:dispatch_group_wait(d->inflight,dispatch_time(DISPATCH_TIME_NOW,(int64_t)(IH_BACKSTOP_S*NSEC_PER_SEC)));

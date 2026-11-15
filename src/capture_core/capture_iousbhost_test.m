@@ -162,6 +162,30 @@ int main(void){ @autoreleasepool {
     close_(d);
     printf("  refused 5 times: one report, recovered, nothing lost\n");
 
+    /* 3b. the stop called while completions wait on the queue behind a stalled callback (150 ms, under the backstop):
+     *     each of them, and the stalled one, completes before the stop reaches the queue and is requeued, so the
+     *     fleet is whole. With the stop begun from the caller's thread they were withheld and counted missing (the
+     *     e2e "late" flake, 2026-11-15) */
+    reset_(); T.stall_at=20; T.stall_ms=150; T.stalled=dispatch_semaphore_create(0); T.unstalled=dispatch_semaphore_create(0);
+    d=open_start_(2000,&rc); ih_go(d);
+    CHECK(!dispatch_semaphore_wait(T.stalled,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC)),"stop behind a stall: never stalled");
+    usleep(60000);                        /* about 4 transfers per endpoint fall due behind the stall meanwhile */
+    finish_(d,&st);
+    check_accounting_("stop behind a stall",&st);
+    CHECK(!st.incomplete && st.fleet[0]==32 && st.fleet[1]==32,"stop behind a stall: fleet %d+%d, incomplete %d",st.fleet[0],st.fleet[1],st.incomplete);
+    close_(d);
+    printf("  stop behind a stalled callback: fleet %d+%d\n",st.fleet[0],st.fleet[1]);
+
+    /* 3c. the stop while video requeues are being refused (not fatal yet): the transfers waiting on a retry are in
+     *     the fleet, not lost from it */
+    reset_(); T.refuse_all_at=10;
+    d=open_start_(2000,&rc); ih_go(d); usleep(400000); finish_(d,&st);
+    check_accounting_("stop during retries",&st);
+    CHECK(T.fatal[1]+T.fatal[2]==0 && T.submit_failed[0]>=2,"stop during retries: fatal %ld/%ld, %ld refused transfers",T.fatal[1],T.fatal[2],T.submit_failed[0]);
+    CHECK(st.fleet[0]==32 && st.fleet[1]==32,"stop during retries: fleet %d+%d",st.fleet[0],st.fleet[1]);
+    close_(d);
+    printf("  stop with %ld video transfers on retry: fleet %d+%d\n",T.submit_failed[0],st.fleet[0],st.fleet[1]);
+
     /* 4. refusals past the deadline: one report per transfer (not per retry), then one fatal */
     reset_(); T.refuse_all_at=10;
     d=open_start_(60,&rc); ih_go(d); usleep(500000); finish_(d,&st);

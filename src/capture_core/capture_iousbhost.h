@@ -50,7 +50,8 @@ typedef struct {
     uint64_t completions[2], aborted[2];
     uint64_t dead_transfers[2];     /* transfers ending in failed packets (other than too old) or failing outright,
                                      * nothing delivered after: the reason-3 streak counts them */
-    int fleet[2];                   /* transfers in flight per endpoint when the stop began */
+    int fleet[2];                   /* transfers per endpoint queued or waiting on a retry when the stop began (on
+                                     * the completion queue; 0 if it did not answer): none lost from the cycle */
     int transfers, transfers_freed; /* allocated (both endpoints) / released by us at ih_stop (none if incomplete) */
     int incomplete;                 /* the queue did not drain within 5 s of the abort: callbacks were cut off */
     int device_gone;                /* a termination notice arrived at any time before ih_stop returned */
