@@ -321,6 +321,44 @@ int main(void)
     CHECK(s->eligible_count[305] == 0 && !s->any_seen[305], "stale header in a no-signal unit offered as picture (%d)", s->eligible_count[305]);
     CHECK(s->video_seen[306] && s->video_ext[306] == 306, "picture after the no-signal unit: 306 ext %llu", U(s->video_ext[306]));
 
+    /* 13: a stall that ran over the next unit to the marker two on, at no double length (16:17.64 of one capture): the
+     * unit is confirmed by the audio (both markers vouched, its counter past the last). 14: the Shuttle losing its
+     * input mid-unit (24:53): its no-signal unit begins before a whole unit's length and ends the picture unit, which
+     * is confirmed; a no-signal header inside a stall (followed by zeros) does not. */
+    {
+        static uint8_t run[2 * UNIT]; size_t len;
+        parser = open_parser(s);
+        for (uint16_t c = 400; c <= 401; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+        feed_audio_unit(parser, 402);
+        len = UNIT + 270000; memset(run, 0, len); run[2] = run[3] = 0xff; run[4] = (uint8_t)402; run[5] = (uint8_t)(402 >> 8); run[6] = 0x01; run[7] = 0xe8;
+        for (size_t i = 48; i < 48 + 330 * 1440; i += 2){ run[i] = 128; run[i + 1] = (uint8_t)(40 + i % 50); }   // picture to row 330, zeros after
+        feed(parser, CC_EP_VIDEO, run, len, &video_seq);
+        feed_audio_unit(parser, 403);
+        for (uint16_t c = 404; c <= 406; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+        unit_parser_finish(parser); free(parser);
+        CHECK(s->long_confirmed[402] && s->long_ext[402] == 402, "stall over a unit to the marker two on: 402 confirmed %d", s->long_confirmed[402]);
+        CHECK(s->video_seen[404] && s->video_ext[404] == 404, "after it: 404 ext %llu", U(s->video_ext[404]));
+
+        for (int stall = 0; stall < 2; stall++){
+            parser = open_parser(s);
+            for (uint16_t c = 500; c <= 501; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+            feed_audio_unit(parser, 502);
+            len = 470000; memset(run, 0, len); run[2] = run[3] = 0xff; run[4] = (uint8_t)502; run[5] = (uint8_t)(502 >> 8); run[6] = 0x01; run[7] = 0xe8;
+            for (size_t i = 48; i < 48 + 245 * 1440; i += 2){ run[i] = 128; run[i + 1] = (uint8_t)(40 + i % 50); }
+            if (!stall) for (size_t i = 48 + 245 * 1440; i < len; i += 4){ run[i] = 188; run[i + 1] = 12; run[i + 2] = 0; run[i + 3] = 12; }   // a no-signal raster
+            feed(parser, CC_EP_VIDEO, run, len, &video_seq);
+            static uint8_t ns[UNIT]; memset(ns, 0, UNIT); ns[2] = ns[3] = 0xff; ns[4] = (uint8_t)9000; ns[5] = (uint8_t)(9000 >> 8); ns[6] = 0x00; ns[7] = 0x08;
+            for (size_t i = 48; i < UNIT; i += 4){ ns[i] = stall ? 0 : 188; ns[i + 1] = stall ? 0 : 12; ns[i + 2] = 0; ns[i + 3] = stall ? 0 : 12; }
+            feed(parser, CC_EP_VIDEO, ns, stall ? 300000 : UNIT, &video_seq);
+            feed_audio_unit(parser, 503);
+            for (uint16_t c = 504; c <= 506; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+            unit_parser_finish(parser); free(parser);
+            if (!stall) CHECK(s->any_seen[502] && s->any_ext[502] == 502, "picture cut short by a no-signal unit: 502 seen %d", s->any_seen[502]);
+            else CHECK(!s->any_seen[502], "a no-signal header inside a stall cut the unit short");
+            memset(s->any_seen, 0, sizeof s->any_seen); memset(s->long_confirmed, 0, sizeof s->long_confirmed);
+        }
+    }
+
     /* 10: a new epoch starts the numbering afresh, whatever the audio stream stood at */
     parser = open_parser(s);
     for (uint16_t c = 100; c <= 102; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
