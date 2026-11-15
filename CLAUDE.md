@@ -293,15 +293,19 @@ host loss; this closes the question of whether the Shuttle can itself emit short
 Arbitrary endpoint edges add a 1,652,048-byte leading
 fragment and 495,376-byte trailing fragment outside the marker-delimited census.
 
-**Wrong-length units are the Shuttle's own damage, and repairable (measured 2026-11-15 on a commercial-tape capture
-through the JVC; every packet in sequence, status 0).** A short unit had 748 bytes of one line deleted, 524 of them overwritten with
-zeros; a +512 unit had 256 samples of flat colour inserted in a line; the 23⅓-line-long units (+33,600 / +33,584) are
-sync recovery: whole USB packets of a repeating 4-byte word (`af8c0008`, `a0ad0008`), zeros, and the device's padding
-rows written over 60-110 lines, including a padding block one field after the first. Picture is NOT extra: each unit
-took one normal frame on the audio clock (the USB link spent 11 extra packet slots, then ran full rate for ~8 units to
-catch up). Everything outside the damage sits in place before it and exactly `delta` bytes displaced after it, which the
-line-start blanking (code 1-2 vs setup ~17) tells apart: `src/frameserver/unit_repair.h`. The owner saw the short unit as
-a one-frame sideways tear and the long ones as a one-field step back (the render repeated a frame).
+**Wrong-length units are the Shuttle's own damage, and placed from its bytes alone (measured 2026-11-15 on a
+commercial-tape capture through the JVC; every packet in sequence, status 0).** A short unit had 748 bytes of one line
+deleted with 524 zeros in their place; a +512 unit had 512 bytes of a dithered constant (Y160/161 U92/93 V92/93) inserted;
+the 23⅓-line-long units (+33,600 / +33,584) are a stall: ~40 whole USB packets of one repeated word (`af8c0008`,
+`a0ad0008`), zeros, a few hundred bytes of data, then the Shuttle restarting its raster with an 8-row padding block (and
+its next field block 262 rows on). At 25:25 that restart padding fell on the same picture height in two consecutive
+fields: a sync-like disturbance in the signal at that height (the owner's reading). Picture is NOT extra: each unit took one
+normal frame on the audio clock. Everything the Shuttle writes itself is an exact pattern tape picture never produces, and
+its padding always starts on a row boundary of its own line grid, so the bytes fix the placement: before the junk in
+place, after it displaced by the padding's phase (8 bytes off the length error at 25:25, where the unit stops 8 bytes into
+its last row: this was a visible 4-sample shift while the placement was inferred from picture). Lost = the gap between the
+parts plus the lines under restart padding. `src/frameserver/unit_repair.h`; the owner saw the short unit as a one-frame
+sideways tear and the long ones as a one-field step back (the render had repeated a frame).
 
 The audio endpoint is also transport-complete, but device audio samples and resync metadata
 have localized deficits (audio census below). Unwrap counters and look anchors up by value,

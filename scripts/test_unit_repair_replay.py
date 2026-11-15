@@ -4,7 +4,7 @@ and decision log. A synthetic capture of picture-like units (the Shuttle's paddi
 samples of blanking at code 1-2 starting every picture line) with the device's measured faults:
   counter 3: 748 bytes of a line deleted, 524 zeros in their place (a unit 224 bytes short)
   counter 6: filler packets and zeros over ~100 lines, the unit 33,600 bytes long
-  counter 9: a short unit in sub-blanking black (no evidence: declined, shown as a partial unit instead)
+  counter 9: 224 bytes gone with no fill to say where (declined, shown as a partial unit instead)
   counter 12: a long run ended by a marker that does not follow it (unconfirmed: never repaired or published)
 Expected: 3 and 6 published with drop_reason Repaired; 9 ShortShown; 12 unpublished; one report line per attempt on
 stderr; the replay refuses FS_REPAIR with registration on. No captured media is required.
@@ -35,9 +35,11 @@ def raster(counter, dark=False):
 
 units = []
 for c in range(16):
-    u = header(c) + raster(c, dark=(c == 9))
-    if c in (3, 9):
+    u = header(c) + raster(c)
+    if c == 3:
         p = HB + 220 * L + 950; u = u[:p] + bytes(524) + u[p + 748:]
+    if c == 9:
+        p = HB + 220 * L + 950; u = u[:p] + u[p + 224:]
     if c == 6:
         p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600
         u = u[:p] + bytes.fromhex('af8c0008') * (113920 // 4) + bytes(36580) + u[q:]
@@ -77,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d
     assert not any(x['published'] == '1' and x['counter_extended'] in ('12', '13') for x in rows)
     for c in (0, 1, 2, 4, 5, 7, 8, 10, 11): assert reason(c) == [('None', '1')], (c, reason(c))
     lines = [l for l in r.stderr.splitlines() if l.startswith('repair:')]
-    assert len(lines) == 3 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-evidence' in lines[2], lines
+    assert len(lines) == 3 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-fill' in lines[2], lines
     assert 'units put back from the wrong length: 2' in r.stdout and 'declined: 1' in r.stdout, r.stdout
     # with registration on the frameserver refuses to repair: rebuilt rows are not geometry evidence
     env2 = dict(env); env2.pop('FS_REGISTRATION_OFF')

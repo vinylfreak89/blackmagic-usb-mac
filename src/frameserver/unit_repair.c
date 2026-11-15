@@ -8,98 +8,122 @@ enum {
     F2 = 262,                 // field 1 owns rows [0,262), field 2 [262,525) (frame_publisher.h)
     BLANK_MAX = 6,            // blanking is about code 1-2; picture black (setup) about 17, never below ~10
     PICTURE_MIN = 12,
-    JUNK_ZERO_RUN = 16,       // picture never carries code 0 (none in any capture); 16 zero bytes are filler
-    JUNK_REPEAT_RUN = 124,    // a 4-byte word repeated over 128 bytes is filler (tape noise never repeats exactly)
+    PAD_MIN = 64,             // a run of the padding word this long is the Shuttle's padding (tape picture is never exactly Y16/C128)
+    ZERO_MIN = 16,            // picture never carries code 0 (none in any capture): 16 zero bytes are the Shuttle's
+    WORD_MIN = 64,            // one 4-byte word repeated over 64 bytes is the Shuttle's (tape noise never repeats exactly)
+    DITHER_MIN = 256,         // 256 bytes whose every byte position holds two adjacent values: the Shuttle's dithered fill
+    MAX_SPANS = 96,
+    GRID_SLACK = 16,          // the displaced part's grid may sit this far after the length error (measured: 8, a unit stopping
+                              // inside its last row); more is a second, unmarked length error and declines
 };
-
-typedef enum { C_OUT = 0, C_DARK, C_PIC, C_PAD, C_JUNK, C_OTHER } row_class;
 
 const char *ur_status_name(ur_status s){
     switch (s){
     case UR_OK: return "ok";
     case UR_NOT_A_UNIT: return "not-a-unit";
     case UR_DELTA_RANGE: return "delta-range";
-    case UR_WHOLE_LINE_DELTA: return "whole-line-delta";
-    case UR_NO_EVIDENCE: return "no-evidence";
+    case UR_NO_FILL: return "no-fill";
+    case UR_SECOND_EVENT: return "second-event";
+    case UR_GRID: return "grid";
     case UR_TOO_MUCH_LOST: return "too-much-lost";
     case UR_NO_SOURCE: return "no-source";
-    case UR_SECOND_EVENT: return "second-event";
+    case UR_CHECK: return "check";
     }
     return "?";
 }
 
-static int is_pad(const uint8_t *w){            // the Shuttle's own fill rows: chroma 128, luma 16 exactly
-    unsigned bad = 0;
-    for (unsigned i = 0; i < L; i += 2){
-        bad += (w[i] != 0x80) + (w[i + 1] != 0x10);
-        if (bad > 16) return 0;
-    }
-    return 1;
-}
+/* ---------------------------------------------------------------- the Shuttle's own bytes
+ * Everything the device writes itself is an exact pattern no tape picture ever produces: its padding (Y16/C128,
+ * "80 10" repeated), zeros, one 4-byte word repeated (whole USB packets of a stale buffer: af8c0008, a0ad0008), and a
+ * dithered constant (every byte position holding two adjacent values: Y160/161 U92/93 V92/93 at one capture's +512).
+ * A dithered constant at blanking level is the device's vertical-interval fill, which belongs where it is: not junk. */
+typedef enum { S_DATA = 0, S_PAD, S_JUNK } span_kind;
+typedef struct { span_kind kind; long start, end; } span;
 
-static int has_junk(const uint8_t *w){
-    unsigned zeros = 0, rep = 0;
-    for (unsigned i = 0; i < L; i++){
-        zeros = w[i] ? 0 : zeros + 1;
-        if (zeros >= JUNK_ZERO_RUN) return 1;
-        if (i >= 4){
-            rep = w[i] == w[i - 4] ? rep + 1 : 0;
-            if (rep >= JUNK_REPEAT_RUN && !(w[i - 1] == 0x80 && w[i] == 0x10) && !(w[i - 1] == 0x10 && w[i] == 0x80)) return 1;
+static long run_pad(const uint8_t *a, long i, long n){
+    long j = i; while (j + 1 < n && a[j] == 0x80 && a[j + 1] == 0x10) j += 2; return j - i;
+}
+static long run_zero(const uint8_t *a, long i, long n){ long j = i; while (j < n && !a[j]) j++; return j - i; }
+static long run_word(const uint8_t *a, long i, long n){
+    if (i + 8 > n || !(a[i] | a[i + 1] | a[i + 2] | a[i + 3])) return 0;
+    if ((a[i] == 0x80 && a[i + 1] == 0x10 && a[i + 2] == 0x80 && a[i + 3] == 0x10) ||
+        (a[i] == 0x10 && a[i + 1] == 0x80 && a[i + 2] == 0x10 && a[i + 3] == 0x80)) return 0;   // padding, at either phase
+    long j = i + 4; while (j + 4 <= n && !memcmp(a + j, a + i, 4)) j += 4; return j - i;
+}
+static long run_dither(const uint8_t *a, long i, long n){
+    uint8_t lo[4], hi[4]; long j = i;
+    if (i + 4 > n) return 0;
+    for (int k = 0; k < 4; k++){
+        lo[k] = hi[k] = a[i + k];
+        if (a[i + k] <= BLANK_MAX + 1) return 0;      // at blanking level: the device's vertical interval (and no scan of it)
+    }
+    while (j + 4 <= n){
+        int pad = 0;                                    // padding is its own span: a dither run never runs into it
+        for (int k = 0; k < 4 && !pad; k++) pad = run_pad(a, j + k, n) >= PAD_MIN;
+        if (pad) break;
+        int ok = 1;
+        for (int k = 0; k < 4 && ok; k++){
+            uint8_t v = a[j + k], l = v < lo[k] ? v : lo[k], h = v > hi[k] ? v : hi[k];
+            if (h - l > 1) ok = 0; else { lo[k] = l; hi[k] = h; }
         }
+        if (!ok) break; j += 4;
     }
-    return 0;
+    return j - i;
+}
+/* Splits [H,count) into data, padding and junk spans; returns the count, or -1 if there are more than MAX_SPANS. */
+static int segment(const uint8_t *a, long n, span *s){
+    int m = 0; long i = H, d0 = H;
+    while (i < n){
+        long r; span_kind k = S_DATA;
+        if ((r = run_pad(a, i, n)) >= PAD_MIN) k = S_PAD;
+        else if ((r = run_zero(a, i, n)) >= ZERO_MIN) k = S_JUNK;
+        else if ((r = run_word(a, i, n)) >= WORD_MIN) k = S_JUNK;
+        else if ((r = run_dither(a, i, n)) >= DITHER_MIN) k = S_JUNK;
+        if (k == S_DATA){ i++; continue; }
+        if (d0 < i){ if (m == MAX_SPANS) return -1; s[m++] = (span){S_DATA, d0, i}; }
+        if (m && s[m - 1].kind == k && s[m - 1].end == i) s[m - 1].end = i + r;     // adjacent runs of one kind merge
+        else { if (m == MAX_SPANS) return -1; s[m++] = (span){k, i, i + r}; }
+        i += r; d0 = i;
+    }
+    if (d0 < n){ if (m == MAX_SPANS) return -1; s[m++] = (span){S_DATA, d0, n}; }
+    return m;
 }
 
-/* The row whose first byte is at pos (unit coordinates, header included). Luma sits at the odd bytes of a row. */
-static row_class classify(const uint8_t *unit, size_t count, long pos){
-    if (pos < H || pos + L > (long)count) return C_OUT;
-    const uint8_t *w = unit + pos;
-    if (is_pad(w)) return C_PAD;
-    if (has_junk(w)) return C_JUNK;
-    unsigned dark = 0, maxy = 0;
-    for (unsigned c = 1; c <= 8; c++) dark += w[2 * c + 1] <= BLANK_MAX;
-    for (unsigned c = 32; c < 688; c++) if (w[2 * c + 1] > maxy) maxy = w[2 * c + 1];
-    if (maxy <= BLANK_MAX) return C_DARK;
-    return dark >= 7 && maxy >= PICTURE_MIN ? C_PIC : C_OTHER;
-}
-/* Evidence from row k of the whole-unit layout. Only rows that are picture in every whole unit speak for blanking:
- * the vertical-interval rows (7-18, 270-281) start with noise around codes 4-10 and the head-switch rows (257-260,
- * 519-522) can start with the line before the switch. Padding is the Shuttle's own fill at rows 0-6, 261-269 and
- * 523-524 (exact in every whole unit examined, with and without input); padding anywhere else is fill the Shuttle
- * wrote while recovering sync (seen in the middle of both long units), so it contradicts, like filler. */
+/* ---------------------------------------------------------------- rows of the whole-unit layout */
 static int picture_row(int k){ return (k >= 20 && k < 256) || (k >= 283 && k < 518); }
 static int padding_row(int k){ return k <= 6 || (k >= 261 && k <= 269) || k >= 523; }
 /* What a row holds in a whole unit, for choosing rebuild sources: 0 padding, 1 vertical interval, 2 picture (the
- * aperture's first line 19/282 and last 256/518 included), 3 head switch (257-260, 519-522: near-blank or the line
- * before the switch). */
+ * aperture's first line 19/282 and last 256/518 included), 3 head switch (257-260, 519-522). */
 static int row_kind(int k){
     if (padding_row(k)) return 0;
     if ((k >= 7 && k < 19) || (k >= 270 && k < 282)) return 1;
-    if ((k >= 257 && k <= 260) || (k >= 519 && k <= 522)) return 3;    // rows 256/518 carry picture (CLAUDE.md census)
+    if ((k >= 257 && k <= 260) || (k >= 519 && k <= 522)) return 3;
     return 2;
 }
-/* Top-of-field lines a deck's flag can bend (picture to the window edge, measured on two tapes with V-stabilize off):
- * a few disagreeing rows there are picture as it came, not a second length error. */
+/* Top-of-field lines a deck's flag can bend (picture to the window edge, measured with V-stabilize off). */
 static int flag_zone(int k){ return (k >= 20 && k < 36) || (k >= 283 && k < 299); }
-static int score(int k, row_class c){
-    switch (c){
-    case C_JUNK: return -1;
-    case C_PAD: return padding_row(k) ? 1 : -1;
-    case C_PIC: return picture_row(k);
-    case C_OTHER: return -picture_row(k);
-    /* A picture row is never wholly at blanking level: black picture sits at setup (about code 17). The Shuttle restarting a
-     * field writes blanking-level rows into the middle of a unit (25:25 of one capture: ~5 rows after its mid-unit padding). */
-    case C_DARK: return -picture_row(k);
-    default: return 0;
-    }
+/* Position down the woven frame: field-1 row r sits between field-2 rows r+262 and r+263 (frame_publisher interleave). */
+static int frame_line(int k){ return k < F2 ? 2 * k : 2 * (k - 263) + 1; }
+static int row_at(int y){
+    if (y < 0) return -1;
+    int k = y % 2 ? (y - 1) / 2 + 263 : y / 2;
+    return (y % 2 ? k >= F2 && k < UR_ROWS : k < F2) ? k : -1;
 }
 
-/* The horizontal shift (samples) that best aligns a row with a reference line, within -352..352 (a tear moves the rest
- * of a line by up to half a line either way): a 16-sample grid over every 8th luma sample of the overlap, then 4-sample
- * steps over every 4th sample within 12 of the grid's best (a repair costs about 3.5 ms; the full search took 16).
- * *clear: on the grid, the best fits at least twice as well as no shift, and well, and is unique (every grid shift more
- * than 16 samples from it fits at least 1.5 times worse: a repeating pattern fits equally at many shifts, so its best is
- * arbitrary); the refined shift is not the search limit (where picture with nothing to align ends up). */
+/* ---------------------------------------------------------------- checks on the assembled picture
+ * Picture is never used to place anything: these only verify what the bytes placed, and a failure declines. */
+static int line_start_ok(const uint8_t *w){     // the row starts with blanking (codes 1-2) and carries picture
+    unsigned dark = 0, maxy = 0;
+    for (unsigned c = 1; c <= 8; c++) dark += w[2 * c + 1] <= BLANK_MAX;
+    for (unsigned c = 32; c < 688; c++) if (w[2 * c + 1] > maxy) maxy = w[2 * c + 1];
+    if (maxy <= BLANK_MAX) return -1;            // dark: says nothing
+    return dark >= 7 && maxy >= PICTURE_MIN;
+}
+/* Where a picture row's blanking plateau ends, in half-samples: the first sample from the left above code 8; -1 if none. */
+static int plateau_end(const uint8_t *w){
+    for (int c = 1; c < 120; c++) if (w[2 * c + 1] > 8) return 2 * c;
+    return -1;
+}
 enum { SHIFT_MAX = 352, COARSE = 16, GRID = 2 * SHIFT_MAX / COARSE + 1 };
 static unsigned shift_mad(const uint8_t *row, const uint8_t *ref, int s, int step){
     unsigned sum = 0, n = 0;
@@ -107,8 +131,10 @@ static unsigned shift_mad(const uint8_t *row, const uint8_t *ref, int s, int ste
         int cs = c + s; if (cs < 8 || cs >= 712) continue;
         int d = (int)row[2 * cs + 1] - (int)ref[2 * c + 1]; sum += (unsigned)(d < 0 ? -d : d); n++;
     }
-    return n >= 32 ? sum * 16 / n : ~0u;                       // too little overlap to judge
+    return n >= 32 ? sum * 16 / n : ~0u;
 }
+/* The sideways shift aligning a row with a reference line (coarse 16-sample grid, then 4-sample steps). *clear: the
+ * best fits twice as well as no shift, and well, is unique on the grid, and is not the search limit. */
 static int best_shift(const uint8_t *row, const uint8_t *ref, int *clear){
     unsigned m[GRID], best = ~0u, at0 = 0, second = ~0u; int bi = -1;
     for (int i = 0; i < GRID; i++){
@@ -127,83 +153,23 @@ static int best_shift(const uint8_t *row, const uint8_t *ref, int *clear){
     *clear = best * 2 < at0 && at0 >= 8 * 16 && (uint64_t)second * 2 >= (uint64_t)best * 3 && fs > -SHIFT_MAX + 8 && fs < SHIFT_MAX - 8;
     return fs;
 }
-/* A second length error tears the picture again inside a trusted part: every row below it is offset sideways from every
- * row above. The line-start test can miss it where picture crushed to blanking level sits at the misread line start
- * (review 2026-11-15), so neighbouring trusted rows of a field are also checked for that offset, read as the repair will
- * publish them. A tear moves the lines on both sides alike: the same offset (24 samples or more, clearly better than none)
- * aligns the nearest pair across it and the pair one row further out. The tear falls between rows k and k+1, or inside
- * row k (which then matches neither side). Periodic picture aligns best unshifted between neighbouring lines, and a shallow
- * diagonal gives different offsets at the two distances. */
-static int tear_at(const uint8_t *rows, int above, int below){   // rows[i] = the row's first byte as published
+/* A tear left in the assembled picture: the same sideways offset (24+ samples) aligns the nearest pair of lines across
+ * it and the pair one further out, between rows k/k+1 or across row k. */
+static int tear_at(const uint8_t *rows, int above, int below){
     int c1, c2, s1 = best_shift(rows + (long)below * L, rows + (long)above * L, &c1);
     if (!c1 || (s1 < 24 && s1 > -24)) return 0;
     int s2 = best_shift(rows + (long)(below + 1) * L, rows + (long)(above - 1) * L, &c2);
-    return c2 && (s1 > s2 ? s1 - s2 : s2 - s1) <= 4;      // one search step: a diagonal's offset grows with the distance
+    return c2 && (s1 > s2 ? s1 - s2 : s2 - s1) <= 4;
 }
-static int second_event(const uint8_t *unit, long delta, int a_end, const unsigned char *trusted){
+static int tear_left(const uint8_t *rows, const unsigned char *kept){
     for (int k = 2; k + 2 < UR_ROWS; k++){
         int lo = k < F2 ? 0 : F2, hi = k < F2 ? F2 : UR_ROWS;
         if (k - 2 < lo || k + 2 >= hi) continue;
         int ok = 1;
-        for (int i = k - 2; i <= k + 2 && ok; i++) ok = trusted[i] && picture_row(i) && !flag_zone(i) && ((i < a_end) == (k < a_end));
-        if (!ok) continue;
-        const uint8_t *base = unit + H + (k < a_end ? 0 : delta);
-        if (tear_at(base, k, k + 1) || tear_at(base, k - 1, k + 1)) return 1;
+        for (int i = k - 2; i <= k + 2 && ok; i++) ok = kept[i] && picture_row(i) && !flag_zone(i);
+        if (ok && (tear_at(rows, k, k + 1) || tear_at(rows, k - 1, k + 1))) return 1;
     }
     return 0;
-}
-/* Position down the woven frame: field-1 row r sits between field-2 rows r+262 and r+263 (frame_publisher interleave). */
-static int frame_line(int k){ return k < F2 ? 2 * k : 2 * (k - 263) + 1; }
-static int row_at(int y){
-    if (y < 0) return -1;
-    int k = y % 2 ? (y - 1) / 2 + 263 : y / 2;
-    return (y % 2 ? k >= F2 && k < UR_ROWS : k < F2) ? k : -1;
-}
-/* The left blanking edge of a picture row, in half-samples: where luma first crosses halfway from blanking (code ~1.5) to
- * the row's picture level (mean of samples 40-200); -1 for a row too dark to say. */
-static int row_edge(const uint8_t *w){
-    unsigned sum = 0; for (int c = 40; c < 200; c++) sum += w[2 * c + 1];
-    double lvl = sum / 160.0; if (lvl < 20) return -1;
-    double half = 1.5 + (lvl - 1.5) / 2;
-    for (int c = 1; c < 120; c++){
-        double a = w[2 * (c - 1) + 1], b = w[2 * c + 1];
-        if (a <= half && b > half) return (int)(2 * ((c - 1) + (half - a) / (b - a)) + 0.5);
-    }
-    return -1;
-}
-/* How far (half-samples) the displaced part's left blanking edge sits from where the picture beside it puts it. Each
- * displaced picture row is compared with a row showing nearly the same picture, so the content under the edge cancels:
- * the other field's line at the same height when that line is in place, otherwise (fewer than 20 such pairs) the same
- * row of the previous unit. The median of the per-row differences; EDGE_UNKNOWN when fewer than 20 rows say. */
-enum { EDGE_UNKNOWN = 1 << 20 };
-static int edge_offset(const uint8_t *rows, const unsigned char *trusted, int a_end, const uint8_t *previous){
-    int d[UR_ROWS], n = 0;
-    for (int pass = 0; pass < 2 && n < 20; pass++){
-        if (pass == 1){ if (!previous) break; n = 0; }
-        for (int k = a_end; k < UR_ROWS; k++){
-            if (!trusted[k] || !picture_row(k) || flag_zone(k)) continue;
-            int ek = row_edge(rows + (size_t)k * L); if (ek < 0) continue;
-            int er = -1;
-            if (pass == 0){
-                int o1 = k < F2 ? k + 262 : k - 263, o2 = k < F2 ? k + 263 : k - 262;
-                if (o1 >= 0 && o1 < a_end && trusted[o1] && picture_row(o1)) er = row_edge(rows + (size_t)o1 * L);
-                if (er < 0 && o2 >= 0 && o2 < a_end && trusted[o2] && picture_row(o2)) er = row_edge(rows + (size_t)o2 * L);
-            } else er = row_edge(previous + H + (size_t)k * L);
-            if (er >= 0) d[n++] = ek - er;
-        }
-    }
-    if (n < 20) return EDGE_UNKNOWN;
-    for (int i = 1; i < n; i++) for (int j = i; j > 0 && d[j - 1] > d[j]; j--){ int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; }
-    return d[n / 2];
-}
-/* Move a row's samples by s (even) samples: positive moves the picture right; vacated samples repeat the edge pair. */
-static void shift_row(uint8_t *w, int s){
-    uint8_t t[L]; int b = 2 * s;
-    for (int i = 0; i < L; i += 4){
-        int src = i - b; if (src < 0) src = 0; if (src > L - 4) src = L - 4;
-        memcpy(t + i, w + src, 4);
-    }
-    memcpy(w, t, L);
 }
 static unsigned luma_mad(const uint8_t *a, const uint8_t *b){
     unsigned s = 0;
@@ -215,170 +181,258 @@ static void blend(uint8_t *dst, const uint8_t *a, const uint8_t *b, unsigned wa,
     for (unsigned i = 0; i < L; i++) dst[i] = (uint8_t)((a[i] * wa + b[i] * wb + t / 2) / t);
 }
 
+/* ---------------------------------------------------------------- the repair */
 ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *out, ur_result *res){
     ur_result r; memset(&r, 0, sizeof r);
-    r.delta = (long)count - (long)U;
+    long n = (long)count;
+    r.delta = n - (long)U;
     ur_status st = UR_OK;
+    span sp[MAX_SPANS]; int m, junk = -1;
     if (!unit || !out || count < H || unit[0] || unit[1] || unit[2] != 0xff || unit[3] != 0xff ||
         unit[6] != 0x01 || unit[7] != 0xe8 || r.delta == 0){ st = UR_NOT_A_UNIT; goto done; }
     if (r.delta > UR_MAX_DELTA_BYTES || r.delta < -UR_MAX_DELTA_BYTES){ st = UR_DELTA_RANGE; goto done; }
-    long phase = ((r.delta % L) + L) % L;
-    if (phase < 32 || phase > L - 32){ st = UR_WHOLE_LINE_DELTA; goto done; }
 
-    signed char s0[UR_ROWS], sd[UR_ROWS]; unsigned char c0[UR_ROWS], cd[UR_ROWS];
-    int P0[UR_ROWS + 1], PD[UR_ROWS + 1]; P0[0] = PD[0] = 0;
-    for (int k = 0; k < UR_ROWS; k++){
-        row_class a = classify(unit, count, H + (long)k * L), d = classify(unit, count, H + (long)k * L + r.delta);
-        c0[k] = (unsigned char)a; cd[k] = (unsigned char)d;
-        int x = score(k, a), y = score(k, d);
-        /* A row that reads as picture at both offsets says nothing about where it belongs: picture crushed to blanking
-         * level (CLAUDE.md: black floor-crushed on fixture A; sub-black undershoot at white text) can put "blanking" at
-         * the displaced line start too. Counted for neither part, it cannot pull the split away from the damage. */
-        if (x > 0 && y > 0) x = y = 0;
-        s0[k] = (signed char)x; sd[k] = (signed char)y;
-        P0[k + 1] = P0[k] + s0[k]; PD[k + 1] = PD[k] + sd[k];
-    }
-    // [0,a) in place needs its bytes present; [b,525) displaced needs b*L + delta >= 0; the two never share bytes.
-    int amax = (int)(((long)count - H) / L); if (amax > UR_ROWS) amax = UR_ROWS;
-    int best = 0, ba = -1, bb = -1;
-    for (int a = 0; a <= amax; a++){
-        for (int b = a; b <= UR_ROWS; b++){
-            if ((long)b * L + r.delta < (long)a * L) continue;
-            int j = 2 * P0[a] + 2 * (PD[UR_ROWS] - PD[b]) - (b - a);   // half a point per rebuilt row
-            if (ba < 0 || j > best){ best = j; ba = a; bb = b; }
+    /* 1. The device-written spans. Exactly one stretch of junk: everything before it is where it belongs; everything
+     *    after it is the same raster displaced. No junk: nothing in the bytes says where the error is. */
+    if ((m = segment(unit, n, sp)) < 0){ st = UR_SECOND_EVENT; goto done; }
+    /* Junk stretches less than 16 bytes apart are one stall (a fill word ending in half a word before its zeros). */
+    for (int i = 0; i + 2 < m; i++){
+        if (sp[i].kind == S_JUNK && sp[i + 1].kind == S_DATA && sp[i + 2].kind == S_JUNK && sp[i + 1].end - sp[i + 1].start < ZERO_MIN){
+            sp[i].end = sp[i + 2].end;
+            memmove(sp + i + 1, sp + i + 3, sizeof(span) * (size_t)(m - i - 3)); m -= 2; i--;
         }
     }
-    if (ba < 0){ st = UR_NO_EVIDENCE; goto done; }
-    int pcross = 0, scross = 0;
-    for (int k = 0; k < ba; k++){ r.prefix_agree += s0[k] > 0; r.prefix_disagree += s0[k] < 0; pcross += sd[k] > 0; }
-    for (int k = bb; k < UR_ROWS; k++){ r.suffix_agree += sd[k] > 0; r.suffix_disagree += sd[k] < 0; scross += s0[k] > 0; }
-    // Enough rows must speak, nearly all for their part, and each part must read differently at the other offset.
-    if (r.prefix_agree + r.suffix_agree < 100 ||
-        r.prefix_disagree * 10 > r.prefix_agree + 30 || r.suffix_disagree * 10 > r.suffix_agree + 30 ||
-        pcross * 5 > r.prefix_agree + 15 || scross * 5 > r.suffix_agree + 15){ st = UR_NO_EVIDENCE; goto done; }
-    /* Trust only what a row confirmed: the in-place part ends at the last row that agrees there alone, and that row too
-     * is rebuilt when it is picture (the damage can start inside it); the displaced part starts at the first row that
-     * agrees there alone. Everything between (damage, rows that read either way, head-switch and vertical-interval rows
-     * that carry no line-start evidence) is rebuilt; padding rows among them are the Shuttle's constant, regenerated. */
-    int last0 = -1, firstd = UR_ROWS;
-    /* Picture rows only: a padding block is nine identical rows, so a read a few hundred bytes off still finds padding. */
-    for (int k = ba - 1; k >= 0; k--) if (s0[k] > 0 && picture_row(k)){ last0 = k; break; }
-    for (int k = bb; k < UR_ROWS; k++) if (sd[k] > 0 && picture_row(k)){ firstd = k; break; }
-    int a_end = last0 >= 0 && c0[last0] == C_PIC ? last0 : last0 + 1;
-    r.prefix_rows = (unsigned)a_end; r.suffix_row = (unsigned)firstd;
-    /* Inside the trusted parts, a row that is filler, padding out of place or blanking-level picture is Shuttle fill
-     * too (25:25 of one capture: padding written over field-2 rows 345-353, one field after a block in the lost part):
-     * rebuilt. Picture rows that read wrong at their part's offset are picture displaced by some other amount: three
-     * in a row outside the top-of-field flag lines is a second length error in the unit, which this does not undo. */
-    unsigned char trusted[UR_ROWS]; int lost = 0, run = 0;
-    for (int k = 0; k < UR_ROWS; k++){
-        int in = k < a_end || k >= firstd; row_class c = k < a_end ? (row_class)c0[k] : (row_class)cd[k];
-        if (in && (c == C_JUNK || (c == C_PAD && !padding_row(k)) || (c == C_DARK && picture_row(k)))) in = 0;
-        run = in && c == C_OTHER && picture_row(k) && !flag_zone(k) ? run + 1 : 0;
-        if (run >= 3){ st = UR_SECOND_EVENT; goto done; }
-        trusted[k] = (unsigned char)in; lost += !in;
+    for (int i = 0; i < m; i++) if (sp[i].kind == S_JUNK){
+        if (junk >= 0){ st = UR_SECOND_EVENT; goto done; }
+        junk = i;
     }
-    if (lost > UR_MAX_REBUILT_ROWS){ st = UR_TOO_MUCH_LOST; goto done; }
-    if (second_event(unit, r.delta, a_end, trusted)){ st = UR_SECOND_EVENT; goto done; }
+    if (junk < 0){ st = UR_NO_FILL; goto done; }
+    long js = sp[junk].start, je = sp[junk].end;
 
-    memcpy(out, unit, H);
-    for (int k = 0; k < UR_ROWS; k++){
-        if (!trusted[k]) continue;
-        if (k < a_end) memcpy(out + H + (size_t)k * L, unit + H + (size_t)k * L, L);
-        else memcpy(out + H + (size_t)k * L, unit + H + (long)k * L + r.delta, L);
+    /* 2. The grid. The Shuttle's padding always starts on a row boundary of its own line grid (whole units: rows 0, 261,
+     *    523), and after a stall it restarts its raster with padding. Padding before the junk must sit on the unit's
+     *    grid; padding after it gives the displaced part's grid phase, all blocks agreeing. The displacement is the
+     *    value of that phase nearest the length error (one capture's 25:25: the unit stops 8 bytes into its last row,
+     *    so the grid sits 8 bytes from the length error). Without padding after the junk the length error is taken
+     *    as it is, and the checks below must confirm it. */
+    long D = r.delta; int have_phase = 0;
+    long pstart[MAX_SPANS];                                  // each padding block's start on its grid (its picture-like edge trimmed)
+    for (int i = 0; i < m; i++){
+        pstart[i] = sp[i].start;
+        if (sp[i].kind != S_PAD) continue;
+        long len = sp[i].end - sp[i].start, whole = len / L * L;
+        if (i < junk){
+            /* Before the junk: on the unit's own grid. Its start is a row boundary unless picture just before it is a
+             * padding-like sample (Cb128/Y16: 0.2% of row ends): then its end is, if data follows it. */
+            if ((sp[i].start - H) % L == 0) continue;
+            if (len % L && sp[i].end != js && (sp[i].end - H) % L == 0){ pstart[i] = sp[i].end - whole; continue; }
+            st = UR_GRID; goto done;
+        }
+        /* After the junk. A block's start is a row boundary of the displaced grid, unless the block continues one
+         * the stall interrupted (it starts where the junk ends) or picture before it looks like padding; its end is,
+         * if data follows it and nothing after it looks like padding. A block whose length is not whole rows has such
+         * a sample at one edge: the edge whose grid puts the displacement on whole UYVY pairs (4 bytes) is the true
+         * one, and a block with both or neither is not used. A block cut off by the unit's end has no end. */
+        long cand[2]; int nc = 0;
+        int s_ok = sp[i].start != je, e_ok = sp[i].end != n;
+        if (s_ok) cand[nc++] = sp[i].start;
+        if (e_ok && len % L) cand[nc++] = sp[i].end - whole;      // the start that the block's end implies
+        long found = 0, fstart = 0; int nf = 0;
+        for (int c = 0; c < nc; c++){
+            long ph = ((cand[c] - H) % L + L) % L;
+            long d = r.delta + ((((ph - r.delta) % L) + L) % L);    // the phase's value at or after the length error
+            if (d - r.delta > GRID_SLACK) d -= L;                    // (a value before it is never used: off < 0 declines)
+            if (d % 4 || d - r.delta < 0 || d - r.delta > GRID_SLACK) continue;
+            if (!nf || d != found){ found = d; fstart = cand[c]; nf++; }
+        }
+        if (nf == 0 && nc){ st = UR_GRID; goto done; }           // on no grid the length error allows: not this model
+        if (nf != 1) continue;                                   // edges on two grids, or no edge to read: says nothing
+        if (have_phase && found != D){ st = UR_GRID; goto done; }
+        D = found; have_phase = 1; pstart[i] = fstart;
     }
+    /* Every unit carries padding after any stall (at least its final rows 523-524): without any to give the grid, the
+     * bytes do not fix where the displaced part sits (a unit missing its end would land rows low). */
+    if (!have_phase){ st = UR_GRID; goto done; }
+    r.grid_offset = (int)(D - r.delta);
+    if (r.grid_offset > GRID_SLACK || r.grid_offset < -GRID_SLACK){ st = UR_GRID; goto done; }
+    long t0 = je - D;                                       // where the displaced part starts in the whole raster
+    if (t0 < js){ st = UR_GRID; goto done; }               // it would overlap the part in place: not one stall
+    r.lost_bytes = t0 - js;
+    r.prefix_rows = (unsigned)((js - H) / L); r.suffix_row = (unsigned)((t0 - H + L - 1) / L);
+
+    /* 3. Assemble. Lost bytes: the stall [js,t0); the raster's end past the displaced part; and the lines under padding
+     *    the Shuttle wrote in the displaced part away from the padding rows (it did not digitise those lines). The
+     *    padding rows are its constant, regenerated. */
+    unsigned short lost_lo[UR_ROWS], lost_hi[UR_ROWS];
+    for (int k = 0; k < UR_ROWS; k++){ lost_lo[k] = L; lost_hi[k] = 0; }
+    #define MARK_LOST(a, b) do { long a_ = (a), b_ = (b); if (a_ < H) a_ = H; if (b_ > (long)U) b_ = U; \
+        for (long x = a_; x < b_; ){ int k_ = (int)((x - H) / L); long c_ = (x - H) % L, e_ = (b_ - H) - (long)k_ * L; if (e_ > L) e_ = L; \
+            if (c_ < lost_lo[k_]) lost_lo[k_] = (unsigned short)c_; if (e_ > lost_hi[k_]) lost_hi[k_] = (unsigned short)e_; x = H + (long)k_ * L + e_; } } while (0)
+    memcpy(out, unit, H);
+    memcpy(out + H, unit + H, (size_t)(js - H));
+    long tail = n - je; if (t0 + tail > (long)U) tail = U - t0;
+    memcpy(out + t0, unit + je, (size_t)tail);
+    MARK_LOST(js, t0);
+    MARK_LOST(t0 + tail, U);
+    int first_post = -1; long restart_next = 0;
+    /* A block starting where the stall ended is the rest of the raster's own block that the displaced part resumes in
+     * (rows 0-6, 261-269 or 523-524): it must end at that block's end. */
+    int r0 = (int)((t0 - H) / L);
+    int std_end = r0 < 7 ? 7 : (r0 >= 261 && r0 < 270) ? 270 : r0 >= 523 ? UR_ROWS : -1;
+    for (int i = junk + 1; i < m && first_post < 0; i++) if (sp[i].kind == S_PAD) first_post = i;
+    for (int i = junk + 1; i < m; i++){
+        if (sp[i].kind != S_PAD) continue;
+        /* Rows under this block in the whole raster: from its grid start (a block continuing one the stall interrupted
+         * starts mid-row: whole rows from its end), whole rows only. A block over the padding rows must sit exactly on
+         * them: one landing a row off means the grid is a row off. */
+        long a = pstart[i] - D, b = sp[i].end - D;
+        int cont = sp[i].start == je && sp[i].end != n, cut = sp[i].end == n;
+        if (cont) a = sp[i].start - D;                          // from where the stall ended: its first row is partly covered
+        /* A block continuing one the stall interrupted covers its first row only in part: that row is lost too. */
+        int k0 = cont ? (int)((a - H) / L) : (int)((a - H + L - 1) / L), k1 = (int)((b - H) / L);
+        if (a < H) k0 = 0;
+        /* Which padding this is, from the bytes. The Shuttle restarting its raster after a stall writes an 8-row block
+         * within two rows of the junk's end (measured: 824 and 1,982 bytes after it), then its next field's 9-row block
+         * exactly 262 rows later; the lines under those were never digitised. Any other padding after the junk is the
+         * raster's own and must sit exactly on its rows: starting at row 261 (9 rows) or 523 (2 rows, or cut by the
+         * unit's end), or, continuing a block the stall interrupted, ending at row 270 or the raster's end. A block
+         * anywhere else means the grid is off (a unit missing its end lands rows low): declined. */
+        int restart = 0;
+        if (i == first_post){
+            /* A block starting where the stall ended is never a restart: both measured restarts left decoded data (824 and
+             * 1,982 bytes) between the stall and their padding, and a restart the stall ran into cannot be told by its bytes
+             * from the rest of one of the raster's own blocks shifted by a short unit. */
+            if (!cont) restart = pstart[i] - je <= 2 * L && sp[i].end - pstart[i] == 8 * L;
+            if (restart) restart_next = sp[i].end - 8 * L + 262L * L;              // the restart raster's next field block
+        } else restart = restart_next && pstart[i] == restart_next && (sp[i].end - pstart[i] == 9 * L || cut);
+        if (!restart){
+            int ok = cont ? std_end >= 0 && k1 == std_end
+                          : (k0 == 261 && k1 == 270) || (k0 == 523 && (cut || k1 == UR_ROWS));
+            if (!ok){ st = UR_GRID; goto done; }
+            continue;                                            // the raster's own padding: nothing lost under it
+        }
+        for (int k = k0; k < k1 && k < UR_ROWS; k++){
+            if (padding_row(k)) continue;
+            MARK_LOST(H + (long)k * L, H + (long)(k + 1) * L);
+        }
+    }
+    #undef MARK_LOST
     uint8_t *rows = out + H;
-    /* The displaced part sits on the tape's blanking like the rest of the picture. Where the Shuttle restarted its raster
-     * mid-unit (25:25 of one capture) the displaced picture came out 4 samples later than in the units either side, all
-     * the way down: the line-start test cannot see under 16 samples. Its left blanking edge is measured against the
-     * in-place part's, or the previous unit's when there is too little in-place picture, and the displaced rows moved
-     * to match (whole UYVY pairs, so colour stays paired). */
+    unsigned char kept[UR_ROWS], have[UR_ROWS], wait[UR_ROWS];
+    int lost_rows = 0;
+    for (int k = 0; k < UR_ROWS; k++){
+        if (padding_row(k)){
+            for (unsigned i = 0; i < L; i += 2){ rows[(size_t)k * L + i] = 0x80; rows[(size_t)k * L + i + 1] = 0x10; }
+            kept[k] = 0; have[k] = 1; continue;
+        }
+        kept[k] = lost_hi[k] <= lost_lo[k]; have[k] = kept[k]; lost_rows += !kept[k];
+        if (!kept[k]){ lost_lo[k] &= (unsigned short)~3u; lost_hi[k] = (unsigned short)((lost_hi[k] + 3u) & ~3u); }   // whole UYVY pairs
+    }
+    if (lost_rows > UR_MAX_REBUILT_ROWS){ st = UR_TOO_MUCH_LOST; goto done; }
+
+    /* 4. Checks on what the bytes placed (never used to place anything; any failure declines). Every picture row kept
+     *    must start on the tape's blanking (a few rows may not: deck flags, edits; three in a row may not), the part
+     *    displaced must sit on the blanking as the picture beside it does (to a sample: row against the other field's
+     *    line at the same height, else the previous unit's row), and no tear may remain. */
     {
-        int off = edge_offset(rows, trusted, a_end, previous);
-        if (off != EDGE_UNKNOWN){
-            int s = -off / 4 * 2;                                           // half-samples to whole UYVY pairs, toward zero
-            if (s != 0 && s >= -32 && s <= 32){
-                for (int k = a_end; k < UR_ROWS; k++) if (trusted[k]) shift_row(rows + (size_t)k * L, s);
-                r.phase_shift = s;
+        int run = 0, bad = 0, good = 0;
+        for (int k = 0; k < UR_ROWS; k++){
+            if (!kept[k] || !picture_row(k) || flag_zone(k)){ run = 0; continue; }
+            int v = line_start_ok(rows + (size_t)k * L);
+            if (v < 0){ continue; }
+            if (v){ good++; run = 0; } else { bad++; if (++run >= 3){ st = UR_CHECK; goto done; } }
+        }
+        if (bad * 10 > good + 30){ st = UR_CHECK; goto done; }
+        /* The displaced part on the tape's blanking: where the blanking plateau ends (first sample above code 8: picture
+         * black sits at setup, ~17) in each displaced picture row against a row at the same height, the other field's
+         * line when it is in place, else the same row of the previous unit; the median difference must be within 2
+         * samples (clean frames, field against field: within 1 sample in 99.8% of 895, at most 3). */
+        int d[UR_ROWS], nd = 0;
+        for (int pass = 0; pass < 2 && nd < 20; pass++){
+            if (pass == 1){ if (!previous) break; nd = 0; }
+            for (int k = (int)r.suffix_row; k < UR_ROWS; k++){
+                if (!kept[k] || !picture_row(k) || flag_zone(k)) continue;
+                int ek = plateau_end(rows + (size_t)k * L); if (ek < 0) continue;
+                int er = -1;
+                if (pass == 0){
+                    int o1 = k < F2 ? k + 262 : k - 263, o2 = k < F2 ? k + 263 : k - 262;
+                    if (o1 >= 0 && o1 < (int)r.prefix_rows && kept[o1] && picture_row(o1)) er = plateau_end(rows + (size_t)o1 * L);
+                    if (er < 0 && o2 >= 0 && o2 < (int)r.prefix_rows && kept[o2] && picture_row(o2)) er = plateau_end(rows + (size_t)o2 * L);
+                } else er = plateau_end(previous + H + (size_t)k * L);
+                if (er >= 0) d[nd++] = ek - er;
             }
         }
-    }
-    /* Pass 1: a lost row with an intact line of its kind close by in its own field (a gap of one or two lines) is blended
-     * from those; otherwise from the other field's lines above and below. Rows with neither wait for pass 2. */
-    unsigned char have[UR_ROWS], wait[UR_ROWS];
-    memcpy(have, trusted, sizeof have); memset(wait, 0, sizeof wait);
-    for (int k = 0; k < UR_ROWS; k++){
-        if (trusted[k]) continue;
-        uint8_t *dst = rows + (size_t)k * L;
-        if (padding_row(k)){                   // the Shuttle's own constant fill, identical in every whole unit
-            for (unsigned i = 0; i < L; i += 2){ dst[i] = 0x80; dst[i + 1] = 0x10; }
-            r.rebuilt_rows[k < F2 ? 0 : 1]++; have[k] = 1; continue;
+        if (nd >= 20){
+            for (int i = 1; i < nd; i++) for (int j = i; j > 0 && d[j - 1] > d[j]; j--){ int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; }
+            r.edge_check = d[nd / 2];
+            if (d[nd / 2] > 4 || d[nd / 2] < -4){ st = UR_CHECK; goto done; }   // half-samples: more than 2 samples apart
         }
-        /* Sources are lines of the same kind (row_kind): picture from picture, a vertical-interval or head-switch line
-         * from its own kind, so line 23 is never half the dark line above it. */
-        int ap = row_kind(k), lo = k < F2 ? 0 : F2, hi = k < F2 ? F2 : UR_ROWS, u = -1, d = -1;
-        for (int i = k - 1; i >= lo; i--) if (trusted[i] && row_kind(i) == ap){ u = i; break; }
-        for (int i = k + 1; i < hi; i++) if (trusted[i] && row_kind(i) == ap){ d = i; break; }
-        int o1 = k < F2 ? k + 262 : k - 263, o2 = k < F2 ? k + 263 : k - 262;   // the other field's lines above and below
-        int t1 = o1 >= 0 && o1 < UR_ROWS && (k < F2 ? o1 >= F2 : o1 < F2) && trusted[o1] && row_kind(o1) == ap;
-        int t2 = o2 >= 0 && o2 < UR_ROWS && (k < F2 ? o2 >= F2 : o2 < F2) && trusted[o2] && row_kind(o2) == ap;
-        if (u >= 0 && d >= 0 && d - u <= 3){
-            blend(dst, rows + (size_t)u * L, rows + (size_t)d * L, (unsigned)(d - k), (unsigned)(k - u)); r.rebuilt_same_field++;
+        if (tear_left(rows, kept)){ st = UR_SECOND_EVENT; goto done; }
+    }
+
+    /* 5. Rebuild the lost bytes (whole rows, or the lost stretch of a row). Pass 1: an intact line of its kind close by
+     *    in its own field (a gap of one or two lines), or the other field's lines above and below. Pass 2 (lost in both
+     *    fields at the same height): the previous unit's row when it shows the same picture where both can be seen,
+     *    else interpolated down the woven frame. */
+    uint8_t tmp[L];
+    memset(wait, 0, sizeof wait);
+    for (int k = 0; k < UR_ROWS; k++){
+        if (have[k]) continue;
+        int ap = row_kind(k), lo = k < F2 ? 0 : F2, hi = k < F2 ? F2 : UR_ROWS, u = -1, dd = -1;
+        for (int i = k - 1; i >= lo; i--) if (kept[i] && row_kind(i) == ap){ u = i; break; }
+        for (int i = k + 1; i < hi; i++) if (kept[i] && row_kind(i) == ap){ dd = i; break; }
+        int o1 = k < F2 ? k + 262 : k - 263, o2 = k < F2 ? k + 263 : k - 262;
+        int t1 = o1 >= 0 && o1 < UR_ROWS && (k < F2 ? o1 >= F2 : o1 < F2) && kept[o1] && row_kind(o1) == ap;
+        int t2 = o2 >= 0 && o2 < UR_ROWS && (k < F2 ? o2 >= F2 : o2 < F2) && kept[o2] && row_kind(o2) == ap;
+        if (u >= 0 && dd >= 0 && dd - u <= 3){
+            blend(tmp, rows + (size_t)u * L, rows + (size_t)dd * L, (unsigned)(dd - k), (unsigned)(k - u)); r.rebuilt_same_field++;
         } else if (t1 || t2){
             const uint8_t *a1 = rows + (size_t)o1 * L, *a2 = rows + (size_t)o2 * L;
-            int ref = u >= 0 && d >= 0 ? (k - u <= d - k ? u : d) : u >= 0 ? u : d;
-            for (int i = 1; ref < 0 && (k - i >= lo || k + i < hi); i++){     // none of its kind: the nearest intact line
-                if (k - i >= lo && trusted[k - i]) ref = k - i;
-                else if (k + i < hi && trusted[k + i]) ref = k + i;
+            int ref = u >= 0 && dd >= 0 ? (k - u <= dd - k ? u : dd) : u >= 0 ? u : dd;
+            for (int i = 1; ref < 0 && (k - i >= lo || k + i < hi); i++){
+                if (k - i >= lo && kept[k - i]) ref = k - i;
+                else if (k + i < hi && kept[k + i]) ref = k + i;
             }
-            /* At the top and bottom of the picture the two lines straddle the edge (picture above, blanking below):
-             * their average is a half-bright line no field ever had. Then take the one like this field's nearest line. */
             if (t1 && t2 && luma_mad(a1, a2) > 20 && ref >= 0)
-                memcpy(dst, luma_mad(a1, rows + (size_t)ref * L) <= luma_mad(a2, rows + (size_t)ref * L) ? a1 : a2, L);
-            else if (t1 && t2) blend(dst, a1, a2, 1, 1);
-            else memcpy(dst, t1 ? a1 : a2, L);
+                memcpy(tmp, luma_mad(a1, rows + (size_t)ref * L) <= luma_mad(a2, rows + (size_t)ref * L) ? a1 : a2, L);
+            else if (t1 && t2) blend(tmp, a1, a2, 1, 1);
+            else memcpy(tmp, t1 ? a1 : a2, L);
             r.rebuilt_other_field++;
         } else { wait[k] = 1; continue; }
+        memcpy(rows + (size_t)k * L + lost_lo[k], tmp + lost_lo[k], (size_t)(lost_hi[k] - lost_lo[k]));
         r.rebuilt_rows[k < F2 ? 0 : 1]++; have[k] = 1;
     }
-    /* Pass 2: lost in both fields at the same height (25:25 of one capture: the Shuttle's padding blocks at field-1 rows
-     * 83-91 and field-2 rows 345-353). The same row of the previous whole unit, one frame earlier, when the caller has it:
-     * interpolating across that many frame lines smears the two source lines' texture into vertical streaks (seen in the
-     * first render of 25:25). Without it, interpolated down the woven frame between the nearest lines of its kind above
-     * and below, from either field, intact or rebuilt in pass 1; a line of another kind is used only outside the picture. */
-    /* The previous unit is used only if it shows the same picture where both can be seen: its intact rows within 8 lines
-     * of the waiting ones agree with this unit's (mean luma difference within 8 codes, about frame-to-frame tape noise).
-     * After a cut or under a pan it would publish a band of another picture (review 2026-11-15: MAD 84 after a cut). */
     if (previous){
-        unsigned sum = 0, n = 0;
+        unsigned sum = 0, cnt = 0;
         for (int k = 0; k < UR_ROWS; k++){
-            if (!trusted[k] || row_kind(k) != 2) continue;
+            if (!kept[k] || row_kind(k) != 2) continue;
             int near = 0;
             for (int j = k - 8; j <= k + 8 && !near; j++) near = j >= 0 && j < UR_ROWS && wait[j] && (j < F2) == (k < F2);
-            if (near){ sum += luma_mad(rows + (size_t)k * L, previous + H + (size_t)k * L); n++; }
+            if (near){ sum += luma_mad(rows + (size_t)k * L, previous + H + (size_t)k * L); cnt++; }
         }
-        if (n < 4 || sum > 8 * n) previous = NULL;
+        if (cnt < 4 || sum > 8 * cnt) previous = NULL;
     }
     for (int k = 0; k < UR_ROWS; k++){
         if (!wait[k]) continue;
-        uint8_t *dst = rows + (size_t)k * L;
         if (previous){
-            memcpy(dst, previous + H + (size_t)k * L, L);
-            r.rebuilt_previous++; r.rebuilt_rows[k < F2 ? 0 : 1]++; continue;
-        }
-        int ap = row_kind(k), y = frame_line(k), up = -1, dn = -1, yu = 0, yd = 0;
-        for (int pass = 0; pass < 2 && (up < 0 || dn < 0); pass++){
-            if (pass == 1 && ap == 2) break;                              // picture never borrows another kind
-            for (int dy = 1; dy < 2 * UR_ROWS && (up < 0 || dn < 0); dy++){
-                int ru = row_at(y - dy), rd = row_at(y + dy);
-                if (up < 0 && ru >= 0 && have[ru] && (pass || row_kind(ru) == ap)){ up = ru; yu = y - dy; }
-                if (dn < 0 && rd >= 0 && have[rd] && (pass || row_kind(rd) == ap)){ dn = rd; yd = y + dy; }
+            memcpy(tmp, previous + H + (size_t)k * L, L); r.rebuilt_previous++;
+        } else {
+            int ap = row_kind(k), y = frame_line(k), up = -1, dn = -1, yu = 0, yd = 0;
+            for (int pass = 0; pass < 2 && (up < 0 || dn < 0); pass++){
+                if (pass == 1 && ap == 2) break;
+                for (int dy = 1; dy < 2 * UR_ROWS && (up < 0 || dn < 0); dy++){
+                    int ru = row_at(y - dy), rd = row_at(y + dy);
+                    if (up < 0 && ru >= 0 && have[ru] && !padding_row(ru) && (pass || row_kind(ru) == ap)){ up = ru; yu = y - dy; }
+                    if (dn < 0 && rd >= 0 && have[rd] && !padding_row(rd) && (pass || row_kind(rd) == ap)){ dn = rd; yd = y + dy; }
+                }
             }
+            if (up >= 0 && dn >= 0) blend(tmp, rows + (size_t)up * L, rows + (size_t)dn * L, (unsigned)(yd - y), (unsigned)(y - yu));
+            else if (up >= 0 || dn >= 0) memcpy(tmp, rows + (size_t)(up >= 0 ? up : dn) * L, L);
+            else { st = UR_NO_SOURCE; goto done; }
+            r.rebuilt_same_field++;
         }
-        if (up >= 0 && dn >= 0) blend(dst, rows + (size_t)up * L, rows + (size_t)dn * L, (unsigned)(yd - y), (unsigned)(y - yu));
-        else if (up >= 0 || dn >= 0) memcpy(dst, rows + (size_t)(up >= 0 ? up : dn) * L, L);
-        else { st = UR_NO_SOURCE; goto done; }
-        r.rebuilt_same_field++; r.rebuilt_rows[k < F2 ? 0 : 1]++;
+        memcpy(rows + (size_t)k * L + lost_lo[k], tmp + lost_lo[k], (size_t)(lost_hi[k] - lost_lo[k]));
+        r.rebuilt_rows[k < F2 ? 0 : 1]++;
     }
 done:
     r.status = st;
