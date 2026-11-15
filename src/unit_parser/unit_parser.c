@@ -251,13 +251,16 @@ static void accept_video_boundary(unit_parser *parser, size_t position, bool con
 }
 
 /* The run before `position` ends without its successor (flagged as a buffer-full cut is); framing restarts at the
- * marker at `position`. Its counter is the device's only if the audio vouched for its marker (a picture unit the
- * Shuttle followed with a no-signal unit, 2026-11-15); otherwise it is never a formed unit. */
+ * marker at `position`. Its counter is the device's only if the audio vouched for its marker and a no-signal (or other
+ * non-picture) marker ends it: a picture unit the Shuttle ran into a no-signal unit (2026-11-15). A picture marker
+ * ending it instead may be a stale or repeated header (its own counter, or one a unit old while the audio lags), so the
+ * run is never a formed unit. A confirmed one keeps its adjacency to the unit before it: the break is after it. */
 static void end_stale_run(unit_parser *parser, size_t position)
 {
-    bool vouched = parser->video_audio_vouched;
+    uint16_t ending = load_u16(parser->video + position + 6);
+    bool vouched = parser->video_audio_vouched && ending != 0xe801;
     emit_video(parser, parser->video, position, true, vouched,
-               parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY, !vouched);
+               parser->video_flags | (vouched ? 0 : UNIT_FLAG_COUNTER_DISCONTINUITY), !vouched);
     size_t retained = parser->video_bytes - position;
     memmove(parser->video, parser->video + position, retained);
     parser->video_bytes = retained;
@@ -318,7 +321,16 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
             /* A run of another format (a no-signal unit: its own numbering, often short) ends at a picture marker the
              * audio vouches for: the Shuttle's picture is back (2026-11-15: such a marker inside a short no-signal
              * unit was ignored, and the picture unit after it lost). The no-signal run is not confirmed by it. */
-            if (!plausible && run_format != 0xe801 && audio_vouches(parser, current, format)){ plausible = true; confirmed = false; }
+            if (!plausible && run_format != 0xe801 && audio_vouches(parser, current, format)){
+                /* ... and a picture unit starts with the Shuttle's padding rows (Y16/C128); a stale header inside a
+                 * no-signal unit is followed by its flat raster, which has none. Wait for those bytes. */
+                size_t need = candidate + UNIT_PARSER_VIDEO_HEADER_BYTES + 64;
+                if (parser->video_bytes < need) return;          // keep the candidate; decide when they arrive
+                bool padded = true;
+                for (size_t i = candidate + UNIT_PARSER_VIDEO_HEADER_BYTES; i < need && padded; i += 2)
+                    padded = parser->video[i] == 0x80 && parser->video[i + 1] == 0x10;
+                if (padded){ plausible = true; confirmed = false; }
+            }
             stale = !plausible && candidate >= UNIT_PARSER_VIDEO_UNIT_BYTES;
         }
         parser->video_candidate_valid = false;

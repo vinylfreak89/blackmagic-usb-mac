@@ -25,6 +25,7 @@ typedef struct {
     int video_seen[65536], audio_seen[65536], video_kind[65536];
     uint64_t any_ext[65536]; uint32_t any_flags[65536]; int any_seen[65536];   /* every unit with a counter, short ones too */
     uint64_t long_ext[65536]; int long_confirmed[65536];                         /* units longer than whole */
+    int eligible_count[65536];                                                   /* whole units offered as picture */
 } seen;
 
 static void on_video(void *context, const unit_video_observation *unit)
@@ -38,6 +39,7 @@ static void on_video(void *context, const unit_video_observation *unit)
         s->any_flags[unit->counter16] = unit->transport_flags;
         s->any_seen[unit->counter16] = 1;
     }
+    if (unit->fixed_raster_eligible) s->eligible_count[unit->counter16]++;
     if (unit->transport != UNIT_TRANSPORT_COMPLETE) return;
     s->video_kind[unit->counter16] = unit->kind;
     s->video_ext[unit->counter16] = unit->counter_extended;
@@ -300,6 +302,24 @@ int main(void)
     unit_parser_finish(parser); free(parser);
     CHECK(s->long_confirmed[202] && s->long_ext[202] == 202, "picture into no signal: 202 confirmed %d ext %llu", s->long_confirmed[202], U(s->long_ext[202]));
     CHECK(s->video_seen[204] && s->video_ext[204] == 204 && s->video_ext[206] == 206, "picture after a short no-signal unit: 204 seen %d ext %llu", s->video_seen[204], U(s->video_ext[204]));
+
+    /* 12: what the audio must not vouch for (review, 2026-11-15). A unit sent twice: the first copy, ended by its own
+     * header again, is not a formed unit (one picture per counter). A stale picture header carrying the current counter
+     * inside a short no-signal unit: no padding rows follow it, so it does not cut the no-signal unit. */
+    parser = open_parser(s);
+    for (uint16_t c = 300; c <= 301; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+    feed_audio_unit(parser, 302); feed_video_unit(parser, unit, 302); feed_video_unit(parser, unit, 302);
+    for (uint16_t c = 303; c <= 304; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+    feed_audio_unit(parser, 305);
+    { static uint8_t ns[UNIT]; memset(ns, 0, 8); ns[2] = ns[3] = 0xff; ns[4] = (uint8_t)7000; ns[5] = (uint8_t)(7000 >> 8); ns[6] = 0x00; ns[7] = 0x08;
+      for (size_t i = 8; i < UNIT; i += 2){ ns[i] = 188; ns[i + 1] = 12; }
+      size_t at = 300000; ns[at] = ns[at + 1] = 0; ns[at + 2] = ns[at + 3] = 0xff; ns[at + 4] = (uint8_t)305; ns[at + 5] = (uint8_t)(305 >> 8); ns[at + 6] = 0x01; ns[at + 7] = 0xe8;
+      feed(parser, CC_EP_VIDEO, ns, UNIT, &video_seq); }
+    for (uint16_t c = 306; c <= 308; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+    unit_parser_finish(parser); free(parser);
+    CHECK(s->eligible_count[302] == 1, "unit sent twice: offered %d times", s->eligible_count[302]);
+    CHECK(s->eligible_count[305] == 0 && !s->any_seen[305], "stale header in a no-signal unit offered as picture (%d)", s->eligible_count[305]);
+    CHECK(s->video_seen[306] && s->video_ext[306] == 306, "picture after the no-signal unit: 306 ext %llu", U(s->video_ext[306]));
 
     /* 10: a new epoch starts the numbering afresh, whatever the audio stream stood at */
     parser = open_parser(s);
