@@ -24,11 +24,15 @@ typedef struct {
     uint32_t audio_flags[65536];
     int video_seen[65536], audio_seen[65536], video_kind[65536];
     uint64_t any_ext[65536]; uint32_t any_flags[65536]; int any_seen[65536];   /* every unit with a counter, short ones too */
+    uint64_t long_ext[65536]; int long_confirmed[65536];                         /* units longer than whole */
 } seen;
 
 static void on_video(void *context, const unit_video_observation *unit)
 {
     seen *s = context;
+    if (unit->transport == UNIT_TRANSPORT_UNFRAMED && unit->kind == UNIT_VIDEO_E801) {
+        s->long_ext[unit->counter16] = unit->counter_extended; s->long_confirmed[unit->counter16] = unit->counter_confirmed;
+    }
     if (unit->transport == UNIT_TRANSPORT_COMPLETE || unit->transport == UNIT_TRANSPORT_SHORT) {
         s->any_ext[unit->counter16] = unit->counter_extended;
         s->any_flags[unit->counter16] = unit->transport_flags;
@@ -83,6 +87,16 @@ static void feed_junk_with_false_marker(unit_parser *parser, uint8_t *unit, uint
         }
         feed(parser, CC_EP_VIDEO, unit, UNIT + 100, &video_seq);
     }
+}
+
+/* a unit of any length and format (the payload a picture-like pattern without markers) */
+static void feed_sized_unit(unit_parser *parser, uint16_t counter, uint16_t format, size_t len)
+{
+    static uint8_t buf[2 * UNIT];
+    memset(buf, 0, 8); buf[2] = buf[3] = 0xff; buf[4] = (uint8_t)counter; buf[5] = (uint8_t)(counter >> 8);
+    buf[6] = (uint8_t)format; buf[7] = (uint8_t)(format >> 8);
+    for (size_t i = 8; i + 1 < len; i += 2) { buf[i] = 128; buf[i + 1] = (uint8_t)(16 + i % 7); }
+    feed(parser, CC_EP_VIDEO, buf, len, &video_seq);
 }
 
 static void feed_video_unit(unit_parser *parser, uint8_t *unit, uint16_t counter)
@@ -273,6 +287,19 @@ int main(void)
     CHECK(s->any_seen[107] && (s->any_flags[107] & UNIT_FLAG_COUNTER_DISCONTINUITY) && !(s->any_flags[108] & UNIT_FLAG_COUNTER_DISCONTINUITY) &&
           !(s->any_flags[109] & UNIT_FLAG_COUNTER_DISCONTINUITY) && !(s->any_flags[101] & UNIT_FLAG_COUNTER_DISCONTINUITY),
           "gap flags: 101 0x%x, 107 0x%x (seen %d), 108 0x%x, 109 0x%x", s->any_flags[101], s->any_flags[107], s->any_seen[107], s->any_flags[108], s->any_flags[109]);
+
+    /* 11: a picture unit the Shuttle ran into a no-signal unit (its stall to its end, then a short 0x0800 unit with its own
+     * numbering), then picture again (measured 2026-11-15, 3:04 of one capture). The audio vouches for both picture
+     * markers: the long unit keeps its device counter, confirmed, and the picture after the short no-signal unit is not
+     * swallowed by it. */
+    parser = open_parser(s);
+    for (uint16_t c = 200; c <= 201; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+    feed_audio_unit(parser, 202); feed_sized_unit(parser, 202, 0xe801, UNIT + 40000);
+    feed_audio_unit(parser, 203); feed_sized_unit(parser, 7000, 0x0800, UNIT - 40000);
+    for (uint16_t c = 204; c <= 207; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+    unit_parser_finish(parser); free(parser);
+    CHECK(s->long_confirmed[202] && s->long_ext[202] == 202, "picture into no signal: 202 confirmed %d ext %llu", s->long_confirmed[202], U(s->long_ext[202]));
+    CHECK(s->video_seen[204] && s->video_ext[204] == 204 && s->video_ext[206] == 206, "picture after a short no-signal unit: 204 seen %d ext %llu", s->video_seen[204], U(s->video_ext[204]));
 
     /* 10: a new epoch starts the numbering afresh, whatever the audio stream stood at */
     parser = open_parser(s);
