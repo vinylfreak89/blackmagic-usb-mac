@@ -76,7 +76,9 @@ typedef struct {
     int repair_units;          // default 0; 1 puts back a 0xe801 unit the Shuttle sent at the wrong length (bytes deleted or
                                // inserted inside a line, or filler written over lines while it recovered sync: unit_repair.h)
                                // and publishes it as a whole unit (transport FP_TRANSPORT_REPAIRED; the log row says
-                               // Repaired). Only units the parser confirmed (counter_confirmed) are tried. A unit the evidence
+                               // Repaired). A run of two units whose middle marker a stall overwrote (confirmed by a
+                               // successor two on) is published as two (counters c and c + 1, two log rows with the run's
+                               // ordinal). Only units the parser confirmed (counter_confirmed) are tried. A unit the evidence
                                // does not settle keeps the old handling (show_partial, or not shown), counted in
                                // repair_declined. Registration off only: rebuilt rows are presentation, never geometry
                                // evidence (fs_open refuses it with registration on).
@@ -116,9 +118,10 @@ typedef struct {
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
     uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
     uint64_t partial_not_shown; // show_partial: units that were not whole and found no free slot (live only; offline waits)
-    uint64_t repaired_units;    // repair_units: units put back to a whole raster and published as one (counted in exact_units too)
+    uint64_t repaired_units;    // repair_units: units put back to a whole raster and published as one (counted in exact_units too;
+                                // a run of two units counts two)
     uint64_t repair_rows;       // repair_units: raster rows rebuilt in them (from the same field or the other field)
-    uint64_t repair_declined;   // repair_units: units of the wrong length the evidence did not settle (old handling)
+    uint64_t repair_declined;   // repair_units: units (or runs of two) of the wrong length the evidence did not settle (old handling)
     uint64_t backpressure_waits; // offline_backpressure: times the producer waited for the worker (frames kept, not shed)
     uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
     uint64_t unscheduled_events, unscheduled_packets[2], unscheduled_late; // capture core: USB slots never read (explicit HostLoss); late: found after their data went by

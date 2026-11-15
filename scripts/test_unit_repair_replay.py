@@ -6,8 +6,10 @@ samples of blanking at code 1-2 starting every picture line) with the device's m
   counter 6: filler packets and zeros over ~100 lines, the unit 33,600 bytes long
   counter 9: 224 bytes gone with no fill to say where (declined, shown as a partial unit instead)
   counter 12: a long run ended by a marker that does not follow it (unconfirmed: never repaired or published)
-Expected: 3 and 6 published with drop_reason Repaired; 9 ShortShown; 12 unpublished; one report line per attempt on
-stderr; the replay refuses FS_REPAIR with registration on. No captured media is required.
+  counters 16-17: a stall over 17's marker (one run two units long, ended by 18's marker), the Shuttle restarting its
+    raster in 17 with its padding
+Expected: 3, 6, 16 and 17 published with drop_reason Repaired; 9 ShortShown; 12 unpublished; one report line per unit
+attempted on stderr; the replay refuses FS_REPAIR with registration on. No captured media is required.
     test_unit_repair_replay.py path/to/frameserver_replay"""
 import csv, importlib.util, subprocess, sys, tempfile
 from pathlib import Path
@@ -34,7 +36,7 @@ def raster(counter, dark=False):
     return b''.join(rows)
 
 units = []
-for c in range(16):
+for c in range(20):
     u = header(c) + raster(c)
     if c == 3:
         p = HB + 220 * L + 950; u = u[:p] + bytes(524) + u[p + 748:]
@@ -46,10 +48,16 @@ for c in range(16):
     if c == 12:
         u = u + raster(c)[:20000]           # long, and the next marker (14) does not follow it
     if c == 13: continue                     # ... because 13 is absent
+    if c == 16:                              # 16's bytes to row 510, a stall, 17's from 1,982 bytes before its restart padding
+        b = bytearray(header(17) + raster(17)); b0 = HB + 85 * L - 1982; a_end = HB + 510 * L + 300
+        for k in list(range(85, 93)) + list(range(347, 356)): b[HB + k * L:HB + (k + 1) * L] = b'\x80\x10' * 720
+        tail = bytes(b[b0:]); stall = 2 * U + 33600 - a_end - len(tail)
+        u = u[:a_end] + bytes.fromhex('a0ad0008') * (57000 // 4) + bytes(stall - 57000) + tail
+    if c == 17: continue                     # its marker is under the stall
     units.append(u)
-video = b''.join(units) + header(16)[:8]
+video = b''.join(units) + header(20)[:8]
 audio = bytearray()
-for c in range(17):
+for c in range(21):
     audio += fx.resync(c) + b''.join(fx.pcm(c * 1601 + i) for i in range(1601))
 
 with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d:
@@ -71,18 +79,21 @@ with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d
     assert reason(3) == [("Repaired", "1")], (reason(3), r.stderr[-1500:])
     assert reason(6) == [('Repaired', '1')], reason(6)
     assert reason(9) == [('ShortShown', '0')], reason(9)
+    assert reason(16) == [('Repaired', '1')] and reason(17) == [('Repaired', '1')], (reason(16), reason(17), r.stderr[-1500:])
+    assert [x['counter_extended'] for x in by[16] + by[17]] == ['16', '17'], [x['counter_extended'] for x in by[16] + by[17]]
     # the unconfirmed run's row (after 11, before 14) is unpublished and takes no picture counter of its own
     i11 = next(i for i, x in enumerate(rows) if x['observed_counter'] == '11')
     run = rows[i11 + 1]
     assert run['published'] == '0' and run['drop_reason'] == 'Unframed' and run['counter_extended'] == '', run
     assert rows[i11 + 2]['observed_counter'] == '14' and rows[i11 + 2]['published'] == '1', rows[i11 + 2]
     assert not any(x['published'] == '1' and x['counter_extended'] in ('12', '13') for x in rows)
-    for c in (0, 1, 2, 4, 5, 7, 8, 10, 11): assert reason(c) == [('None', '1')], (c, reason(c))
+    for c in (0, 1, 2, 4, 5, 7, 8, 10, 11, 14, 15, 18): assert reason(c) == [('None', '1')], (c, reason(c))
     lines = [l for l in r.stderr.splitlines() if l.startswith('repair:')]
-    assert len(lines) == 3 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-fill' in lines[2], lines
-    assert 'units put back from the wrong length: 2' in r.stdout and 'declined: 1' in r.stdout, r.stdout
+    assert len(lines) == 5 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-fill' in lines[2], lines
+    assert ' ok:' in lines[3] and ' ok:' in lines[4] and 'counter 17 ' in lines[4], lines
+    assert 'units put back from the wrong length: 4' in r.stdout and 'declined: 1' in r.stdout, r.stdout
     # with registration on the frameserver refuses to repair: rebuilt rows are not geometry evidence
     env2 = dict(env); env2.pop('FS_REGISTRATION_OFF')
     r2 = subprocess.run([str(binary), str(cap), '--offline'], env=env2, capture_output=True, text=True, timeout=60)
     assert r2.returncode != 0 and 'only with registration off' in r2.stderr, (r2.returncode, r2.stderr[-500:])
-print('unit repair replay: PASS (2 repaired, 1 declined to the partial path, 1 unconfirmed run unpublished, refused with registration on)')
+print('unit repair replay: PASS (4 repaired, two of them from one run, 1 declined to the partial path, 1 unconfirmed run unpublished, refused with registration on)')

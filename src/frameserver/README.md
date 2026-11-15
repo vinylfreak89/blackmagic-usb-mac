@@ -24,26 +24,34 @@ works from that placement.
 
 `fs_config.repair_units` (tools: `FS_REPAIR=1`; the plain render turns it on) puts back a 0xe801
 unit whose length is wrong but whose transport is intact and whose counter the parser confirmed,
-from its byte order alone (`unit_repair.h` has the model). Everything the Shuttle writes itself
-is an exact pattern no tape picture produces (its padding, zeros, one repeated word, a dithered
-constant above blanking level); every other byte is decoded picture, one 1440-byte row per line
-period. With exactly one stretch of that junk, the bytes before it are in place and the bytes after
-it are the same raster displaced; the Shuttle's padding, which always starts on a row boundary of
-its own line grid, gives the displacement to the byte (8 bytes off the length error when a unit
-stops inside its last row). The lost bytes are the gap between the parts plus the lines under
-padding the Shuttle wrote away from its padding rows. Only those are rebuilt: from the same field
-across a gap of one or two lines, else from the other field, else (both fields lost at one height)
-from the previous whole unit when it agrees around the gap, else interpolated down the frame.
-Picture never places anything; it only checks the result (line starts on the tape's blanking, the
-displaced part's blanking edge within a sample of the picture beside it, no tear left), and a unit
-the bytes cannot place, or that fails a check, is declined (`repair_declined`) and keeps the old
-handling. The repaired unit is published as a whole one with transport `FP_TRANSPORT_REPAIRED`;
-its row says `drop_reason=Repaired`, and `on_repair` (`frameserver_replay`: one `repair:` line on
-stderr per attempt) reports the grid offset, lost bytes, rebuilt rows and the edge check.
-Registration off only (`fs_open` refuses it otherwise): rebuilt rows are presentation, never
-geometry evidence. The parser keeps a unit up to 64 lines longer than a whole one as one
-observation so the repair can see all of it; past a whole unit, a marker that does not follow ends
-the run unconfirmed (`counter_confirmed` false), as the old one-unit buffer did by filling.
+from its byte order alone (`unit_repair.h` has the model). Everything the Shuttle writes itself in
+a stall is an exact pattern no tape picture produces (its padding, zeros, one repeated word carrying
+a reserved code); its held-sample insert (one sample held over the length error) is the one pattern
+picture can share, so it is taken only from a unit too long with no stall, as the single held run at
+least that long. Every other byte is decoded picture, one 1440-byte row per line period. With
+exactly one stretch of junk, the bytes before it are in place and the bytes after it are the same
+raster displaced (junk running to the unit's end displaces nothing); the Shuttle's padding, which
+always starts on a row boundary of its own line grid, gives the displacement to the byte (a few
+bytes off the length error when a unit ends inside a row, -12 to +12 measured). The lost bytes are
+the gap between the parts plus the lines under padding the Shuttle wrote away from its padding
+rows. Only those are rebuilt: from the same field across a gap of one or two lines, else from the
+other field, else (both fields lost at one height) from the previous whole unit when it agrees
+around the gap, else interpolated down the frame. A stall that ran over the next unit's marker
+leaves one run two units long, its successor numbered two on: the parser keeps it whole and it is
+put back as two units (the first's stall runs to its end, the second is stalled from its top).
+Picture never places anything; it only checks the result (where the tape's lines start on blanking
+inside the window, the displaced rows must too, their blanking edge within a sample of the picture
+beside them; where picture reaches the window's edge, the displaced rows must move against the
+previous unit as the rows in place do, to a sample; no tear left), and a unit the bytes cannot
+place, or that fails a check, is declined (`repair_declined`) and keeps the old handling. The
+repaired unit is published as a whole one with transport `FP_TRANSPORT_REPAIRED`; its row says
+`drop_reason=Repaired`, and `on_repair` (`frameserver_replay`: one `repair:` line on stderr per
+unit attempted, which the plain render prints) reports the grid offset, lost bytes, rebuilt rows
+and the check. Registration off only (`fs_open` refuses it otherwise): rebuilt rows are
+presentation, never geometry evidence. The parser keeps a unit up to 64 lines longer than a whole
+one, or two units and that slack ended by a marker two on, as one observation so the repair can see
+all of it; at or past a whole unit, any other marker ends the run unconfirmed (`counter_confirmed`
+false).
 
 `show_partial` places a partial unit that holds both fields in the whole unit's aperture (the
 configured first lines), a missing line taken from the other field; it used to stretch field 1's
