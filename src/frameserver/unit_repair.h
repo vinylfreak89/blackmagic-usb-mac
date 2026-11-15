@@ -36,7 +36,7 @@
 // previous unit when it shows the same picture around the gap, else interpolated down the frame.
 // Picture is never used to place anything. It only checks the result: where this tape's lines start on blanking inside
 // the window, the displaced picture rows must too, and must sit on the blanking as the picture beside it does (to a
-// sample); where they do not (picture at the window's left edge), the displaced rows must show the same sideways
+// sample, nominally: one real picture read a 2-sample shift as one); where they do not (picture at the window's left edge), the displaced rows must show the same sideways
 // motion against the previous unit as the rows in place (to a sample, summed over 20+ rows); no tear may remain; and no
 // block of rows may sit 24+ samples sideways against the other field's lines (whole frame, vertical interval included).
 // A unit the bytes do not place (no junk, two stretches, padding that disagrees) or that fails a check is declined
@@ -45,12 +45,14 @@
 // left 824 / 1,982 bytes of data before it, then its next field block 262 rows on) marks lines never digitised; every
 // other block must sit exactly on the raster's padding rows (one landing rows off means the unit is short: declined).
 // A block starting at the junk's end is always the rest of the raster's own block and must end at its standard row.
-// Known limits (adversarial reviews 2026-11-15; fuzz of 30,000 units: no single fault published wrong, nor with padding-like picture injected at row edges, except an insert cut inside flat picture): a second length error in the same unit that
+// Known limits (adversarial reviews 2026-11-15; two rounds, fuzz of 30,000 units each: no single fault published wrong, nor with padding-like picture injected at row edges and units ending -12..+12 bytes off, except an insert cut inside flat picture): a second length error in the same unit that
 // leaves no device fill is invisible to the bytes, caught only when it tears 24+ samples, shifts the grid or moves the
 // picture against the previous unit or the other field (a fill-less 1-64 byte error hidden beside one fault: 361 of 3,195 published wrong; never seen in a capture); an insert inside flat picture is cut from the
-// start of the held stretch (identical bytes to within one code); a block cut by the unit's end, read as the only
-// grid, is wrong if padding-like picture before it and the unit ending early coincide. Declines that are conservative:
-// an insert sharing its window with another held stretch (the vertical interval: most field-1 inserts), a stall running
+// start of the held stretch (identical bytes to within one code). Declines that are conservative: a fault whose only
+// padding after it is the final block, cut by the unit's end (tears and inserts below row ~270): its start may read early
+// by padding-like picture while the unit ends early (2 of 74 real units end row 522 that way; a second review published
+// 2-sample shifts when it was read); an insert sharing its window with another held stretch (the vertical interval:
+// most field-1 inserts), a stall running
 // straight into restart padding (never measured), a tear from row 522 into the final padding (no padding after it
 // gives the grid), two stalls in one unit (the part between them has no whole-row position).
 #ifndef UNIT_REPAIR_H

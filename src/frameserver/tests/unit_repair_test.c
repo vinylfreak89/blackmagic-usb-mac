@@ -129,26 +129,29 @@ int main(void){
     make_unit(orig, 0, 0); n = 0; p = HB + 257 * L + 700;     // in the head-switch lines
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
     expect_ok("tear in head-switch row 257", NULL, 2, 257, 258, 12);
-    make_unit(orig, 0, 0); n = 0; p = HB + 519 * L + 700;
+    make_unit(orig, 0, 0); n = 0; p = HB + 519 * L + 700;     // field 2: only the final block, cut by the unit's end, follows
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
-    expect_ok("tear in head-switch row 519", NULL, 2, 519, 520, 12);
+    expect_status("tear in head-switch row 519", UR_GRID);
 
     /* 512 bytes of the device's dithered fill inserted (10:13.61): removed, the unit comes back exactly. */
-    make_unit(orig, 0, 0); n = 0; p = HB + 426 * L + 624;
+    make_unit(orig, 0, 0); n = 0; p = HB + 126 * L + 624;
     put(orig, p); dither(512); put(orig + p, U - p);
     { ur_result r = expect_ok("dithered fill inserted (+512 B)", NULL, 0, 0, 0, 0);
       CHECK(r.lost_bytes == 0, "insert: %ld bytes lost, want 0", r.lost_bytes); }
-    make_unit(orig, 0, 0); n = 0; p = HB + 518 * L + 600;
+    make_unit(orig, 0, 0); n = 0; p = HB + 257 * L + 600;
     put(orig, p); dither(512); put(orig + p, U - p);
-    expect_ok("dithered fill in head-switch row 518", NULL, 0, 0, 0, 0);
+    expect_ok("dithered fill in head-switch row 257", NULL, 0, 0, 0, 0);
+    make_unit(orig, 0, 0); n = 0; p = HB + 426 * L + 624;     // field 2: only the cut final block follows: not fixed
+    put(orig, p); dither(512); put(orig + p, U - p);
+    expect_status("dithered fill in field 2", UR_GRID);
     make_unit(orig, 0, 0); n = 0; p = HB + 200 * L;           // whole lines of zeros inserted: still exact
     put(orig, p); zeros(10 * L); put(orig + p, U - p);
     expect_ok("whole lines of zeros inserted", NULL, 0, 0, 0, 0);
 
     /* Filler packets then zeros over lines while sync recovers (20:43): unit 23 1/3 lines long. */
-    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;
+    make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600;
     put(orig, p); fill_word(filler1, 113920); zeros(36580); put(orig + q, U - q);
-    { ur_result r = expect_ok("filler mid-unit (+33,600 B)", NULL, 85, 234, 316, 12);
+    { ur_result r = expect_ok("filler mid-unit (+33,600 B)", NULL, 85, 60, 142, 12);
       CHECK(r.lost_bytes == (long)(q - p), "filler: %ld bytes lost, want %zu", r.lost_bytes, q - p); }
 
     /* The Shuttle restarting its raster (25:25): filler from row 0, its padding over the lines at field-1 rows 85-92 and
@@ -174,27 +177,30 @@ int main(void){
       CHECK(r.rebuilt_previous == 0, "restart: a previous unit of another scene was used (%u rows)", r.rebuilt_previous); }
 
     /* Review 2026-11-15, each a case the first byte model got wrong or declined. */
-    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;   // picture sample = padding before the restart padding
-    orig[HB + 315 * L + 1436] = 0x80; orig[HB + 315 * L + 1437] = 0x10; orig[HB + 315 * L + 1438] = 0x80; orig[HB + 315 * L + 1439] = 0x10;
+    make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600;   // picture sample = padding before the restart padding
+    orig[HB + 141 * L + 1436] = 0x80; orig[HB + 141 * L + 1437] = 0x10; orig[HB + 141 * L + 1438] = 0x80; orig[HB + 141 * L + 1439] = 0x10;
     put(orig, p); fill_word(filler1, 113920); zeros(36580); put(orig + q, U - q);
-    for (int k = 316; k <= 323; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
-    { ur_result r = expect_ok("padding-like sample before restart padding", NULL, 95, 234, 323, 12);
+    for (int k = 142; k <= 149; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+    { ur_result r = expect_ok("padding-like sample before restart padding", NULL, 95, 60, 149, 12);
       CHECK(r.grid_offset == 0, "padding-like sample: grid %+d, want 0", r.grid_offset); }
     make_unit(orig, 0, 0); n = 0; p = HB + 100 * L + 624;      // unit about a row short of the raster end: a row off, declined
     put(orig, p); dither(512); put(orig + p, U - p - 1400);
     { ur_result r; ur_status st = ur_repair(odd, n, NULL, out, &r);
       CHECK(st != UR_OK, "unit a row short accepted (grid %+d)", r.grid_offset); printf("  %-36s declined: %s\n", "unit about a row short", ur_status_name(st)); }
-    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;   // dark picture (Y16-17) ending the row before padding
-    for (int c = 700; c < 720; c++){ orig[HB + 315 * L + 2 * c] = 0x84; orig[HB + 315 * L + 2 * c + 1] = 0x11; }
+    make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600;   // dark picture (Y16-17) ending the row before padding
+    for (int c = 700; c < 720; c++){ orig[HB + 141 * L + 2 * c] = 0x84; orig[HB + 141 * L + 2 * c + 1] = 0x11; }
     put(orig, p); fill_word(filler1, 113920); zeros(36580); put(orig + q, U - q);
-    for (int k = 316; k <= 323; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
-    expect_ok("dark row end before restart padding", NULL, 95, 234, 323, 12);
+    for (int k = 142; k <= 149; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+    expect_ok("dark row end before restart padding", NULL, 95, 60, 149, 12);
     make_unit(orig, 0, 0); n = 0; p = HB + 264 * L + 200;      // a stall inside the padding rows
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
-    expect_ok("tear inside padding rows", NULL, 2, 264, 265, 12);
-    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 2 + 36580 - 33600;   // fill, half a word, zeros: one stall
+    expect_status("tear inside padding rows 261-269", UR_GRID);   // only the cut final block follows
+    make_unit(orig, 0, 0); n = 0; p = HB + 2 * L + 200;        // ... inside the top padding: the 261 block fixes the grid
+    put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
+    expect_ok("tear inside padding rows 0-6", NULL, 2, 2, 3, 12);
+    make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 2 + 36580 - 33600;   // fill, half a word, zeros: one stall
     put(orig, p); fill_word(filler1, 113920); fill_word(filler1, 2); zeros(36580); put(orig + q, U - q);
-    expect_ok("fill, half a word, zeros", NULL, 85, 234, 316, 12);
+    expect_ok("fill, half a word, zeros", NULL, 85, 60, 142, 12);
 
     make_unit(orig, 0, 0); n = 0; p = HB + 300 * L + 624;      // junk in field 2, unit a row short: the end block lands a row off
     put(orig, p); dither(512); put(orig + p, U - p - 1440);
@@ -203,7 +209,7 @@ int main(void){
     make_unit(orig, 0, 0); n = 0; p = HB + 426 * L + 624;      // a picture sample at Y16 right before padding is not junk
     orig[HB + 522 * L + 1437] = 16; orig[HB + 522 * L + 1439] = 16;
     put(orig, p); dither(512); put(orig + p, U - p);
-    expect_ok("Y16 sample before the end padding", NULL, 0, 0, 0, 0);
+    expect_status("Y16 sample before the end padding", UR_GRID);   // field 2: the cut final block alone, read early
 
     make_unit(orig, 0, 0); n = 0; q = HB + 150 * L;             // a stall running into the restart padding (no fragment between)
     put(orig, HB + 60 * L + 20); fill_word(filler1, 113920); zeros(q + 33600 - n + 8);
@@ -242,7 +248,7 @@ int main(void){
     }
     make_unit(orig, 0, 0); n = 0; p = HB + 260 * L + 1000;       // ... and not short: repaired
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
-    expect_ok("tear into the 261 padding", NULL, 2, 260, 261, 12);
+    expect_status("tear into the 261 padding", UR_GRID);   // only the cut final block after it
 
     /* Second capture, 2026-11-15. Each case declined (or would have been misread) by the first model. */
     for (int end = -8; end <= 12; end += 4){                       // the unit ending a few bytes either side of the frame's end
@@ -251,12 +257,12 @@ int main(void){
         ur_result r = expect_ok(name, orig, 110, 0, 524, 12);
         CHECK(r.grid_offset == -end, "%s: grid %+d, want %+d", name, r.grid_offset, -end);
     }
-    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;   // flat neutral lines are picture
+    make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600;   // flat neutral lines are picture
     flat_row(orig, 259, 10); flat_row(orig, 521, 12); flat_row(orig, 400, 90);
     put(orig, p); fill_word(filler1, 113920); zeros(36580); put(orig + q, U - q);
-    expect_ok("stall with flat neutral lines", NULL, 85, 234, 316, 12);
+    expect_ok("stall with flat neutral lines", NULL, 85, 60, 142, 12);
     make_unit(orig, 0, 0); flat_run(orig, 259, 10, 280); flat_run(orig, 521, 12, 276);   // ... and beside an insert (as measured)
-    n = 0; p = HB + 394 * L + 993;                              // odd byte phase, held sample C135/136 Y129
+    n = 0; p = HB + 150 * L + 993;                              // odd byte phase, held sample C135/136 Y129
     put(orig, p); held(512, 135, 129); put(orig + p, U - p);
     { ur_result r = expect_ok("held sample at odd phase (+512 B)", NULL, 0, 0, 0, 0); CHECK(r.lost_bytes == 0, "held: lost %ld", r.lost_bytes); }
     make_unit(orig, 0, 0); for (int k = 150; k < 152; k++) flat_row(orig, k, 60);   // a flat line as long, between the same padding blocks: which?
@@ -293,14 +299,14 @@ int main(void){
      * only the restart padding gives the phase. A hidden 8-byte deletion just after it moves nearly every displaced
      * row 4 samples; only the picture against the previous unit can show it. */
     for (int hidden = 0; hidden < 2; hidden++){
-        make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;
+        make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600;
         put(orig, p); fill_word(filler1, 113920); zeros(36580);
-        size_t at = HB + 330 * L + 700;
+        size_t at = HB + 280 * L + 700;
         if (!hidden) put(orig + q, U - q);
         else { put(orig + q, at - q); put(orig + at + 8, U - at - 8); put(orig + HB + 100 * L, 8); }
-        for (int k = 316; k <= 323; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+        for (int k = 142; k <= 149; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
         for (int k = 523; k <= 524; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; memcpy(w, orig + HB + 400 * L, L); }   // no end padding
-        if (!hidden) expect_ok("restart mid-field, no end padding", orig, 95, 234, 524, 12);
+        if (!hidden) expect_ok("restart mid-field, no end padding", orig, 95, 60, 524, 12);
         else { ur_result r; ur_status st = ur_repair(odd, n, orig, out, &r);
                CHECK(st == UR_CHECK, "hidden deletion after a restart: %s (check %+d)", ur_status_name(st), r.edge_check);
                printf("  %-36s declined: %s (%+d half-samples)\n", "hidden 8 bytes after a restart", ur_status_name(st), r.edge_check); }
@@ -354,9 +360,9 @@ int main(void){
       if (st == UR_OK) compare(&differ, &first, &last, &worst); else differ = 0;
       CHECK(st != UR_OK || differ == 0, "blanking-level insert beside a flat line published with %d rows changed", differ);
       printf("  %-36s %s\n", "blanking-level insert, flat line", st == UR_OK ? "ok, placed exactly" : ur_status_name(st)); }
-    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;   // a fill word without a reserved code
+    make_unit(orig, 0, 0); n = 0; p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600;   // a fill word without a reserved code
     put(orig, p); fill_word((const uint8_t[4]){0xa0, 0xad, 0x01, 0x08}, 113920); zeros(36580); put(orig + q, U - q);
-    { ur_result r = expect_ok("fill word with no reserved code", NULL, 85, 234, 316, 12);
+    { ur_result r = expect_ok("fill word with no reserved code", NULL, 85, 60, 142, 12);
       CHECK(r.lost_bytes == (long)(q - p), "unreserved fill: %ld bytes lost, want %zu", r.lost_bytes, q - p); }
     make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;       // another unit's header among the picture bytes
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);

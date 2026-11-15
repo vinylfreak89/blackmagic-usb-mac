@@ -329,17 +329,17 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
          * the run reads early, late, or both. Its true length is whole rows, so a run e bytes over whole rows has its
          * true start somewhere in [start, start + e]. Every grid in that range on whole UYVY pairs (4 bytes) within the
          * slack of the length error is a candidate: one fixes the grid, several leave it to another block (none:
-         * declined). A block continuing one the stall interrupted has only its end (late by up to the slack); a block
-         * cut by the unit's end has only its start, read only when the run is whole rows or a few bytes short of them
-         * (the unit ended early: padding-like picture only lengthens a run; a few bytes long cannot be told from a unit
-         * ending late). */
-        long cand[2 * GRID_SLACK + 2]; int nc = 0;
+         * declined). A block continuing one the stall interrupted has only its end (late by up to the slack). A block
+         * cut by the unit's end has only its start, which padding-like picture moves early (row 522 ends that way in 2
+         * of 74 real units) while a unit ending a few bytes early hides it: it never fixes the grid, and must agree
+         * exactly with the grid another block fixes (a hidden error before it disagrees). */
+        long cand[2 * GRID_SLACK + 2]; int nc = 0, cut = 0;
         int s_ok = sp[i].start != je, e_ok = sp[i].end != n;
         if (s_ok && e_ok){
             long e = len % L; if (e > 2 * GRID_SLACK){ st = UR_GRID; goto done; }
             for (long j = 0; j <= e; j++) cand[nc++] = sp[i].start + j;
         } else if (s_ok){
-            long rem = len % L; if (!rem || rem > GRID_SLACK) cand[nc++] = sp[i].start;
+            cut = 1; cand[nc++] = sp[i].start;                  // read at face value, and only to confirm
         } else if (e_ok){
             for (long j = 0; j <= GRID_SLACK; j++) cand[nc++] = sp[i].end - j - whole;   // its end (late by j), whole rows back
         }
@@ -355,7 +355,7 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
             amb_d[i][amb_n[i]] = d; amb_s[i][amb_n[i]] = cand[c]; amb_n[i]++;
             found = d; fstart = cand[c]; nf++;
         }
-        if (nf >= 2){ amb[i] = 1; continue; }
+        if (nf >= 2 || (cut && nf == 1)){ amb[i] = 1; continue; }   // a cut block must agree with a grid fixed elsewhere
         if (nf == 0 && nc){ st = UR_GRID; goto done; }           // on no grid the length error allows: not this model
         if (nf != 1) continue;                                   // no edge to read: says nothing
         if (have_phase && found != D){ st = UR_GRID; goto done; }

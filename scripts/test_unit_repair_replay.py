@@ -3,7 +3,7 @@
 and decision log. A synthetic capture of picture-like units (the Shuttle's padding rows, a dark vertical interval, ~20
 samples of blanking at code 1-2 starting every picture line) with the device's measured faults:
   counter 3: 748 bytes of a line deleted, 524 zeros in their place (a unit 224 bytes short)
-  counter 6: filler packets and zeros over ~100 lines, the unit 33,600 bytes long
+  counter 6: filler packets and zeros over ~80 lines of field 1, the unit 33,600 bytes long
   counter 9: 224 bytes gone with no fill to say where (declined, shown as a partial unit instead)
   counter 12: a long run ended by a marker that does not follow it (unconfirmed: never repaired or published)
   counters 16-17: a stall over 17's marker (one run two units long, ended by 18's marker), the Shuttle restarting its
@@ -43,7 +43,7 @@ for c in range(20):
     if c == 9:
         p = HB + 220 * L + 950; u = u[:p] + u[p + 224:]
     if c == 6:
-        p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600
+        p = HB + 60 * L + 20; q = p + 113920 + 36580 - 33600
         u = u[:p] + bytes.fromhex('af8c0008') * (113920 // 4) + bytes(36580) + u[q:]
     if c == 12:
         u = u + raster(c)[:20000]           # long, and the next marker (14) does not follow it
