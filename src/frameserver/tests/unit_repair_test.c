@@ -384,8 +384,10 @@ int main(void){
     make_unit(orig, 0, 0); n = 0; p = HB + 100 * L;           // noise over the rest: no fill, nothing to place
     put(orig, p); while (n < U + 33600) odd[n++] = (uint8_t)(1 + rnd() % 254);
     expect_status("noise after line 100", UR_NO_FILL);
-    make_unit(orig, 0, 0); n = 0; put(orig, U); zeros(65 * L + 100);
-    expect_status("longer than one unit", UR_DELTA_RANGE);
+    make_unit(orig, 0, 0); n = 0; put(orig, U); zeros(65 * L + 100);   // a whole unit then a stall to the run's end: itself
+    expect_ok("whole unit, then a long stall to the end", NULL, 0, 0, 0, 0);
+    make_unit(orig, 0, 0); n = 0; p = HB + 100 * L; put(orig, p); zeros(30000 + 70 * L); put(orig + p, U - p);   // too long, data after
+    expect_status("longer than the slack, data after the stall", UR_DELTA_RANGE);
     make_unit(orig, 0, 0); n = 0; put(orig, U);
     expect_status("whole unit", UR_NOT_A_UNIT);
     make_unit(orig, 0, 0); n = 0; put(orig, U - 224); odd[7] = 0x08; odd[6] = 0x00;

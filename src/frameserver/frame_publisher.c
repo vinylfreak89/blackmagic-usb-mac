@@ -119,8 +119,18 @@ int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, i
             }
         }
     } else {
-        for (unsigned r = 0; r < FP_FRAME_HEIGHT; r++)
-            memcpy(dst + (size_t)r * bpr, rows + (size_t)(r * n_lines / FP_FRAME_HEIGHT) * FP_LINE_BYTES, FP_LINE_BYTES);
+        /* One field (a unit framed at field rate, or one cut short): its rows in field 1's aperture, as a whole unit's
+         * field 1 is placed, each line shown twice, the line between two of its lines their average (a bob). Stretching
+         * its whole raster over 480 rows showed its padding and vertical interval as picture (2026-11-15). A line it
+         * lacks is black. */
+        for (int k = 0; k < FP_FIELD_LINES; k++){
+            int r = FP_FIELD1_START + d1 + k, v = r >= 0 && (unsigned)r < n_lines, vn = v && (unsigned)(r + 1) < n_lines && k + 1 < FP_FIELD_LINES;
+            uint8_t *o0 = dst + (size_t)(2 * k) * bpr, *o1 = dst + (size_t)(2 * k + 1) * bpr;
+            if (!v){ for (unsigned x = 0; x < FP_LINE_BYTES; x += 2){ o0[x] = o1[x] = 128; o0[x + 1] = o1[x + 1] = 16; } continue; }
+            const uint8_t *a = rows + (size_t)r * FP_LINE_BYTES, *b = vn ? a + FP_LINE_BYTES : a;
+            memcpy(o0, a, FP_LINE_BYTES);
+            for (unsigned x = 0; x < FP_LINE_BYTES; x++) o1[x] = (uint8_t)((a[x] + b[x] + 1) / 2);
+        }
     }
     IOSurfaceUnlock(s, 0, NULL);
     fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext, 0, 0, FP_TRANSPORT_SHORT, (uint8_t)(audio_pts_known != 0), audio_pts_num, 0 };

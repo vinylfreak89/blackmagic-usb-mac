@@ -106,6 +106,10 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
  * (counters c and c + 1). Each is put back on its own evidence: res[i].status says which (UR_OK returned only for both). */
 #define UR_SCRATCH_BYTES ((size_t)UNIT_PARSER_VIDEO_UNIT_BYTES + 64)
 ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *scratch, uint8_t *out, ur_result res[2]);
+/* Where the Shuttle's own writing (a stall's zeros or stale words, or the no-signal raster it writes after losing its input
+ * mid-unit: all carry a 00 byte, which picture never does) first begins, at the start of its row, or count if nowhere: a
+ * unit shown as it is (a partial unit) is shown only that far. */
+size_t ur_picture_bytes(const uint8_t *unit, size_t count);
 const char *ur_status_name(ur_status s);
 
 #ifdef __cplusplus

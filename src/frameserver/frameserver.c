@@ -332,6 +332,10 @@ static void on_video(void *ctx, const unit_video_observation *u_in){
              u->byte_count + UR_MAX_DELTA_BYTES >= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&
              u->byte_count <= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES + UR_MAX_DELTA_BYTES &&
              try_repair2(f, u, &it)) {}
+    /* Longer still: a unit whose stall ran on over the units after it to the next marker the parser confirmed it by. */
+    else if (f->cfg.repair_units && u->bytes && u->kind == UNIT_VIDEO_E801 && u->counter_confirmed &&
+             u->transport == UNIT_TRANSPORT_UNFRAMED && u->byte_count > UNIT_PARSER_VIDEO_UNIT_BYTES + UR_MAX_DELTA_BYTES &&
+             try_repair(f, u, &it)) {}
     /* A picture unit that is not whole (one short field per unit from a deck in search, or the PAL-family units of
      * an unlocked decoder) is kept for showing if asked. No-signal pseudo-frames, units with bytes missing and
      * stubs of a few lines are not picture. Offline, it waits for a free slot exactly as a whole unit does: whether
@@ -339,13 +343,16 @@ static void on_video(void *ctx, const unit_video_observation *u_in){
      * while ffmpeg was the slow consumer). Live, a device cannot wait: no slot free means it is not shown, counted. */
     else if (f->cfg.show_partial && u->bytes && u->transport != UNIT_TRANSPORT_HOLE && u->transport != UNIT_TRANSPORT_UNFRAMED &&
              (u->format & 0xff00u) == 0xe800u &&
-             u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES && u->byte_count >= UNIT_PARSER_VIDEO_HEADER_BYTES + 32u * FP_LINE_BYTES){
+             u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES &&
+             ur_picture_bytes(u->bytes, u->byte_count) >= UNIT_PARSER_VIDEO_HEADER_BYTES + 32u * FP_LINE_BYTES){
         if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
         int s = take_slot(f);
         if (s < 0) atomic_fetch_add(&f->partial_not_shown, 1);
         else {
             memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, u->byte_count);
-            it.slot = s; it.partial_lines = (unsigned)((u->byte_count - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
+            /* Only as far as the picture goes: past a stall the Shuttle's zeros and stale words are not picture. */
+            size_t shown = ur_picture_bytes(u->bytes, u->byte_count);
+            it.slot = s; it.partial_lines = (unsigned)((shown - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
             it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);   /* its time on the audio clock, for the consumer's timestamp */
         }
     }

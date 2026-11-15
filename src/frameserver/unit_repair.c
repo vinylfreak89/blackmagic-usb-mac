@@ -276,7 +276,7 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
     span sp[MAX_SPANS]; int m, junk = -1;
     if (!unit || !out || count < H || unit[0] || unit[1] || unit[2] != 0xff || unit[3] != 0xff ||
         unit[6] != 0x01 || unit[7] != 0xe8 || r.delta == 0){ st = UR_NOT_A_UNIT; goto done; }
-    if (r.delta > UR_MAX_DELTA_BYTES || r.delta < -UR_MAX_DELTA_BYTES){ st = UR_DELTA_RANGE; goto done; }
+    if (r.delta < -UR_MAX_DELTA_BYTES || n > (long)UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES){ st = UR_DELTA_RANGE; goto done; }
 
     /* 1. The device-written spans. Exactly one stretch of junk: everything before it is where it belongs; everything
      *    after it is the same raster displaced. No junk: nothing in the bytes says where the error is. */
@@ -304,6 +304,9 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
         }
     }
     if (junk < 0){ st = UR_NO_FILL; goto done; }
+    /* Longer than the slack only when the stall runs to the run's end (it wrote over the units after this one: nothing
+     * of theirs is here, and this one's bytes before it are in place). */
+    if (r.delta > UR_MAX_DELTA_BYTES && sp[junk].end != n){ st = UR_DELTA_RANGE; goto done; }
     if (marker_outside(unit, sp, m)){ st = UR_MARKER; goto done; }
     long js = sp[junk].start, je = sp[junk].end;
 
@@ -660,4 +663,13 @@ ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous,
 fail:
     res[0].status = res[1].status = st; res[0].delta = res[1].delta = d2;
     return st;
+}
+
+size_t ur_picture_bytes(const uint8_t *unit, size_t count){
+    /* Picture never carries a 00 byte (a reserved code: none in any capture); everything the Shuttle writes itself
+     * does (a stall's zeros, its stale words, the no-signal raster it writes after losing its input mid-unit). Shown
+     * only to the start of the row holding the first. */
+    if (!unit || count <= H) return count;
+    for (size_t i = H; i < count; i++) if (!unit[i]) return H + (i - H) / L * L;
+    return count;
 }
