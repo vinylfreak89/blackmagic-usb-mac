@@ -152,6 +152,13 @@ static int second_event(const uint8_t *unit, long delta, int a_end, const unsign
     }
     return 0;
 }
+/* Position down the woven frame: field-1 row r sits between field-2 rows r+262 and r+263 (frame_publisher interleave). */
+static int frame_line(int k){ return k < F2 ? 2 * k : 2 * (k - 263) + 1; }
+static int row_at(int y){
+    if (y < 0) return -1;
+    int k = y % 2 ? (y - 1) / 2 + 263 : y / 2;
+    return (y % 2 ? k >= F2 && k < UR_ROWS : k < F2) ? k : -1;
+}
 static unsigned luma_mad(const uint8_t *a, const uint8_t *b){
     unsigned s = 0;
     for (unsigned i = 1; i < L; i += 2) s += a[i] > b[i] ? a[i] - b[i] : b[i] - a[i];
@@ -162,7 +169,7 @@ static void blend(uint8_t *dst, const uint8_t *a, const uint8_t *b, unsigned wa,
     for (unsigned i = 0; i < L; i++) dst[i] = (uint8_t)((a[i] * wa + b[i] * wb + t / 2) / t);
 }
 
-ur_status ur_repair(const uint8_t *unit, size_t count, uint8_t *out, ur_result *res){
+ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *out, ur_result *res){
     ur_result r; memset(&r, 0, sizeof r);
     r.delta = (long)count - (long)U;
     ur_status st = UR_OK;
@@ -235,12 +242,16 @@ ur_status ur_repair(const uint8_t *unit, size_t count, uint8_t *out, ur_result *
         else memcpy(out + H + (size_t)k * L, unit + H + (long)k * L + r.delta, L);
     }
     uint8_t *rows = out + H;
+    /* Pass 1: a lost row with an intact line of its kind close by in its own field (a gap of one or two lines) is blended
+     * from those; otherwise from the other field's lines above and below. Rows with neither wait for pass 2. */
+    unsigned char have[UR_ROWS], wait[UR_ROWS];
+    memcpy(have, trusted, sizeof have); memset(wait, 0, sizeof wait);
     for (int k = 0; k < UR_ROWS; k++){
         if (trusted[k]) continue;
         uint8_t *dst = rows + (size_t)k * L;
         if (padding_row(k)){                   // the Shuttle's own constant fill, identical in every whole unit
             for (unsigned i = 0; i < L; i += 2){ dst[i] = 0x80; dst[i + 1] = 0x10; }
-            r.rebuilt_rows[k < F2 ? 0 : 1]++; continue;
+            r.rebuilt_rows[k < F2 ? 0 : 1]++; have[k] = 1; continue;
         }
         /* Sources are lines of the same kind (row_kind): picture from picture, a vertical-interval or head-switch line
          * from its own kind, so line 23 is never half the dark line above it. */
@@ -266,22 +277,47 @@ ur_status ur_repair(const uint8_t *unit, size_t count, uint8_t *out, ur_result *
             else if (t1 && t2) blend(dst, a1, a2, 1, 1);
             else memcpy(dst, t1 ? a1 : a2, L);
             r.rebuilt_other_field++;
-        } else if (u >= 0 && d >= 0){
-            blend(dst, rows + (size_t)u * L, rows + (size_t)d * L, (unsigned)(d - k), (unsigned)(k - u)); r.rebuilt_same_field++;
-        } else if (u >= 0 || d >= 0){
-            memcpy(dst, rows + (size_t)(u >= 0 ? u : d) * L, L); r.rebuilt_same_field++;
-        } else {
-            /* No line of its kind anywhere intact. A picture line then has no source; a vertical-interval or head-switch
-             * line (outside the picture, or at its very edge) takes the nearest intact line of its field. */
-            int any = -1;
-            for (int i = 1; ap == 2 ? 0 : (any < 0 && (k - i >= lo || k + i < hi)); i++){
-                if (k - i >= lo && trusted[k - i]) any = k - i;
-                else if (k + i < hi && trusted[k + i]) any = k + i;
-            }
-            if (any < 0){ st = UR_NO_SOURCE; goto done; }
-            memcpy(dst, rows + (size_t)any * L, L); r.rebuilt_same_field++;
+        } else { wait[k] = 1; continue; }
+        r.rebuilt_rows[k < F2 ? 0 : 1]++; have[k] = 1;
+    }
+    /* Pass 2: lost in both fields at the same height (25:25 of one capture: the Shuttle's padding blocks at field-1 rows
+     * 83-91 and field-2 rows 345-353). The same row of the previous whole unit, one frame earlier, when the caller has it:
+     * interpolating across that many frame lines smears the two source lines' texture into vertical streaks (seen in the
+     * first render of 25:25). Without it, interpolated down the woven frame between the nearest lines of its kind above
+     * and below, from either field, intact or rebuilt in pass 1; a line of another kind is used only outside the picture. */
+    /* The previous unit is used only if it shows the same picture where both can be seen: its intact rows within 8 lines
+     * of the waiting ones agree with this unit's (mean luma difference within 8 codes, about frame-to-frame tape noise).
+     * After a cut or under a pan it would publish a band of another picture (review 2026-11-15: MAD 84 after a cut). */
+    if (previous){
+        unsigned sum = 0, n = 0;
+        for (int k = 0; k < UR_ROWS; k++){
+            if (!trusted[k] || row_kind(k) != 2) continue;
+            int near = 0;
+            for (int j = k - 8; j <= k + 8 && !near; j++) near = j >= 0 && j < UR_ROWS && wait[j] && (j < F2) == (k < F2);
+            if (near){ sum += luma_mad(rows + (size_t)k * L, previous + H + (size_t)k * L); n++; }
         }
-        r.rebuilt_rows[k < F2 ? 0 : 1]++;
+        if (n < 4 || sum > 8 * n) previous = NULL;
+    }
+    for (int k = 0; k < UR_ROWS; k++){
+        if (!wait[k]) continue;
+        uint8_t *dst = rows + (size_t)k * L;
+        if (previous){
+            memcpy(dst, previous + H + (size_t)k * L, L);
+            r.rebuilt_previous++; r.rebuilt_rows[k < F2 ? 0 : 1]++; continue;
+        }
+        int ap = row_kind(k), y = frame_line(k), up = -1, dn = -1, yu = 0, yd = 0;
+        for (int pass = 0; pass < 2 && (up < 0 || dn < 0); pass++){
+            if (pass == 1 && ap == 2) break;                              // picture never borrows another kind
+            for (int dy = 1; dy < 2 * UR_ROWS && (up < 0 || dn < 0); dy++){
+                int ru = row_at(y - dy), rd = row_at(y + dy);
+                if (up < 0 && ru >= 0 && have[ru] && (pass || row_kind(ru) == ap)){ up = ru; yu = y - dy; }
+                if (dn < 0 && rd >= 0 && have[rd] && (pass || row_kind(rd) == ap)){ dn = rd; yd = y + dy; }
+            }
+        }
+        if (up >= 0 && dn >= 0) blend(dst, rows + (size_t)up * L, rows + (size_t)dn * L, (unsigned)(yd - y), (unsigned)(y - yu));
+        else if (up >= 0 || dn >= 0) memcpy(dst, rows + (size_t)(up >= 0 ? up : dn) * L, L);
+        else { st = UR_NO_SOURCE; goto done; }
+        r.rebuilt_same_field++; r.rebuilt_rows[k < F2 ? 0 : 1]++;
     }
 done:
     r.status = st;

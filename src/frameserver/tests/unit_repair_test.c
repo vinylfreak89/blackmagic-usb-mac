@@ -66,7 +66,7 @@ static void compare(int *differ, int *first, int *last, double *worst){
     }
 }
 static void expect_ok(const char *name, int max_rows, int lo, int hi, double max_mad){
-    ur_result r; ur_status s = ur_repair(odd, n, out, &r);
+    ur_result r; ur_status s = ur_repair(odd, n, NULL, out, &r);
     CHECK(s == UR_OK, "%s: status %s (a %u b %u agree %d/%d disagree %d/%d)", name, ur_status_name(s), r.prefix_rows, r.suffix_row,
           r.prefix_agree, r.suffix_agree, r.prefix_disagree, r.suffix_disagree);
     if (s != UR_OK) return;
@@ -78,7 +78,7 @@ static void expect_ok(const char *name, int max_rows, int lo, int hi, double max
            r.prefix_rows, r.suffix_row, r.rebuilt_rows[0], r.rebuilt_rows[1], r.rebuilt_same_field, r.rebuilt_other_field, d, f, l, w);
 }
 static void expect_status(const char *name, ur_status want){
-    ur_result r; ur_status s = ur_repair(odd, n, out, &r);
+    ur_result r; ur_status s = ur_repair(odd, n, NULL, out, &r);
     CHECK(s == want, "%s: status %s, want %s (a %u b %u agree %d/%d)", name, ur_status_name(s), ur_status_name(want), r.prefix_rows, r.suffix_row,
           r.prefix_agree, r.suffix_agree);
     printf("  %-34s declined: %s\n", name, ur_status_name(s));
@@ -121,6 +121,26 @@ int main(void){
     for (int k = 345; k <= 353; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33584; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
     expect_ok("filler at start + misplaced padding", 100, 0, 353, 12);
 
+    /* Lost in both fields at the same height (25:25: field 1 from the top to row 91, the Shuttle's padding over field-2
+     * rows 345-353). With the previous unit those rows come from it; without, interpolated down the frame. */
+    make_unit(orig, 0, 0); n = 0; q = HB + 92 * L;
+    put(orig, HB + 480); fill_word(filler2, (size_t)(79.47 * L) - 480); zeros(q + 33584 - n); put(orig + q, U - q);
+    for (int k = 345; k <= 353; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33584; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+    { ur_result r; ur_status st = ur_repair(odd, n, orig, out, &r); int d, f, l; double w;
+      CHECK(st == UR_OK && r.rebuilt_previous >= 17, "both fields lost, with the previous unit: %s, %u rows from it", ur_status_name(st), r.rebuilt_previous);
+      if (st == UR_OK){ compare(&d, &f, &l, &w);
+          int exact = 1; for (int k = 83; k <= 90; k++) exact &= !memcmp(out + HB + (size_t)k * L, orig + HB + (size_t)k * L, L);
+          for (int k = 345; k <= 353; k++) exact &= !memcmp(out + HB + (size_t)k * L, orig + HB + (size_t)k * L, L);
+          CHECK(exact && w <= 12, "both fields lost: rows from the previous unit not exact, or worst MAD %.2f", w);
+          printf("  %-34s ok: %u rows from the previous unit, worst MAD %.2f\n", "both fields lost (previous)", r.rebuilt_previous, w); } }
+    expect_ok("both fields lost (no previous)", 110, 0, 353, 12);
+    { static uint8_t other[U]; memcpy(other, orig, U);          // the previous unit is another scene (a cut): not used
+      for (int k = 0; k < ROWS; k++) if (!pad_row(k)) for (int i = 1; i < L; i += 2) other[HB + (size_t)k * L + i] = (uint8_t)(235 - other[HB + (size_t)k * L + i] / 2);
+      ur_result r; ur_status st = ur_repair(odd, n, other, out, &r); int d, f, l; double w = 0;
+      if (st == UR_OK) compare(&d, &f, &l, &w);
+      CHECK(st == UR_OK && r.rebuilt_previous == 0 && w <= 12, "both fields lost, previous unit another scene: %s, %u rows from it, worst MAD %.2f", ur_status_name(st), r.rebuilt_previous, w);
+      printf("  %-34s ok: previous unit not used (%u rows), worst MAD %.2f\n", "both fields lost (cut before)", r.rebuilt_previous, w); }
+
     /* A top-of-field flag (picture to the window edge on lines 24-29) is real picture: kept as it came. */
     make_unit(orig, 0, 1); n = 0; p = HB + 220 * L + 950;
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
@@ -152,7 +172,7 @@ int main(void){
     make_unit(orig, 0, 0); n = 0;                         // two length errors: rows between them are displaced by half
     put(orig, HB + 100 * L + 500); put(orig + HB + 100 * L + 724, 200 * L - 224); put(orig + HB + 300 * L + 724, U - (HB + 300 * L + 724));
     CHECK(n == U - 448, "two-event length %zu", n);
-    { ur_result r; ur_status st = ur_repair(odd, n, out, &r);
+    { ur_result r; ur_status st = ur_repair(odd, n, NULL, out, &r);
       /* Declined, or put back with nothing displaced published: every rebuilt row has intact other-field sources here. */
       if (st == UR_OK){ int d, f, l; double w; compare(&d, &f, &l, &w);
           CHECK(w <= 12, "two length errors: accepted with a displaced row published (worst MAD %.2f, rows %d..%d)", w, f, l);
@@ -164,13 +184,13 @@ int main(void){
     for (int k = 150; k <= 200; k++) for (int c = 590; c <= 640; c++) orig[HB + (size_t)k * L + 2 * c + 1] = 2;
     n = 0; put(orig, HB + 150 * L + 500); put(orig + HB + 150 * L + 724, 50 * L - 224); put(orig + HB + 200 * L + 724, U - (HB + 200 * L + 724));
     CHECK(n == U - 448, "crushed two-event length %zu", n);
-    { ur_result r; ur_status st = ur_repair(odd, n, out, &r); int d = 0, f = 0, l = 0; double w = 0;
+    { ur_result r; ur_status st = ur_repair(odd, n, NULL, out, &r); int d = 0, f = 0, l = 0; double w = 0;
       if (st == UR_OK) compare(&d, &f, &l, &w);
       CHECK(st != UR_OK || w <= 12, "two errors under crushed black: accepted with displaced rows (MAD %.2f, rows %d..%d)", w, f, l);
       printf("  %-34s %s\n", "two errors under crushed black", st == UR_OK ? "ok, nothing displaced" : ur_status_name(st)); }
     make_unit(orig, 0, 0); n = 0;                         // ...and with the second error further on, too much is between them
     put(orig, HB + 100 * L + 500); put(orig + HB + 100 * L + 724, 300 * L - 224); put(orig + HB + 400 * L + 724, U - (HB + 400 * L + 724));
-    { ur_result r; ur_status st = ur_repair(odd, n, out, &r); int d = 0, f = 0, l = 0; double w = 0;
+    { ur_result r; ur_status st = ur_repair(odd, n, NULL, out, &r); int d = 0, f = 0, l = 0; double w = 0;
       if (st == UR_OK) compare(&d, &f, &l, &w);
       CHECK(st != UR_OK || w <= 12, "two length errors 300 rows apart: accepted with a displaced row (MAD %.2f)", w);
       printf("  %-34s %s\n", "two errors 300 rows apart", st == UR_OK ? "ok, nothing displaced" : ur_status_name(st)); }
@@ -185,7 +205,7 @@ int main(void){
 
     make_unit(orig, 0, 0); n = 0; p = HB + 100 * L;
     put(orig, p); while (n < U + 33600) odd[n++] = (uint8_t)rnd();
-    { ur_result r; ur_status st = ur_repair(odd, n, out, &r);
+    { ur_result r; ur_status st = ur_repair(odd, n, NULL, out, &r);
       CHECK(st == UR_TOO_MUCH_LOST || st == UR_NO_EVIDENCE, "noise after line 100: status %s", ur_status_name(st));
       printf("  %-34s declined: %s\n", "noise after line 100", ur_status_name(st)); }
 

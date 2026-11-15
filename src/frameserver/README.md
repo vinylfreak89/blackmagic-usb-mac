@@ -32,7 +32,9 @@ takes one frame of the audio clock. The repaired unit is published as a whole on
 (`frameserver_replay`: one `repair:` line on stderr per attempt) reports each attempt's split and
 rebuilt rows, put back or declined. Rebuilt rows come from the same field across a gap of one or two
 lines, otherwise from the other field's lines of the same kind (picture, vertical interval, head
-switch); padding is regenerated. Rows that read as picture at both offsets (picture crushed to
+switch); padding is regenerated. Rows lost in both fields at the same height come from the previous
+whole unit when it is the one just before and agrees with this unit around them (the frameserver
+keeps a copy of the last whole unit while repair is on), otherwise interpolated down the frame. Rows that read as picture at both offsets (picture crushed to
 blanking level) count for neither part and are rebuilt next to the damage; picture displaced by a
 third amount (two length errors) declines. A declined unit is counted in `repair_declined` and keeps
 the old handling. Registration off only (`fs_open` refuses it otherwise): rebuilt rows are
