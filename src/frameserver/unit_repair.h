@@ -30,7 +30,9 @@
 //     must be settled by another block, else declined.
 //   - With exactly one stretch of junk: the bytes before it are in place; the bytes after it are the same raster at
 //     the displacement; the lost bytes are the gap between, plus the lines under padding the Shuttle wrote away from
-//     its padding rows (it did not digitise those lines). Junk running to the unit's end displaces nothing.
+//     its padding rows (it did not digitise those lines). Junk running to the unit's end displaces nothing. With
+//     several stalls the bytes between the first and the last have no whole-row position: that whole stretch is lost
+//     (never placed) and its rows rebuilt, within the rebuild limit.
 // Only the lost bytes are rebuilt (a whole row, or the lost stretch of one): from the same field across a gap of one or
 // two lines, otherwise from the other field's lines above and below; where both fields lost the same height, from the
 // previous unit when it shows the same picture around the gap, else interpolated down the frame.
@@ -55,7 +57,8 @@
 // adversarial tears; none in realistic fuzz). It can also settle an ambiguous 261 block the wrong way. Declines that are conservative:
 // an insert sharing its window with another held stretch (the vertical interval: most field-1 inserts), a stall running
 // straight into restart padding (never measured), a tear from row 522 into the final padding (no padding after it
-// gives the grid), two stalls in one unit (the part between them has no whole-row position).
+// gives the grid), stalls so far apart that more than UR_MAX_REBUILT_ROWS rows would be rebuilt, and a run of two units
+// with stalls before the second unit's place in both (either could have taken its marker).
 #ifndef UNIT_REPAIR_H
 #define UNIT_REPAIR_H
 #include <stddef.h>
@@ -100,7 +103,7 @@ typedef struct {
 // Allocation-free; a few milliseconds (M3, -O2), most of it the tear check.
 ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *out, ur_result *result);
 /* A stall that ran over the next unit's marker: count about two units. scratch: UR_SCRATCH_BYTES; out: two units
- * (counters c and c + 1). Both or neither are put back; res[i] for each. */
+ * (counters c and c + 1). Each is put back on its own evidence: res[i].status says which (UR_OK returned only for both). */
 #define UR_SCRATCH_BYTES ((size_t)UNIT_PARSER_VIDEO_UNIT_BYTES + 64)
 ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *scratch, uint8_t *out, ur_result res[2]);
 const char *ur_status_name(ur_status s);

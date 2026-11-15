@@ -117,8 +117,9 @@ static int segment(const uint8_t *a, long n, span *s){
 }
 
 /* Segments [H,count) and finds its stall: junk stretches less than 16 bytes apart are one stall (a fill word ending in
- * half a word before its zeros). Returns the span count with *junk the stall's index (-1: none), or -1 when there are
- * two stalls or too many spans. */
+ * half a word before its zeros). With several stalls everything from the first to the last is one lost stretch: the
+ * part between them has no whole-row position, so it is never placed (its rows are rebuilt). Returns the span count
+ * with *junk the stall's index (-1: none), or -1 when there are too many spans. */
 static int stall_spans(const uint8_t *a, long n, span *sp, int *junk){
     int m = segment(a, n, sp); *junk = -1;
     if (m < 0) return -1;
@@ -128,9 +129,11 @@ static int stall_spans(const uint8_t *a, long n, span *sp, int *junk){
             memmove(sp + i + 1, sp + i + 3, sizeof(span) * (size_t)(m - i - 3)); m -= 2; i--;
         }
     }
-    for (int i = 0; i < m; i++) if (sp[i].kind == S_JUNK){
-        if (*junk >= 0) return -1;
-        *junk = i;
+    int last = -1;
+    for (int i = 0; i < m; i++) if (sp[i].kind == S_JUNK){ if (*junk < 0) *junk = i; last = i; }
+    if (last > *junk){                                   // several stalls: one lost stretch from the first to the last
+        sp[*junk].end = sp[last].end;
+        memmove(sp + *junk + 1, sp + last + 1, sizeof(span) * (size_t)(m - last - 1)); m -= last - *junk;
     }
     if (*junk >= 0){                                     // the stall's fill words, whatever they hold, belong to it
         int j = *junk;
@@ -617,30 +620,37 @@ done:
  * the stall are the first unit's, in place; the bytes after it end at the second unit's end. Each is then the single-unit
  * case: the first a unit whose stall runs to its end, the second a unit stalled from its top, its grid from the
  * Shuttle's restart padding. Placement does not depend on how the two are laid out in the scratch raster: the second
- * unit's displaced part ends at its end, give or take the padding's phase. */
+ * unit's displaced part ends at its end, give or take the padding's phase. The stall over the marker must be the only
+ * one starting before the second unit's place in the run (another before it could have taken the marker); each unit is
+ * then put back on its own evidence: res[i].status says which, and the result is UR_OK only when both are. */
 ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *scratch, uint8_t *out, ur_result res[2]){
     long n = (long)count, d2 = n - 2L * U;
-    span sp[MAX_SPANS]; int junk, m;
+    span sp[MAX_SPANS]; int m;
     ur_status st = UR_OK;
     memset(res, 0, 2 * sizeof *res);
     if (!unit || !out || !scratch || n < 2L * H || unit[0] || unit[1] || unit[2] != 0xff || unit[3] != 0xff || unit[6] != 0x01 || unit[7] != 0xe8){ st = UR_NOT_A_UNIT; goto fail; }
     if (d2 > UR_MAX_DELTA_BYTES || d2 < -UR_MAX_DELTA_BYTES){ st = UR_DELTA_RANGE; goto fail; }
-    if ((m = stall_spans(unit, n, sp, &junk)) < 0){ st = UR_SECOND_EVENT; goto fail; }
-    if (junk < 0){ st = UR_NO_FILL; goto fail; }
-    long js = sp[junk].start, je = sp[junk].end, tail = n - je;
-    if (js > (long)U){ st = UR_GRID; goto fail; }                       // the second unit's marker would be in place: not this
+    if ((m = segment(unit, n, sp)) < 0){ st = UR_SECOND_EVENT; goto fail; }
+    int k = -1, early = 0;
+    for (int i = 0; i < m; i++) if (sp[i].kind == S_JUNK && sp[i].start <= (long)U){ early++; k = i; }
+    if (k < 0){ st = UR_NO_FILL; goto fail; }
+    if (early > 1){ st = UR_SECOND_EVENT; goto fail; }
+    /* The stall's own pieces (a fill word, half a word, zeros) less than 16 bytes apart are one. */
+    while (k + 2 < m && sp[k + 1].kind == S_DATA && sp[k + 2].kind == S_JUNK && sp[k + 1].end - sp[k + 1].start < ZERO_MIN){ sp[k].end = sp[k + 2].end; memmove(sp + k + 1, sp + k + 3, sizeof(span) * (size_t)(m - k - 3)); m -= 2; }
+    long js = sp[k].start, je = sp[k].end;
+    if (k > 0 && sp[k - 1].kind == S_DATA){ long b = word_back(unit, sp[k - 1].start, js); js -= b; }
+    if (k + 1 < m && sp[k + 1].kind == S_DATA) je += word_fwd(unit, je, sp[k + 1].end);
+    long tail = n - je;
     if (tail + H + ZERO_MIN > (long)U){ st = UR_GRID; goto fail; }        // more after the stall than one unit holds
     memcpy(scratch, unit, (size_t)js); memset(scratch + js, 0, (size_t)(U + ZERO_MIN - js));
-    if ((st = ur_repair(scratch, U + ZERO_MIN, previous, out, &res[0])) != UR_OK){ res[1].status = st; goto out; }
+    ur_status sa = ur_repair(scratch, U + ZERO_MIN, previous, out, &res[0]);
     long z = U + ZERO_MIN - H - tail;
     memcpy(scratch, unit, H); uint16_t c = (uint16_t)(unit[4] | unit[5] << 8); c++;
     scratch[4] = (uint8_t)c; scratch[5] = (uint8_t)(c >> 8);
     memset(scratch + H, 0, (size_t)z); memcpy(scratch + H + z, unit + je, (size_t)tail);
-    st = ur_repair(scratch, U + ZERO_MIN, out, out + U, &res[1]);
-    if (st != UR_OK) res[0].status = st;
-out:
+    ur_status sb = ur_repair(scratch, U + ZERO_MIN, sa == UR_OK ? out : NULL, out + U, &res[1]);
     res[0].delta = res[1].delta = d2;
-    return st;
+    return sa != UR_OK ? sa : sb;
 fail:
     res[0].status = res[1].status = st; res[0].delta = res[1].delta = d2;
     return st;

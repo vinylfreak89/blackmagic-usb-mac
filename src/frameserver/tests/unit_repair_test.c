@@ -329,11 +329,17 @@ int main(void){
             CHECK(r[1].rebuilt_previous > 0, "double: rows lost in both fields not from the first unit");
             printf("  %-36s ok: rows differing %d / %d, second grid %+d, lost %ld + %ld\n", "stall over the next marker", da, db, r[1].grid_offset, r[0].lost_bytes, r[1].lost_bytes);
         }
-        size_t keep = n;                                         // with a second stall in the second unit: declined
+        size_t keep = n;                                         // a second stall in the second unit: the first still goes out
         for (size_t i = t + 200 * L; i < t + 200 * L + 600; i++) odd[i] = 0;
         st = ur_repair2(odd, keep, orig, scratch, out, r);
-        CHECK(st == UR_SECOND_EVENT, "double with a second stall: %s", ur_status_name(st));
-        printf("  %-36s declined: %s\n", "double with a second stall", ur_status_name(st));
+        int bad = 0; for (int k = 0; k < 510; k++) bad += memcmp(out + HB + (size_t)k * L, orig + HB + (size_t)k * L, L) != 0;
+        CHECK(st != UR_OK && r[0].status == UR_OK && !bad && r[1].status != UR_OK, "double with a second stall: %s / %s, %d first-unit rows changed",
+              ur_status_name(r[0].status), ur_status_name(r[1].status), bad);
+        printf("  %-36s first ok, second %s\n", "double with a second stall", ur_status_name(r[1].status));
+        for (size_t i = HB + 300 * L; i < HB + 300 * L + 600; i++) odd[i] = 0;   // and one in the first, before the marker stall
+        st = ur_repair2(odd, keep, orig, scratch, out, r);
+        CHECK(r[1].status != UR_OK, "double, stalls in both: second %s", ur_status_name(r[1].status));
+        printf("  %-36s first %s, second %s\n", "double, a stall in each", ur_status_name(r[0].status), ur_status_name(r[1].status));
     }
 
     /* Review 2026-11-15 (second round), each published wrong or crashed before its fix. */
@@ -370,7 +376,7 @@ int main(void){
     make_unit(orig, 0, 0); n = 0;                             // two stalls
     put(orig, HB + 100 * L + 500); zeros(300); put(orig + HB + 100 * L + 1024, 200 * L - 524); zeros(300);
     put(orig + HB + 300 * L + 1024, U - (HB + 300 * L + 1024));
-    expect_status("two stretches of fill", UR_SECOND_EVENT);
+    expect_ok("two stretches of fill", NULL, 210, 100, 301, 12);   // all between them lost and rebuilt: nothing placed there
     make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;     // padding after the junk off the displaced grid
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
     for (size_t i = HB + 300 * L + 100; i < HB + 301 * L + 100; i += 2){ odd[i] = 0x80; odd[i + 1] = 0x10; }
