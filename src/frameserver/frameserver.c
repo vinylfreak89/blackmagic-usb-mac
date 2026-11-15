@@ -106,6 +106,7 @@ struct frameserver {
     _Atomic uint64_t partial_not_shown;    // show_partial: a picture unit that was not whole found no free slot (live only: offline waits)
     _Atomic uint64_t repaired, repair_rows, repair_declined;   // repair_units (delivery thread writes, fs_get_stats reads)
     uint8_t *repair_buf;                   // repair_units: delivery thread's scratch raster; a slot is taken only for a repair that succeeded
+    uint8_t *repair_prev; int repair_prev_valid; uint64_t repair_prev_epoch, repair_prev_counter;   // repair_units: the last whole unit (delivery thread)
     pthread_mutex_t bp_m; pthread_cond_t bp_c;                      // statically initialised in fs_open
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
@@ -219,7 +220,11 @@ static void push_tail_gap(frameserver *f){
  * raster first, so a unit that would be declined never takes a slot or becomes a PoolFull row. */
 static int try_repair(frameserver *f, const unit_video_observation *u, fs_item *it){
     ur_result r;
-    ur_status rs = ur_repair(u->bytes, u->byte_count, f->repair_buf, &r);
+    /* The previous unit only if it is the one just before: same epoch, the counter one less, and no counter break (a
+     * repeated or backward raw counter is extended by one, so the arithmetic alone could match across a break). */
+    const uint8_t *prev = f->repair_prev_valid && f->repair_prev_epoch == u->epoch && f->repair_prev_counter + 1 == u->counter_extended &&
+                          !(u->transport_flags & UNIT_FLAG_COUNTER_DISCONTINUITY) ? f->repair_prev : NULL;
+    ur_status rs = ur_repair(u->bytes, u->byte_count, prev, f->repair_buf, &r);
     if (f->cfg.on_repair) f->cfg.on_repair(f->cfg.repair_ctx, u, &r);
     if (rs != UR_OK){ atomic_fetch_add(&f->repair_declined, 1); return 0; }
     it->eligible = 1; it->repaired = 1; it->repaired_from = u->transport;
@@ -228,6 +233,8 @@ static int try_repair(frameserver *f, const unit_video_observation *u, fs_item *
     it->obs.transport = UNIT_TRANSPORT_COMPLETE; it->obs.byte_count = UNIT_PARSER_VIDEO_UNIT_BYTES;
     it->obs.payload_bytes = UNIT_PARSER_VIDEO_PAYLOAD_BYTES; it->obs.fixed_raster_eligible = true;
     it->audio_evidence_known = ap_lookup_correlation(f->aud, u->epoch, u->counter_extended, &it->audio_evidence);
+    memcpy(f->repair_prev, f->repair_buf, UNIT_PARSER_VIDEO_UNIT_BYTES);   // the next unit's previous
+    f->repair_prev_valid = 1; f->repair_prev_epoch = u->epoch; f->repair_prev_counter = u->counter_extended;
     if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
     int s = take_slot(f);
     if (s < 0){ it->drop = FS_DROP_POOL_FULL; fs_test_pool_drop(); return 1; }
@@ -243,6 +250,10 @@ static void on_video(void *ctx, const unit_video_observation *u){
     if(u->fixed_raster_eligible)
         it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
+        if (f->cfg.repair_units && u->counter_confirmed){   /* kept as the previous unit for a repair (unit_repair.h) */
+            memcpy(f->repair_prev, u->bytes, UNIT_PARSER_VIDEO_UNIT_BYTES);
+            f->repair_prev_valid = 1; f->repair_prev_epoch = u->epoch; f->repair_prev_counter = u->counter_extended;
+        }
         it.eligible=1;
         atomic_fetch_add(&f->eligible_ingress, 1);
         if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
@@ -855,8 +866,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
     f->slot_used = calloc(f->n_slots, sizeof(_Atomic int));
     f->parser = aligned_alloc(unit_parser_alignment(), unit_parser_size());
     f->sig = aligned_alloc(signal_state_alignment(), signal_state_size());
-    if (cfg->repair_units) f->repair_buf = malloc(UNIT_PARSER_VIDEO_UNIT_BYTES);
-    if (!f->pool || !f->slot_used || !f->parser || !f->sig || (cfg->repair_units && !f->repair_buf)){ fs_close(f); return -1; }
+    if (cfg->repair_units){ f->repair_buf = malloc(UNIT_PARSER_VIDEO_UNIT_BYTES); f->repair_prev = malloc(UNIT_PARSER_VIDEO_UNIT_BYTES); }
+    if (!f->pool || !f->slot_used || !f->parser || !f->sig || (cfg->repair_units && (!f->repair_buf || !f->repair_prev))){ fs_close(f); return -1; }
     unit_parser_callbacks pcb = { on_video, on_audio, f };
     unit_parser_init(f->parser, NULL, &pcb);
     signal_state_init(f->sig, cfg->signal_config);
@@ -1088,5 +1099,5 @@ void fs_close(frameserver *f){
     free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
     free(f->retime_unit);free(f->retime_previous);free(f->retime_work);
     fs_pairing_free(&f->pairing);
-    free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->repair_buf); free(f);
+    free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->repair_buf); free(f->repair_prev); free(f);
 }

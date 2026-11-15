@@ -52,18 +52,21 @@ typedef struct {
     unsigned prefix_rows;       // rows [0,prefix_rows) are taken in place (less rows that are fill: rebuilt)
     unsigned suffix_row;        // rows [suffix_row,525) are read delta bytes later (less rows that are fill)
     unsigned rebuilt_rows[2];   // rebuilt rows of field 1 (rows 0..261) and field 2 (rows 262..524)
-    unsigned rebuilt_same_field, rebuilt_other_field;
+    unsigned rebuilt_same_field, rebuilt_other_field, rebuilt_previous;   // by source: own field, other field, previous unit
+    int phase_shift;            // samples the displaced part was moved to sit on the tape's blanking like the rest (0: none)
     int prefix_agree, prefix_disagree;   // picture/padding rows that confirm / contradict the in-place reading
     int suffix_agree, suffix_disagree;   // the same for the displaced reading
 } ur_result;
 
-// unit: the unit as it arrived (header + rows), count bytes. out: 756,048 bytes, holding the put-back unit when UR_OK is
+// unit: the unit as it arrived (header + rows), count bytes. previous: the whole unit just before it (counter - 1), or NULL:
+// rows lost in both fields at the same height are taken from it (otherwise interpolated down the frame).
+// out: 756,048 bytes, holding the put-back unit when UR_OK is
 // returned (header copied, rows in place / displaced / rebuilt); otherwise its contents are unspecified. Allocation-free;
 // about 3.5 ms (M3, -O2), most of it the second-error check.
 // Known limits (adversarial review 2026-11-15; never seen on real units, which have shown one error each): a second
 // length error whose sideways offset is under 24 samples, or that lies in picture of under 8 codes of contrast, AND whose
 // misread line starts land on picture crushed to blanking level, is not detected and those rows are published displaced.
-ur_status ur_repair(const uint8_t *unit, size_t count, uint8_t *out, ur_result *result);
+ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, uint8_t *out, ur_result *result);
 const char *ur_status_name(ur_status s);
 
 #ifdef __cplusplus
