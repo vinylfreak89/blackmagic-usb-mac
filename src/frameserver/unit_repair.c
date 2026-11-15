@@ -631,12 +631,15 @@ ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous,
     if (!unit || !out || !scratch || n < 2L * H || unit[0] || unit[1] || unit[2] != 0xff || unit[3] != 0xff || unit[6] != 0x01 || unit[7] != 0xe8){ st = UR_NOT_A_UNIT; goto fail; }
     if (d2 > UR_MAX_DELTA_BYTES || d2 < -UR_MAX_DELTA_BYTES){ st = UR_DELTA_RANGE; goto fail; }
     if ((m = segment(unit, n, sp)) < 0){ st = UR_SECOND_EVENT; goto fail; }
+    /* A stall's own pieces (a fill word, half a word, zeros) less than 16 bytes apart are one, before counting stalls. */
+    for (int i = 0; i + 2 < m; i++)
+        if (sp[i].kind == S_JUNK && sp[i + 1].kind == S_DATA && sp[i + 2].kind == S_JUNK && sp[i + 1].end - sp[i + 1].start < ZERO_MIN){
+            sp[i].end = sp[i + 2].end; memmove(sp + i + 1, sp + i + 3, sizeof(span) * (size_t)(m - i - 3)); m -= 2; i--;
+        }
     int k = -1, early = 0;
     for (int i = 0; i < m; i++) if (sp[i].kind == S_JUNK && sp[i].start <= (long)U){ early++; k = i; }
     if (k < 0){ st = UR_NO_FILL; goto fail; }
     if (early > 1){ st = UR_SECOND_EVENT; goto fail; }
-    /* The stall's own pieces (a fill word, half a word, zeros) less than 16 bytes apart are one. */
-    while (k + 2 < m && sp[k + 1].kind == S_DATA && sp[k + 2].kind == S_JUNK && sp[k + 1].end - sp[k + 1].start < ZERO_MIN){ sp[k].end = sp[k + 2].end; memmove(sp + k + 1, sp + k + 3, sizeof(span) * (size_t)(m - k - 3)); m -= 2; }
     long js = sp[k].start, je = sp[k].end;
     if (k > 0 && sp[k - 1].kind == S_DATA){ long b = word_back(unit, sp[k - 1].start, js); js -= b; }
     if (k + 1 < m && sp[k + 1].kind == S_DATA) je += word_fwd(unit, je, sp[k + 1].end);
