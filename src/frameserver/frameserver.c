@@ -269,17 +269,18 @@ static int try_repair2(frameserver *f, const unit_video_observation *u, fs_item 
         f->cfg.on_repair(f->cfg.repair_ctx, u, &r[0]); f->cfg.on_repair(f->cfg.repair_ctx, &second, &r[1]);
     }
     int a = r[0].status == UR_OK, b = r[1].status == UR_OK;
+    if (!a && !b){ atomic_fetch_add(&f->repair_declined, 2); return 0; }
     if (!a || !b) atomic_fetch_add(&f->repair_declined, 1);
-    if (!a && !b) return 0;
-    if (a && b){
-        fs_item first = *it;
-        publish_repaired(f, u, &first, f->repair_buf2, u->counter_extended, &r[0]);
-        push_item(f, &first);
+    fs_item first = *it;
+    if (a) publish_repaired(f, u, &first, f->repair_buf2, u->counter_extended, &r[0]);
+    push_item(f, &first);                                   // the first unit: put back, or its row as declined (old handling)
+    if (b){
         publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
-        it->second_of_run = 1;
         f->run_next_valid = 1; f->run_next_epoch = u->epoch; f->run_next_counter = u->counter_extended + 2;
-    } else if (a) publish_repaired(f, u, it, f->repair_buf2, u->counter_extended, &r[0]);
-    else publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
+    } else {                                                // the second unit's row as declined: a gap, at counter + 1
+        it->obs.counter_extended = u->counter_extended + 1; it->obs.counter16 = (uint16_t)(u->counter16 + 1);
+    }
+    it->second_of_run = 1;
     return 1;
 }
 static void on_video(void *ctx, const unit_video_observation *u_in){
