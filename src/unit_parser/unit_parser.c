@@ -172,7 +172,7 @@ static uint64_t device_position(const unit_parser *parser)
  *    the recording found its audio.
  * Any other unit keeps its kind, transport and 16-bit counter and is placed at the device counter's position. */
 static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
-                       bool has_marker, bool confirmed, uint32_t flags)
+                       bool has_marker, bool confirmed, uint32_t flags, bool stale)
 {
     if (!count)
         return;
@@ -203,7 +203,9 @@ static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
                    count < UNIT_PARSER_VIDEO_UNIT_BYTES) {
             out.transport = UNIT_TRANSPORT_SHORT;
         } else if (out.kind == UNIT_VIDEO_E801 &&
-                   count > UNIT_PARSER_VIDEO_UNIT_BYTES) {
+                   (count > UNIT_PARSER_VIDEO_UNIT_BYTES || stale)) {
+            /* A run its successor never confirmed is not a formed unit, even at a whole unit's length: its counter
+             * is not the device's, so it is never published as picture. */
             out.transport = UNIT_TRANSPORT_UNFRAMED;
         } else {
             out.transport = UNIT_TRANSPORT_COMPLETE;
@@ -225,9 +227,9 @@ static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
 static void accept_video_boundary(unit_parser *parser, size_t position)
 {
     if (parser->video_has_marker)
-        emit_video(parser, parser->video, position, true, true, parser->video_flags);
+        emit_video(parser, parser->video, position, true, true, parser->video_flags, false);
     else if (position)
-        emit_video(parser, parser->video, position, false, false, parser->video_flags);
+        emit_video(parser, parser->video, position, false, false, parser->video_flags, false);
 
     size_t retained = parser->video_bytes - position;
     memmove(parser->video, parser->video + position, retained);
@@ -242,7 +244,7 @@ static void accept_video_boundary(unit_parser *parser, size_t position)
 static void end_stale_run(unit_parser *parser, size_t position)
 {
     emit_video(parser, parser->video, position, true, false,
-               parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY);
+               parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY, true);
     size_t retained = parser->video_bytes - position;
     memmove(parser->video, parser->video + position, retained);
     parser->video_bytes = retained;
@@ -256,7 +258,7 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
     if (parser->video_bytes == sizeof(parser->video)) {
         emit_video(parser, parser->video, parser->video_bytes,
                    parser->video_has_marker, false,
-                   parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY);
+                   parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY, false);
         parser->video_bytes = 0;
         parser->video_has_marker = false;
         parser->video_candidate_valid = false;
@@ -268,7 +270,7 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
         size_t keep = parser->video_bytes < 7 ? parser->video_bytes : 7;
         size_t emit = parser->video_bytes - keep;
         if (emit)
-            emit_video(parser, parser->video, emit, false, false, parser->video_flags);
+            emit_video(parser, parser->video, emit, false, false, parser->video_flags, false);
         memmove(parser->video, parser->video + emit, keep);
         parser->video_bytes = keep;
         parser->video_flags = 0;
@@ -411,7 +413,7 @@ void unit_parser_begin_epoch(unit_parser *parser, uint64_t epoch)
 {
     if (parser->video_bytes)
         emit_video(parser, parser->video, parser->video_bytes,
-                   false, false, parser->video_flags);
+                   false, false, parser->video_flags, false);
     if (parser->audio_record_bytes && parser->callbacks.on_audio) {
         unit_audio_observation out;
         memset(&out, 0, sizeof(out));
@@ -508,7 +510,7 @@ void unit_parser_finish(unit_parser *parser)
         return;
     if (parser->video_bytes)
         emit_video(parser, parser->video, parser->video_bytes,
-                   false, false, parser->video_flags);
+                   false, false, parser->video_flags, false);
     if (parser->audio_record_bytes && parser->callbacks.on_audio) {
         unit_audio_observation out;
         memset(&out, 0, sizeof(out));

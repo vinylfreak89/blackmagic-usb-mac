@@ -66,7 +66,7 @@ int main(void){
     assert(obs[i + 1].c16 == 1002 && obs[i + 1].confirmed && obs[i + 1].ext == obs[i].ext + 2);
     i += 3;
     // Two on at one unit's distance is not two units: 1100 runs on and ends unconfirmed.
-    assert(obs[i].c16 == 1100 && !obs[i].confirmed);
+    assert(obs[i].c16 == 1100 && !obs[i].confirmed && obs[i].tr == UNIT_TRANSPORT_UNFRAMED);
     while (obs[i].c16 != 1200) i++;
     // Longer than two units and the slack: cut when the buffer fills, flagged, the rest emitted without a marker.
     assert(obs[i].c16 == 1200 && !obs[i].confirmed && obs[i].n == UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES + 32 && (obs[i].flags & UNIT_FLAG_COUNTER_DISCONTINUITY));
@@ -74,6 +74,8 @@ int main(void){
     assert(obs[i + 2].c16 == 1202 && obs[i + 2].confirmed);
     // A whole unit followed by a marker that is not its successor ends there (it was swallowed before).
     assert(obs[9].c16 == 901 && obs[9].n == U && !obs[9].confirmed && obs[10].c16 == 1000);
+    // ... and is not a formed unit: unframed, so it is never published under a counter the device did not confirm.
+    assert(obs[9].tr == UNIT_TRANSPORT_UNFRAMED);
     puts("long_unit_test: PASS");
     free(p); free(stream);
     return 0;
