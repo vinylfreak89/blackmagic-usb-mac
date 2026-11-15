@@ -85,6 +85,9 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #endif
 #ifdef SHUTTLE_TEST_HOOKS
 int shuttle_test_usb_backend = -1;   /* the last start's cc_config.usb_backend (tests: the setting reaches capture_core's config) */
+int shuttle_test_open_rc;            /* a refused live start returns this (0: -1) */
+int shuttle_test_close_during_open;  /* the next refused live start sees a close notice before it returns */
+int shuttle_test_close_watch = 1;    /* tests have no Shuttle on USB: whether arming the close watch succeeds */
 #endif
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
@@ -100,6 +103,11 @@ enum { ACT_PLAY, ACT_PAUSE, ACT_RESTART, ACT_STOP, ACT_SEEK, ACT_RECONNECT };
 #define RECONNECT_TRIES 30          /* after the Shuttle drops off USB: one start attempt per arrival, then one a second */
 #ifndef RECONNECT_INTERVAL_NS
 #define RECONNECT_INTERVAL_NS 1000000000ull
+#endif
+/* Held open by another process: the next attempt is made when that process closes it (its close notice); this
+ * timer is only a liveness ceiling in case a notice never comes */
+#ifndef RECONNECT_BUSY_BACKSTOP_NS
+#define RECONNECT_BUSY_BACKSTOP_NS 10000000000ull
 #endif
 typedef struct {
     obs_source_t *source;
@@ -156,9 +164,14 @@ typedef struct {
     pthread_t ctl_thr, probe_thr; int ctl_running, probe_running;
     /* Reconnect after the device drops off USB (reason DEVICE_GONE): wanted until a start succeeds, the user stops
      * or restarts, or RECONNECT_TRIES attempts fail. An IOKit arrival notification triggers an attempt at once;
-     * failed attempts (another app briefly holding the device) retry once a second. */
+     * failed attempts retry once a second. An attempt refused because another process holds the device open
+     * (2026-11-15 03:54: Chrome opened the just re-enumerated Shuttle before us) is retried when that process
+     * closes it: before every attempt the Shuttle on USB gets a close watch (IOKit general interest, which delivers
+     * kIOMessageServiceWasClosed), and busy_wait is set first, so a close during the attempt is not missed. */
     _Atomic int reconnect_wanted; unsigned reconnect_tries; uint64_t reconnect_due_ns; _Atomic uint64_t gone_ns; _Atomic int arrival_reset;   /* due_ns: ctl_m; tries: s->m */
     IONotificationPortRef usb_port; io_iterator_t usb_iter; dispatch_queue_t usb_q;
+    io_object_t close_note; io_service_t close_svc;   /* the close watch (usb_q only) */
+    _Atomic int busy_wait; int busy_logged;           /* a close notice posts an attempt / the busy wait was logged (s->m) */
     /* System sleep (2026-10-26: the Mac hung on the dark wake after the lid closed with a live session streaming, and
      * reset without a panic). A live session is stopped before the Mac sleeps and restarted after it wakes, through the
      * reconnect path; nothing is captured with the lid shut. asleep: from WillSleep to the wake; while set a reconnect
@@ -575,6 +588,8 @@ static void tpc_attach(shuttle_src *s){
 }
 static void shuttle_stop(shuttle_src *s);
 static int shuttle_start(shuttle_src *s, obs_data_t *settings);
+static int close_watch_arm(shuttle_src *s);
+static void shuttle_device_closed(shuttle_src *s);
 static int display_on(void);                                                  /* system sleep and wake: defined with them below */
 static void user_wake_locked(shuttle_src *s, int disp, const char *why);
 
@@ -634,9 +649,15 @@ static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /
             if (atomic_load(&s->reconnect_wanted)){
                 if (atomic_exchange(&s->arrival_reset, 0)) s->reconnect_tries = 0;
                 shuttle_stop(s);
+                /* watch for a close before trying: a holder letting go during the attempt then still posts the next */
+                int watched = close_watch_arm(s);
+                atomic_store(&s->busy_wait, watched);
                 int rc = shuttle_start(s, settings);
+                int busy = rc == CC_ERR_BUSY && watched;
+                if (!busy) atomic_store(&s->busy_wait, 0);
                 if (rc > 0){}   /* the Mac went to sleep meanwhile: held, the wake tries again (not an attempt) */
                 else if (rc == 0){
+                    s->busy_logged = 0;
                     atomic_store(&s->reconnect_wanted, 0);
                     if (atomic_exchange(&s->wake_resume, 0))
                         blog(LOG_INFO, "[shuttle-source] resumed the Shuttle %.1f s after the Mac woke (attempt %u)",
@@ -644,12 +665,22 @@ static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /
                     else blog(LOG_INFO, "[shuttle-source] reconnected to the Shuttle %.1f s after it disconnected (attempt %u)",
                          (os_gettime_ns() - atomic_load(&s->gone_ns)) / 1e9, s->reconnect_tries + 1);
                     s->reconnect_tries = 0;
-                } else if (++s->reconnect_tries == RECONNECT_TRIES){
-                    /* stop retrying on a timer, but keep listening: the next arrival of the device still reconnects */
-                    blog(LOG_ERROR, "[shuttle-source] could not reconnect to the Shuttle after %d attempts (another app holding it, or not plugged in): "
-                         "waiting for it to be plugged in again; or restart the source", RECONNECT_TRIES);
-                } else if (s->reconnect_tries < RECONNECT_TRIES){
-                    pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = os_gettime_ns() + RECONNECT_INTERVAL_NS; pthread_mutex_unlock(&s->ctl_m);
+                } else {
+                    if (busy && !s->busy_logged){
+                        s->busy_logged = 1;
+                        blog(LOG_WARNING, "[shuttle-source] another process holds the Shuttle open (the system log names it: "
+                             "\"already opened for exclusive access by pid ...\"): reconnecting when it lets go");
+                    }
+                    if (++s->reconnect_tries == RECONNECT_TRIES){
+                        /* stop retrying on a timer, but keep listening: the next arrival of the device, or the holder's
+                         * close (busy_wait stays set), still reconnects */
+                        blog(LOG_ERROR, "[shuttle-source] could not reconnect to the Shuttle after %d attempts (another app holding it, or not plugged in): "
+                             "waiting for it to be plugged in again; or restart the source", RECONNECT_TRIES);
+                    } else if (s->reconnect_tries < RECONNECT_TRIES){
+                        pthread_mutex_lock(&s->ctl_m);
+                        s->reconnect_due_ns = os_gettime_ns() + (busy ? RECONNECT_BUSY_BACKSTOP_NS : RECONNECT_INTERVAL_NS);
+                        pthread_mutex_unlock(&s->ctl_m);
+                    }
                 }
                 if (!s->fs) atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
             }
@@ -658,7 +689,8 @@ static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /
         /* The user takes over: cancel reconnecting AFTER the stop, since a session ending in a disconnect reports it
          * from inside shuttle_stop and would otherwise re-arm reconnecting against the user's stop. */
         /* a user action with the display on ends a missed wake; then it acts on its own (the wake's resume is dropped) */
-        if (act == ACT_RESTART || act == ACT_STOP){ user_wake_locked(s, user_disp, act == ACT_RESTART ? "restart pressed" : "stop pressed"); s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0); }
+        if (act == ACT_RESTART || act == ACT_STOP){ user_wake_locked(s, user_disp, act == ACT_RESTART ? "restart pressed" : "stop pressed"); s->sleep_stopped = 0; atomic_store(&s->wake_resume, 0);
+            atomic_store(&s->busy_wait, 0); s->busy_logged = 0; }
         if (act == ACT_RESTART){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; if (shuttle_start(s, settings) < 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
         else if (act == ACT_STOP){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; }
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
@@ -997,10 +1029,17 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         blog(LOG_INFO, "[shuttle-source] the Mac is asleep: the Shuttle session starts when it wakes");
         return 1;   /* held, not failed */
     }
-    if (test_refuse || fs_open(&s->fs, &cfg) != 0){
-        blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL;
+    int orc = test_refuse ? -1 : fs_open(&s->fs, &cfg);
+#ifdef SHUTTLE_TEST_HOOKS
+    if (test_refuse){ orc = shuttle_test_open_rc ? shuttle_test_open_rc : -1;
+        if (shuttle_test_close_during_open){ shuttle_test_close_during_open = 0; shuttle_device_closed(s); } }   /* the holder lets go mid-attempt */
+#endif
+    if (orc != 0){
+        if (orc == CC_ERR_BUSY) blog(LOG_ERROR, "[shuttle-source] frameserver open failed: another process holds the Shuttle open");
+        else blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)");
+        s->fs = NULL;
         if (s->replaying) obs_source_media_ended(s->source);   /* nothing plays: OBS's controls show restart */
-        return -1;
+        return orc < 0 ? orc : -1;
     }
     /* attach before fs_start, so a session started for a recording logs its first unit */
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
@@ -1035,12 +1074,59 @@ static void usb_arrived(void *ctx, io_iterator_t it){
         media_post(s, ACT_RECONNECT, 0);
     }
 }
-static void usb_watch_start(shuttle_src *s){
+/* A process closed the Shuttle (kIOMessageServiceWasClosed, on usb_q; tests call it directly). While an attempt
+ * found it held open, this is the moment to try again: the attempt is posted at once. Any other close (our own
+ * session's, or one nobody is waiting on) does nothing. */
+static void shuttle_device_closed(shuttle_src *s){
+    if (!atomic_load(&s->reconnect_wanted) || !atomic_exchange(&s->busy_wait, 0)) return;
+    pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = 0; pthread_mutex_unlock(&s->ctl_m);
+    media_post(s, ACT_RECONNECT, 0);
+}
+static void close_watch_drop(shuttle_src *s){   /* usb_q, or after usb_q is quiet */
+    if (s->close_note){ IOObjectRelease(s->close_note); s->close_note = 0; }
+    if (s->close_svc){ IOObjectRelease(s->close_svc); s->close_svc = 0; }
+}
+/* IOKit general interest on the watched Shuttle, on usb_q. A terminated device is no longer watched (a new one
+ * arrives through usb_arrived). */
+static void usb_interest(void *ctx, io_service_t svc, natural_t type, void *arg){
+    (void)svc; (void)arg; shuttle_src *s = ctx;
+    if (type == kIOMessageServiceWasClosed) shuttle_device_closed(s);
+    else if (type == kIOMessageServiceIsTerminated) close_watch_drop(s);
+}
+static CFMutableDictionaryRef shuttle_matching(void){
     CFMutableDictionaryRef m = IOServiceMatching("IOUSBHostDevice");
-    if (!m) return;
+    if (!m) return NULL;
     int vid = 0x1EDB, pid = 0xBD3B;
     CFNumberRef v = CFNumberCreate(NULL, kCFNumberIntType, &vid), p = CFNumberCreate(NULL, kCFNumberIntType, &pid);
     CFDictionarySetValue(m, CFSTR("idVendor"), v); CFDictionarySetValue(m, CFSTR("idProduct"), p); CFRelease(v); CFRelease(p);
+    return m;
+}
+typedef struct { shuttle_src *s; int armed; } close_arm_job;
+static void close_watch_arm_q(void *x){
+    close_arm_job *j = x; shuttle_src *s = j->s;
+    CFMutableDictionaryRef m = shuttle_matching();
+    io_service_t svc = m ? IOServiceGetMatchingService(kIOMainPortDefault, m) : 0;   /* consumes m */
+    if (!svc){ close_watch_drop(s); return; }
+    if (s->close_svc && IOObjectIsEqualTo(svc, s->close_svc)){ IOObjectRelease(svc); j->armed = 1; return; }   /* already watched */
+    close_watch_drop(s);
+    if (IOServiceAddInterestNotification(s->usb_port, svc, kIOGeneralInterest, usb_interest, s, &s->close_note) == KERN_SUCCESS){
+        s->close_svc = svc; j->armed = 1;
+    } else { s->close_note = 0; IOObjectRelease(svc); }
+}
+/* Media thread, before a reconnect attempt: watch the Shuttle now on USB for closes. 1 when watched. */
+static int close_watch_arm(shuttle_src *s){
+#ifdef SHUTTLE_TEST_HOOKS
+    (void)s; return shuttle_test_close_watch;   /* no Shuttle on USB in tests: the notice is delivered by shuttle_device_closed */
+#else
+    if (!s->usb_q || !s->usb_port) return 0;
+    close_arm_job j = { s, 0 };
+    dispatch_sync_f(s->usb_q, &j, close_watch_arm_q);   /* the notification port and the watch belong to usb_q */
+    return j.armed;
+#endif
+}
+static void usb_watch_start(shuttle_src *s){
+    CFMutableDictionaryRef m = shuttle_matching();
+    if (!m) return;
     s->usb_q = dispatch_queue_create("shuttle-usb-arrival", DISPATCH_QUEUE_SERIAL);
     s->usb_port = IONotificationPortCreate(kIOMainPortDefault);
     if (!s->usb_q || !s->usb_port){ CFRelease(m); blog(LOG_WARNING, "[shuttle-source] no USB arrival notifications: a disconnected Shuttle is retried once a second instead"); return; }
@@ -1054,6 +1140,7 @@ static void usb_watch_noop(void *x){ (void)x; }
 static void usb_watch_stop(shuttle_src *s){
     if (s->usb_port) IONotificationPortSetDispatchQueue(s->usb_port, NULL);
     if (s->usb_q) dispatch_sync_f(s->usb_q, NULL, usb_watch_noop);   /* a callback already running finishes before s goes */
+    close_watch_drop(s);
     if (s->usb_iter){ IOObjectRelease(s->usb_iter); s->usb_iter = 0; }
     if (s->usb_port){ IONotificationPortDestroy(s->usb_port); s->usb_port = NULL; }
     if (s->usb_q){ dispatch_release(s->usb_q); s->usb_q = NULL; }
@@ -1181,6 +1268,7 @@ void shuttle_test_full_wake(void *d){ power_wake(d, "test"); }
 int shuttle_test_asleep(void *d){ return atomic_load(&((shuttle_src *)d)->asleep); }
 /* Tests: a disconnect as the capture core reports it, and the reconnect state. */
 void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
+void shuttle_test_device_closed(void *d){ shuttle_device_closed(d); }   /* a close notice, as usb_interest receives it */
 int shuttle_test_reconnect_wanted(void *d){ return atomic_load(&((shuttle_src *)d)->reconnect_wanted); }
 unsigned shuttle_test_reconnect_tries(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); unsigned t = s->reconnect_tries; pthread_mutex_unlock(&s->m); return t; }
 #endif

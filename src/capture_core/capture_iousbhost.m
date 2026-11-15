@@ -80,7 +80,8 @@
 static IHDev *D(ih_dev *d){ return (__bridge IHDev*)(void*)d; }
 static uint64_t ih_ms_(void){ return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000000; }
 static void ih_err(char *err, size_t n, const char *what, NSError *e){
-    if(err && n) snprintf(err,n,"%s: %s",what,e?e.localizedDescription.UTF8String:"failed");
+    if(err && n) snprintf(err,n,"%s: %s%s%s",what,e?e.localizedDescription.UTF8String:"failed",
+                          e.localizedFailureReason?" ":"",e.localizedFailureReason?e.localizedFailureReason.UTF8String:"");
 }
 static BOOL ih_off_(IHDev *d){ return atomic_load(&d->detached) || atomic_load(&d->quiesced) || d->discard; }
 /* dispatch_sync with a backstop: NO if q did not run b within s seconds (it still runs b later) */
@@ -293,7 +294,10 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
         atomic_store(&sd->gone,1);
         dispatch_async(sd->q,^{ ih_fatal_(sd,1,0,0,0); }); }];
     IOObjectRelease(ds);
-    if(!d->dev){ ih_err(err,errn,"open the Shuttle (IOUSBHostDevice)",e); return CC_ERR_USB; }
+    /* held open by another process: macOS answers kIOReturnExclusiveAccess (measured 2026-11-15 with
+     * experiments/usb_close_notice_probe.m; on 2026-11-15 03:54 Chrome had the just re-enumerated Shuttle open) */
+    if(!d->dev){ ih_err(err,errn,"open the Shuttle (IOUSBHostDevice)",e);
+        return e && (IOReturn)e.code==kIOReturnExclusiveAccess?CC_ERR_BUSY:CC_ERR_USB; }
     if(!d->dev.configurationDescriptor && ![d->dev configureWithValue:1 matchInterfaces:NO error:&e]){
         ih_err(err,errn,"configure",e); atomic_store(&d->quiesced,1); [d->dev destroy]; return CC_ERR_USB; }
     io_service_t is=0, c; io_iterator_t it;   /* interface 0: the device's IOUSBHostInterface child */

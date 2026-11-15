@@ -308,6 +308,14 @@ int main(void){ @autoreleasepool {
     reset_(); atomic_store(&ih_fake.absent,1); ih_dev *x=NULL; char err[100];
     CHECK(ih_open(&x,0,0,0,err,sizeof err)==CC_ERR_NODEVICE && !x,"absent device opened");
 
+    /* 11. another process holds it open: CC_ERR_BUSY (the caller waits for that process to close it), with the
+     *     kernel's reason in the text */
+    reset_(); atomic_store(&ih_fake.busy,1); x=NULL; char berr[200]="";
+    int brc=ih_open(&x,0,0,0,berr,sizeof berr);
+    CHECK(brc==CC_ERR_BUSY && !x,"held by another process: rc %d (want CC_ERR_BUSY)",brc);
+    CHECK(strstr(berr,"Exclusive open")!=NULL,"held by another process: the reason is missing from \"%s\"",berr);
+    printf("  held by another process: CC_ERR_BUSY (%s)\n",berr);
+
     if(fails){ printf("FAILURES: %d\n",fails); return 1; }
     printf("ALL TESTS PASSED\n"); return 0;
 }}

@@ -890,7 +890,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f, cc_on_loss_ex };
     cc_config capcfg = cfg->capture; if (cfg->offline_backpressure) capcfg.replay_block_when_full = 1;
-    if (cc_open(&f->cap, &capcfg, &ccb) != 0){ fs_close(f); return -1; }
+    int crc = cc_open(&f->cap, &capcfg, &ccb);
+    if (crc != 0){ fs_close(f); return crc < 0 ? crc : -1; }   // the capture core's error (CC_ERR_BUSY: retry when the holder closes)
     *out = f; return 0;
 sync_fail:
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);

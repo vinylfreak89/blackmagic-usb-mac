@@ -142,7 +142,8 @@ typedef struct {
     unsigned pool_units;        // slots actually allocated (after defaulting)
 } fs_stats;
 
-int  fs_open (frameserver **out, const fs_config *cfg);
+int  fs_open (frameserver **out, const fs_config *cfg);   // 0, or negative: cc_open's cc_err when the capture core refused (CC_ERR_BUSY,
+                                                         // CC_ERR_NODEVICE, ...), else -1
 int  fs_start(frameserver *f);
 int  fs_stop (frameserver *f);            // stops capture, drains the worker, closes the log
 // Runtime decision-log attachment, for a recorder that aligns the sidecar to its own recording

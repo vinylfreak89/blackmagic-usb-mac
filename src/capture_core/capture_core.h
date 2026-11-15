@@ -32,7 +32,8 @@ enum cc_end    { CC_END_STOPPED = 0, CC_END_DEVICE_GONE = 1, CC_END_REPLAY_EOF =
                  CC_END_WRITE_FAILED = 3, CC_END_TRANSFER_FAILED = 4,
                  CC_END_INTERNAL_ERROR = 5 };
 enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB = -3,
-                 CC_ERR_NOMEM = -4, CC_ERR_STATE = -5, CC_ERR_IO = -6 };
+                 CC_ERR_NOMEM = -4, CC_ERR_STATE = -5, CC_ERR_IO = -6,
+                 CC_ERR_BUSY = -7 };   /* another process holds the device open (IOUSBHost: kIOReturnExclusiveAccess) */
 enum cc_loss_kind { CC_LOSS_RING = 0,         /* delivery-ring overflow: packets that crossed the bus, then shed */
                     CC_LOSS_UNSCHEDULED = 1,   /* USB slots never read (.tpc HostLoss pkt_index CC_PI_UNSCHEDULED) */
                     CC_LOSS_UNSCHEDULED_LATE = 2, /* the same, found after the affected data went by (CC_PI_UNSCHEDULED_LATE) */

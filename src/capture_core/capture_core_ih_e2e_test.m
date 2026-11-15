@@ -130,6 +130,16 @@ int main(void){ @autoreleasepool {
     cc_close(s);   /* leaks by design (teardown incomplete) */
     printf("  stalled stop: incomplete, nothing after cc_stop, session leaked by design\n");
 
+    /* 4. another process holds the Shuttle open: cc_open says CC_ERR_BUSY (the OBS plugin then waits for that
+     *    process's close notice instead of retrying on a timer), and holds nothing */
+    memset(&ih_fake,0,sizeof ih_fake); atomic_store(&ih_fake.busy,1);
+    { cc_config cfg; memset(&cfg,0,sizeof cfg); cfg.usb_backend=CC_USB_IOUSBHOST; cfg.ring_mb=64; cfg.diag_log=diag;
+      cc_callbacks cb; memset(&cb,0,sizeof cb); cb.on_packet=on_packet; cb.on_end=on_end;
+      cc_session *b=NULL; int rc=cc_open(&b,&cfg,&cb);
+      CHECK(rc==CC_ERR_BUSY && !b,"held by another process: cc_open %d (want CC_ERR_BUSY)",rc);
+      if(b) cc_close(b); }
+    printf("  held by another process: cc_open CC_ERR_BUSY\n");
+
     if(fails){ printf("FAILURES: %d\n",fails); return 1; }
     printf("ALL TESTS PASSED\n"); return 0;
 }}

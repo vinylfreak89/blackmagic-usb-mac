@@ -12,6 +12,8 @@
 
 bool obs_module_load(void);
 void shuttle_test_device_gone(void *d);
+void shuttle_test_device_closed(void *d);
+extern int shuttle_test_open_rc, shuttle_test_close_during_open;
 int shuttle_test_reconnect_wanted(void *d);
 unsigned shuttle_test_reconnect_tries(void *d);
 void shuttle_test_power(void *d, unsigned msg);
@@ -210,6 +212,35 @@ int main(int argc, char **argv){
         I->update(d, st);
         { int o = stub_expect_end(L_OPEN), g = stub_expect_end(L_GONE), u = stub_expect_end(L_GAVE_UP);
           CHECK(o >= 1 && g == 0 && u <= 1, "after the second disconnect: %d open failures (want at least 1), %d disconnect lines (want 0), %d give-ups (want at most 1)", o, g, u); }
+    }
+
+    /* 6b. the device drops off USB and comes back held open by another process (2026-11-15 03:54: Chrome opened the
+     * just re-enumerated Shuttle first). The attempt is refused busy; no timed retries follow (the old code retried
+     * every RECONNECT_INTERVAL_NS, 20 ms in this build: about 15 attempts in 300 ms); the holder's close notice brings
+     * the next attempt at once. A close during an attempt still brings the next one (the watch is armed before the
+     * attempt). After a user stop a close notice does nothing. */
+    {
+        static const char *const L_BUSY_OPEN = "frameserver open failed: another process holds the Shuttle open";
+        static const char *const L_BUSY_WAIT = "reconnecting when it lets go";
+        shuttle_test_open_rc = CC_ERR_BUSY;
+        stub_expect(L_BUSY_OPEN); stub_expect(L_BUSY_WAIT); stub_expect(L_GONE);
+        shuttle_test_device_gone(d);
+        WAIT(stub_expect_count(L_BUSY_OPEN) >= 1, 2, "the first reconnect attempt");
+        usleep(300000);
+        CHECK(stub_expect_count(L_BUSY_OPEN) == 1, "held open: %d attempts before the holder closed it (want 1: the next waits for its close)", stub_expect_count(L_BUSY_OPEN));
+        shuttle_test_device_closed(d);
+        WAIT(stub_expect_count(L_BUSY_OPEN) >= 2, 2, "an attempt on the holder's close notice");
+        shuttle_test_close_during_open = 1; shuttle_test_device_closed(d);   /* attempt 3 sees a close before it returns */
+        WAIT(stub_expect_count(L_BUSY_OPEN) >= 4, 2, "an attempt after a close during the previous one");
+        usleep(300000);
+        CHECK(stub_expect_count(L_BUSY_OPEN) == 4, "held open: %d attempts (want 4: the gone, two closes, the close during attempt 3)", stub_expect_count(L_BUSY_OPEN));
+        CHECK(shuttle_test_reconnect_wanted(d), "held open: stopped wanting to reconnect");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting");
+        shuttle_test_device_closed(d); usleep(100000);
+        { int o = stub_expect_end(L_BUSY_OPEN), w = stub_expect_end(L_BUSY_WAIT), g = stub_expect_end(L_GONE);
+          CHECK(o == 4 && w == 1 && g == 1, "held open: %d busy attempts (want 4, none after the user stop), %d wait lines (want 1), %d disconnects (want 1)", o, w, g); }
+        shuttle_test_open_rc = 0;
     }
 
     /* 6c. system sleep (IOKit's messages, as power_cb receives them; NSWorkspace's wake notifications reach the same

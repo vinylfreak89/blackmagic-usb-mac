@@ -44,7 +44,12 @@ CFTypeRef ih_fake_property(io_registry_entry_t e, CFStringRef key, CFAllocatorRe
 }
 - (instancetype)initWithIOService:(io_service_t)ioService options:(IOUSBHostObjectInitOptions)options queue:(dispatch_queue_t)queue
                             error:(NSError**)error interestHandler:(IOUSBHostInterestHandler)interestHandler {
-    (void)options; (void)error;
+    (void)options;
+    if(atomic_load(&ih_fake.busy)){   /* as measured (experiments/usb_close_notice_probe.m) */
+        if(error) *error=[NSError errorWithDomain:@"IOUSBHostErrorDomain" code:kIOReturnExclusiveAccess
+                                         userInfo:@{NSLocalizedDescriptionKey:@"Failed to create IOUSBHostObject.",
+                                                    NSLocalizedFailureReasonErrorKey:@"Exclusive open of usb object failed."}];
+        return nil; }
     if((self=[super init])){ _q=queue; _svc=ioService;
         if(interestHandler){ g_interest=interestHandler; g_dev_obj=self; } }
     return self;

@@ -1526,7 +1526,8 @@ const char* cc_strerror(int e){
     switch(e){ case CC_OK:return "ok"; case CC_ERR_ARGS:return "bad arguments";
     case CC_ERR_NODEVICE:return "device not found"; case CC_ERR_USB:return "usb error";
     case CC_ERR_NOMEM:return "out of memory"; case CC_ERR_STATE:return "bad state";
-    case CC_ERR_IO:return "i/o error"; default:return "unknown"; }
+    case CC_ERR_IO:return "i/o error"; case CC_ERR_BUSY:return "device held open by another process";
+    default:return "unknown"; }
 }
 
 // ---------------- tpc sink

@@ -25,6 +25,7 @@ CFTypeRef ih_fake_property(io_registry_entry_t e, CFStringRef key, CFAllocatorRe
 /* test controls */
 typedef struct {
     _Atomic int absent;             /* no device on the bus */
+    _Atomic int busy;               /* another process holds it open: opening fails with kIOReturnExclusiveAccess */
     _Atomic int refuse[2];          /* the next N enqueues per endpoint are refused with kIOReturnNoResources */
     _Atomic int refuse_all[2];      /* every enqueue is refused that way */
     _Atomic long enqueues[2], refusals[2], too_old_packets[2];

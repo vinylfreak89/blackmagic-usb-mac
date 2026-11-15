@@ -62,7 +62,7 @@ typedef struct {
 } ih_stats;
 /* Open the Shuttle and run the start sequence (alt 0, mode words, alt 1 -> alt 2, mode word, latch). Both iso
  * endpoints must have bInterval 1 (8 packets per 1 ms frame), or it refuses. 0 or a negative capture_core error
- * (CC_ERR_NODEVICE / CC_ERR_USB); err gets a description. */
+ * (CC_ERR_NODEVICE / CC_ERR_BUSY: another process has it open / CC_ERR_USB); err gets a description. */
 int  ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char *err, size_t errn);
 /* Queue `xfers` transfers per endpoint at consecutive frames, the first ones held back from the callbacks until
  * ih_go (the hardware reads meanwhile; 512 ms are queued). npk: a multiple of 8 (one frame). A refusal here is
