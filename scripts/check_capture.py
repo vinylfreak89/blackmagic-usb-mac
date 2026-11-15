@@ -42,7 +42,7 @@ def check_sidecar(path, expect):
         return
     csv.field_size_limit(1 << 24)
     rows = pub = 0; unpub = collections.Counter(); ring = 0; epochs = set(); schemas = set()
-    resets = audio_steps = 0; first = last = None
+    resets = audio_steps = repaired = 0; first = last = None
     prev = None; between = 0; covered = 0; gaps = []; missing = 0
     with open(path, newline="") as f:
         for r in csv.DictReader(f):
@@ -56,7 +56,7 @@ def check_sidecar(path, expect):
             if (r.get("audio_step_samples") or "0") not in ("0", ""): audio_steps += 1
             if r.get("published") != "1":
                 unpub[reason or "(none given)"] += 1; between += 1; continue
-            pub += 1
+            pub += 1; repaired += reason == "Repaired"
             c = int(r["counter_extended"]) if (r.get("counter_extended") or "").lstrip("-").isdigit() else None
             if c is None or c < 0: continue
             first = c if first is None else first; last = c
@@ -78,9 +78,10 @@ def check_sidecar(path, expect):
     real_epochs = [e for e in epochs if e and e != "0"]
     if len(real_epochs) > 1: problems.append(f"sidecar: {len(real_epochs)} capture epochs (the device restarted mid-recording)")
     if device: notes.append(f"sidecar: {sum(device.values()):,} units not published as pictures because of how the device framed them {device} "
-                            "(Short/ShortShown = short unit, Unframed/OtherShown = no marker, Complete = whole unit of a non-picture format "
+                            "(Short/ShortShown = short unit, Unframed/OtherShown = no marker or too long, Complete = whole unit of a non-picture format "
                             "such as no-signal; expected around start-up, relock, a stopped deck and tape end)")
     if audio_steps: notes.append(f"sidecar: {audio_steps} audio clock steps (device audio discontinuities)")
+    if repaired: notes.append(f"sidecar: {repaired:,} units the Shuttle sent at the wrong length were put back and published (Repaired)")
 
 
 # ---------------- 2. OBS log ----------------

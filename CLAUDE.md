@@ -293,6 +293,16 @@ host loss; this closes the question of whether the Shuttle can itself emit short
 Arbitrary endpoint edges add a 1,652,048-byte leading
 fragment and 495,376-byte trailing fragment outside the marker-delimited census.
 
+**Wrong-length units are the Shuttle's own damage, and repairable (measured 2026-11-15 on a commercial-tape capture
+through the JVC; every packet in sequence, status 0).** A short unit had 748 bytes of one line deleted, 524 of them overwritten with
+zeros; a +512 unit had 256 samples of flat colour inserted in a line; the 23⅓-line-long units (+33,600 / +33,584) are
+sync recovery: whole USB packets of a repeating 4-byte word (`af8c0008`, `a0ad0008`), zeros, and the device's padding
+rows written over 60-110 lines, including a padding block one field after the first. Picture is NOT extra: each unit
+took one normal frame on the audio clock (the USB link spent 11 extra packet slots, then ran full rate for ~8 units to
+catch up). Everything outside the damage sits in place before it and exactly `delta` bytes displaced after it, which the
+line-start blanking (code 1-2 vs setup ~17) tells apart: `src/frameserver/unit_repair.h`. The owner saw the short unit as
+a one-frame sideways tear and the long ones as a one-field step back (the render repeated a frame).
+
 The audio endpoint is also transport-complete, but device audio samples and resync metadata
 have localized deficits (audio census below). Unwrap counters and look anchors up by value,
 not audio-row ordinal. Review apertures, renderer and deinterlacer policy are in §7.

@@ -8,6 +8,10 @@
 #      published 720x480 UYVY frames, the PCM and the timing log. Picture units that are not whole (a deck in search,
 #      unlocked or damaged playback) are shown with the lines they carry (FS_SHOW_PARTIAL=1, as OBS's "show partial"),
 #      so picture the Shuttle could not frame is not replaced by fill; PLAIN_RENDER_SHOW_PARTIAL=0 turns that off.
+#      A picture unit the Shuttle sent at the wrong length (bytes lost or inserted inside a line, or filler written over
+#      lines while it recovered sync) is put back to a whole frame first (FS_REPAIR=1, src/frameserver/unit_repair.h): the
+#      lines in place and the displaced lines where they belong, the lost lines rebuilt from the field around them;
+#      the sidecar row says Repaired. PLAIN_RENDER_REPAIR=0 turns that off.
 #   2. relay.py places frames on the AUDIO clock: each frame goes to the 1001/30000 s slot nearest its unit's
 #      audio-clock time (a unit counter is not time: in the Shuttle's other-format modes it runs ~50-70 per second);
 #      a slot no frame reached becomes a flat no-signal frame, and of several frames in one slot the nearest is kept
@@ -127,7 +131,7 @@ if [ -n "${PLAIN_RENDER_FILTER:-}" ]; then
   mkfifo "$D/vraw.fifo"; VDUMP="$D/vraw.fifo"; echo "picture filter: $PLAIN_RENDER_FILTER"
   { bash -c "$PLAIN_RENDER_FILTER" < "$D/vraw.fifo" > "$D/v.fifo" 2>"$D/filter.log"; echo $? > "$D/filter.rc"; } & FP=$!
 fi
-FS_FIRST_LINE="$FL" FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$VDUMP" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
+FS_FIRST_LINE="$FL" FS_REGISTRATION_OFF=1 FS_HRETIME=0 FS_SHOW_PARTIAL=${PLAIN_RENDER_SHOW_PARTIAL:-1} FS_REPAIR=${PLAIN_RENDER_REPAIR:-1} "$RP" "$RSRC" ${DLOG:+"$DLOG"} --offline --pool 32 ${PLAIN_RENDER_STALL_S:+--stall-s "$PLAIN_RENDER_STALL_S"} --dump-uyvy "$VDUMP" --dump-pcm "$D/a.s24" --dump-log "$D/timing.csv" > "$D/replay.log" 2>&1
 RC=$?; touch "$D/replay.done"
 CRC=0; if [ -n "$CRP" ]; then wait $CRP; CRC=$(cat "$D/checked_read.rc" 2>/dev/null || echo 9); rm -f "$D/cap.fifo"; tail -1 "$D/checked_read.log"; fi
 # A replay that died before opening the filter's FIFO leaves the filter blocked opening it: the same release, then the
@@ -148,7 +152,7 @@ python3 -c 'import os, sys
 try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK))
 except OSError: pass' "$D/a.fifo"
 wait $AP; ARC=$?; rm -f "$D/v.fifo" "$D/a.fifo"; date
-echo "replay exit $RC, encode exit $FRC, audio exit $ARC${FP:+, filter exit $FLC}"; grep -E "video obs|published|audio|skipped|failed" "$D/replay.log"; cat "$D/relay.log" "$D/audio_relay.log"
+echo "replay exit $RC, encode exit $FRC, audio exit $ARC${FP:+, filter exit $FLC}"; grep -E "video obs|published|audio|skipped|failed|put back" "$D/replay.log"; cat "$D/relay.log" "$D/audio_relay.log"
 if [ "$CRC" != 0 ]; then echo "CHECKED READ FAILED (exit $CRC): the capture was not proven intact; see $D/checked_read.log and $D/checked_read.json. Render not finished."; exit 1; fi
 if [ $RC -ne 0 ] || [ $FRC -ne 0 ] || [ $ARC -ne 0 ] || [ "$FLC" != 0 ]; then echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; fi
 python3 "$HERE/finish.py" "$D" "$PART" "$OUT" || { echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; }
