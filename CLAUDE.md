@@ -314,7 +314,9 @@ when it is the single held stretch between the padding blocks it lies between (t
 field-1 inserts are declined); every stale word measured ends `00 08` (a reserved code no picture carries). Picture samples
 that look like padding join padding runs at either edge (about one row in three ends that way before the 261 block): a
 run's true start is anywhere in its excess over whole rows, and an adversarial review found that reading one edge as
-true published 2-sample shifts. Restarts fall anywhere, the top of the unit included,
+true published 2-sample shifts. One such reading is kept by the owner's choice (2026-11-15): the final block, cut by the
+unit's end, still fixes the grid for faults in field 2, accepting a 2-sample shift when padding-like picture ends row
+522 and the unit ends early, rather than declining every field-2 tear and insert (on the two captures: 4 repairs). Restarts fall anywhere, the top of the unit included,
 and units end up to 12 bytes either side of a row. Stalls also run to the unit's end (7) and over the next unit's marker
 (19: one run two units long, the successor numbered two on), which the parser now keeps whole and the repair splits into
 two. Left declined: two stalls in one unit (5), deletions with no fill (4), signal disruption at play start and two resyncs.

@@ -45,11 +45,14 @@
 // left 824 / 1,982 bytes of data before it, then its next field block 262 rows on) marks lines never digitised; every
 // other block must sit exactly on the raster's padding rows (one landing rows off means the unit is short: declined).
 // A block starting at the junk's end is always the rest of the raster's own block and must end at its standard row.
-// Known limits (adversarial reviews 2026-11-15; fuzz of 30,000 units: no single fault published wrong, nor with padding-like picture injected at row edges, except an insert cut inside flat picture): a second length error in the same unit that
+// Known limits (adversarial reviews 2026-11-15; fuzz of 30,000 units: no single fault published wrong, nor with padding-like picture injected at row edges, except an insert cut inside flat picture and the cut-block case below): a second length error in the same unit that
 // leaves no device fill is invisible to the bytes, caught only when it tears 24+ samples, shifts the grid or moves the
 // picture against the previous unit or the other field (a fill-less 1-64 byte error hidden beside one fault: 361 of 3,195 published wrong; never seen in a capture); an insert inside flat picture is cut from the
-// start of the held stretch (identical bytes to within one code); a block cut by the unit's end, read as the only
-// grid, is wrong if padding-like picture before it and the unit ending early coincide. Declines that are conservative:
+// start of the held stretch (identical bytes to within one code). Accepted by the owner (2026-11-15) over declining
+// every fault below row ~270: the final padding block, cut by the unit's end, is read as the grid (whole rows, or a few
+// bytes short), and is wrong when padding-like picture ends row 522 (2 of 74 real units) while the unit ends early (both
+// field-2 tears measured did, by 12 bytes): a 2-sample shift (second review: 6 of 256 real trials, 8 of 2,889
+// adversarial tears; none in realistic fuzz). It can also settle an ambiguous 261 block the wrong way. Declines that are conservative:
 // an insert sharing its window with another held stretch (the vertical interval: most field-1 inserts), a stall running
 // straight into restart padding (never measured), a tear from row 522 into the final padding (no padding after it
 // gives the grid), two stalls in one unit (the part between them has no whole-row position).
