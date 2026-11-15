@@ -98,7 +98,7 @@ int main(void){
         fp_stats st; fp_get_stats(p, &st);
         CHECK(st.published == 11 && st.dropped_no_free_surface == 0, "stats after publishes");
     }
-    // a unit that is not whole: its lines are stretched over the frame; more than 300 lines is two fields, first shown
+    // a unit that is not whole: one field (300 lines or fewer) is shown in field 1's aperture as a bob; more is two fields
     {
         static uint8_t rows[520*FP_LINE_BYTES];
         for(unsigned l=0;l<520;l++) memset(rows+(size_t)l*FP_LINE_BYTES,(int)(l&0xff),FP_LINE_BYTES);   /* every byte of a line is its number */
@@ -106,8 +106,9 @@ int main(void){
         CHECK(fp_publish_partial(p,rows,245,0,0,7000,0,0)==0 && c.frames==before+1 && c.last_counter==7000 && c.held,"a 245-line unit is shown");
         if(c.held){
             IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(c.held); size_t bpr=IOSurfaceGetBytesPerRow(c.held);
-            CHECK(b[0]==0 && b[239*bpr]==(239u*245/480) && b[479*bpr]==(479u*245/480) && b[479*bpr+FP_LINE_BYTES-1]==244,
-                  "245 lines stretched over 480 rows: first %u, row 239 %u, last %u",b[0],b[239*bpr],b[479*bpr]);
+            /* row 2k = line 19+k; row 2k+1 = the mean of lines 19+k and 20+k (each byte its line number); past line 244, black */
+            CHECK(b[0]==19 && b[bpr]==20 && b[2*bpr]==20 && b[450*bpr]==244 && b[451*bpr]==244 && b[452*bpr]==128 && b[452*bpr+1]==16 && b[479*bpr]==128,
+                  "245 lines as a bob: rows 0/1/2 %u/%u/%u, 450/451/452 %u/%u/%u",b[0],b[bpr],b[2*bpr],b[450*bpr],b[451*bpr],b[452*bpr]);
             IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
         }
         CHECK(fp_publish_partial(p,rows,504,0,0,7001,0,0)==0 && c.held,"a 504-line unit is shown");
