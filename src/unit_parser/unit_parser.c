@@ -49,6 +49,8 @@ struct unit_parser {
     uint64_t audio_counter_extended;
     uint32_t video_units_since_audio;
     bool video_audio_vouched;   /* the current run's marker carried the device counter the audio stream stood at */
+    bool ns_pending;            /* a no-signal marker inside the current picture run, decided at the next marker */
+    size_t ns_pos;
 
     endpoint_position positions[2];
 };
@@ -248,6 +250,7 @@ static void accept_video_boundary(unit_parser *parser, size_t position, bool con
     parser->video_flags = 0;
     parser->video_candidate_valid = false;
     parser->video_audio_vouched = retained >= 8 && audio_vouches(parser, load_u16(parser->video + 4), load_u16(parser->video + 6));
+    parser->ns_pending = false;
 }
 
 /* The run before `position` ends without its successor (flagged as a buffer-full cut is); framing restarts at the
@@ -273,6 +276,7 @@ static void end_stale_run(unit_parser *parser, size_t position)
     parser->video_flags = 0;
     parser->video_candidate_valid = false;
     parser->video_audio_vouched = retained >= 8 && audio_vouches(parser, load_u16(parser->video + 4), load_u16(parser->video + 6));
+    parser->ns_pending = false;
 }
 
 static void feed_video_byte(unit_parser *parser, uint8_t byte)
@@ -285,6 +289,7 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
         parser->video_has_marker = false;
         parser->video_candidate_valid = false;
         parser->video_flags = 0;
+        parser->ns_pending = false;
     }
     parser->video[parser->video_bytes++] = byte;
     if (!parser->video_has_marker &&
@@ -305,6 +310,19 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
     }
     if (parser->video_candidate_valid &&
         parser->video_bytes >= parser->video_candidate + 8) {
+        /* A no-signal marker met earlier in this picture run, decided now that the next marker is here: a real
+         * no-signal unit's raster holds no Shuttle padding, while a no-signal header met inside a stall (measured
+         * 2026-11-15) is followed, before the next marker, by the restart padding of the picture resuming. Real: the
+         * picture unit ends at it (cut short by a lost input), and this marker is weighed against the no-signal run. */
+        if (parser->ns_pending && parser->video_candidate > parser->ns_pos){
+            size_t from = parser->ns_pos + UNIT_PARSER_VIDEO_HEADER_BYTES, run = 0; bool padded = false;
+            for (size_t i = from; i + 1 < parser->video_candidate && !padded; i += 2){
+                run = parser->video[i] == 0x80 && parser->video[i + 1] == 0x10 ? run + 2 : 0;
+                padded = run >= 64;
+            }
+            size_t at = parser->ns_pos; parser->ns_pending = false;
+            if (!padded){ size_t c = parser->video_candidate - at; end_stale_run(parser, at); parser->video_candidate = c; parser->video_candidate_valid = true; }
+        }
         size_t candidate = parser->video_candidate;
         uint16_t format = load_u16(parser->video + candidate + 6);
         bool plausible = plausible_video_format(format);
@@ -338,18 +356,10 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
             }
             stale = !plausible && candidate >= UNIT_PARSER_VIDEO_UNIT_BYTES;
             /* A no-signal marker inside a picture run the audio vouched for: the Shuttle lost its input mid-unit (a unit
-             * cut short, then no-signal units). Real when its no-signal raster follows the header; a no-signal header
-             * met inside a stall is followed by the stall's zeros and stale words (each ending 00 08: two zeros in four
-             * bytes is already more than the raster's one). Wait for those bytes. */
-            if (!plausible && !stale && run_format == 0xe801 && format == 0x0800 && parser->video_audio_vouched){
-                size_t need = candidate + UNIT_PARSER_VIDEO_HEADER_BYTES + 64;
-                if (parser->video_bytes < need) return;
-                /* Its raster holds a zero chroma byte in every sample, never a run of them; a stall's zeros run on. */
-                size_t zeros = 0, longest = 0;
-                for (size_t i = candidate + UNIT_PARSER_VIDEO_HEADER_BYTES; i < need; i++){
-                    zeros = parser->video[i] ? 0 : zeros + 1; if (zeros > longest) longest = zeros;
-                }
-                stale = longest < 4;
+             * cut short, then no-signal units), or a no-signal header written inside a stall. Its first bytes cannot
+             * tell (both repeat one word); the next marker decides (above). */
+            if (!plausible && !stale && run_format == 0xe801 && format == 0x0800 && parser->video_audio_vouched && !parser->ns_pending){
+                parser->ns_pending = true; parser->ns_pos = candidate;
             }
         }
         parser->video_candidate_valid = false;

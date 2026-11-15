@@ -348,7 +348,12 @@ int main(void)
             if (!stall) for (size_t i = 48 + 245 * 1440; i < len; i += 4){ run[i] = 188; run[i + 1] = 12; run[i + 2] = 0; run[i + 3] = 12; }   // a no-signal raster
             feed(parser, CC_EP_VIDEO, run, len, &video_seq);
             static uint8_t ns[UNIT]; memset(ns, 0, UNIT); ns[2] = ns[3] = 0xff; ns[4] = (uint8_t)9000; ns[5] = (uint8_t)(9000 >> 8); ns[6] = 0x00; ns[7] = 0x08;
-            for (size_t i = 48; i < UNIT; i += 4){ ns[i] = stall ? 0 : 188; ns[i + 1] = stall ? 0 : 12; ns[i + 2] = 0; ns[i + 3] = stall ? 0 : 12; }
+            for (size_t i = 48; i < UNIT; i += 4){ ns[i] = 188; ns[i + 1] = 12; ns[i + 2] = 0; ns[i + 3] = 12; }   // a no-signal raster
+            if (stall){   // the measured stall shape: the header among fill words, then the picture resuming with restart padding
+                for (size_t i = 48; i < 150000; i += 4){ ns[i] = 0xa0; ns[i + 1] = 0xad; ns[i + 2] = 0; ns[i + 3] = 0x08; }
+                for (size_t i = 150000; i < 150000 + 8 * 1440; i += 2){ ns[i] = 0x80; ns[i + 1] = 0x10; }
+                for (size_t i = 150000 + 8 * 1440; i < 300000; i += 2){ ns[i] = 128; ns[i + 1] = (uint8_t)(40 + i % 50); }
+            }
             feed(parser, CC_EP_VIDEO, ns, stall ? 300000 : UNIT, &video_seq);
             feed_audio_unit(parser, 503);
             for (uint16_t c = 504; c <= 506; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
