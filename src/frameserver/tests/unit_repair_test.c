@@ -24,6 +24,7 @@ static double image(int x, double y, int dark){
     double v = 0.5 + 0.35 * sin(x / 37.0 + y / 23.0) + 0.15 * cos(x / 11.0 - y / 41.0);
     return dark ? 18 + 10 * v : 30 + 180 * v;
 }
+static int no_blank;     // picture to the window's left edge on every line (one capture, 2026-11-15)
 static void make_unit(uint8_t *u, int dark_picture, int flag_top){
     memset(u, 0, HB);
     u[2] = u[3] = 0xff; u[4] = 0x34; u[5] = 0x12; u[6] = 0x01; u[7] = 0xe8;
@@ -32,7 +33,7 @@ static void make_unit(uint8_t *u, int dark_picture, int flag_top){
         if (pad_row(k)){ for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } continue; }
         if (dark_row(k)){ for (int i = 0; i < L; i += 2){ w[i] = (uint8_t)(127 + rnd() % 3); w[i + 1] = (uint8_t)(1 + rnd() % 2); } continue; }
         double y = k < 262 ? 2.0 * (k - 19) : 2.0 * (k - 282) + 1;
-        int blank = flag_top && k >= 20 && k < 26 ? 0 : 20;            // a top-of-field flag: picture runs to the window edge
+        int blank = no_blank || (flag_top && k >= 20 && k < 26) ? 0 : 20;   // a top-of-field flag: picture runs to the window edge
         for (int c = 0; c < 720; c++){
             int Y, C = 128 + (int)(18 * sin(c / 29.0 + y / 17.0)) + (int)(rnd() % 3) - 1;
             if (c < blank){ Y = 1 + (int)(rnd() % 2); C = 128 + (int)(rnd() % 9) - 4; }
@@ -46,12 +47,36 @@ static void make_dark_unit(uint8_t *u){        // sub-blanking black everywhere 
     for (int k = 0; k < ROWS; k++){ uint8_t *w = u + HB + (size_t)k * L; if (!pad_row(k)) for (int i = 1; i < L; i += 2) w[i] = (uint8_t)(1 + rnd() % 2); }
 }
 
-static uint8_t orig[U], odd[U + 2 * 64 * L], out[U];
+static uint8_t orig[U], odd[2 * U + 2 * 64 * L], out[2 * U], scratch[UR_SCRATCH_BYTES];
 static size_t n;
 static void put(const uint8_t *p, size_t len){ memcpy(odd + n, p, len); n += len; }
 static void fill_word(const uint8_t w[4], size_t len){ for (size_t i = 0; i < len; i++) odd[n++] = w[i % 4]; }
 static void zeros(size_t len){ memset(odd + n, 0, len); n += len; }
 static void dither(size_t len){ for (size_t i = 0; i < len; i += 4){ uint8_t f[4] = {0x5d, (uint8_t)(0xa0 + (i % 12 == 0)), 0x5c, 0xa1}; put(f, 4); } }
+
+static void held(size_t len, uint8_t c, uint8_t y){ for (size_t i = 0; i < len; i += 2){ odd[n++] = (uint8_t)(c + rnd() % 2); odd[n++] = (uint8_t)(y + rnd() % 2); } }
+static void flat_run(uint8_t *u, int k, uint8_t y, int len){   // a flat neutral run (a deck's or frame sync's), dithered by one code
+    uint8_t *w = u + HB + (size_t)k * L; for (int i = 0; i < len; i += 2){ w[i] = (uint8_t)(128 + rnd() % 2); w[i + 1] = (uint8_t)(y + rnd() % 2); }
+}
+static void flat_row(uint8_t *u, int k, uint8_t y){ flat_run(u, k, y, L); }
+static void shift_picture(uint8_t *u, int s){               // the whole picture moved s samples sideways (a pan)
+    for (int k = 0; k < ROWS; k++){
+        if (pad_row(k) || dark_row(k)) continue;
+        uint8_t *w = u + HB + (size_t)k * L, t[L]; memcpy(t, w, L);
+        for (int c = 0; c < 720; c++){ int cs = c - s; if (cs < 0) cs = 0; if (cs > 719) cs = 719; w[2 * c + 1] = t[2 * cs + 1]; }
+    }
+}
+/* The restart of the 25:25 test, ending `end` bytes past (positive) or short of the frame's end. */
+static void build_restart(int end){
+    size_t q = HB + 85 * L; n = 0;
+    put(orig, HB + 480); fill_word((const uint8_t[4]){0xa0, 0xad, 0x00, 0x08}, (size_t)(79.47 * L) - 480);
+    zeros(q - 1982 + 33600 - (size_t)(end > 0 ? end : 0) - n + (size_t)(end < 0 ? 0 : 0));
+    size_t t = n + 1982; put(orig + q - 1982, U - q + 1982 + (size_t)(end < 0 ? 0 : 0));
+    if (end > 0) put(orig + HB + 100 * L, (size_t)end);       // bytes past the frame's end
+    else n -= (size_t)(-end);
+    for (int k = 85; k <= 92; k++){ uint8_t *w = odd + t + (size_t)(k - 85) * L; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+    for (int k = 347; k <= 355; k++){ uint8_t *w = odd + t + (size_t)(k - 85) * L; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+}
 
 /* Rows of out that differ from orig: count, range, and the largest mean absolute difference among picture rows. */
 static void compare(int *differ, int *first, int *last, double *worst){
@@ -218,6 +243,95 @@ int main(void){
     make_unit(orig, 0, 0); n = 0; p = HB + 260 * L + 1000;       // ... and not short: repaired
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
     expect_ok("tear into the 261 padding", NULL, 2, 260, 261, 12);
+
+    /* Second capture, 2026-11-15. Each case declined (or would have been misread) by the first model. */
+    for (int end = -8; end <= 12; end += 4){                       // the unit ending a few bytes either side of the frame's end
+        make_unit(orig, 0, 0); build_restart(end);
+        char name[64]; snprintf(name, sizeof name, "restart, unit ends %+d bytes", end);
+        ur_result r = expect_ok(name, orig, 110, 0, 524, 12);
+        CHECK(r.grid_offset == -end, "%s: grid %+d, want %+d", name, r.grid_offset, -end);
+    }
+    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;   // flat neutral lines are picture
+    flat_row(orig, 259, 10); flat_row(orig, 521, 12); flat_row(orig, 400, 90);
+    put(orig, p); fill_word(filler1, 113920); zeros(36580); put(orig + q, U - q);
+    expect_ok("stall with flat neutral lines", NULL, 85, 234, 316, 12);
+    make_unit(orig, 0, 0); flat_run(orig, 259, 10, 280); flat_run(orig, 521, 12, 276);   // ... and beside an insert (as measured)
+    n = 0; p = HB + 394 * L + 993;                              // odd byte phase, held sample C135/136 Y129
+    put(orig, p); held(512, 135, 129); put(orig + p, U - p);
+    { ur_result r = expect_ok("held sample at odd phase (+512 B)", NULL, 0, 0, 0, 0); CHECK(r.lost_bytes == 0, "held: lost %ld", r.lost_bytes); }
+    make_unit(orig, 0, 0); for (int k = 300; k < 302; k++) flat_row(orig, k, 60);   // a flat line as long as the insert: which?
+    n = 0; p = HB + 100 * L + 600; put(orig, p); held(512, 125, 84); put(orig + p, U - p);
+    expect_status("insert beside a flat run as long", UR_NO_FILL);
+    make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;      // a picture word without a reserved code is not a stall
+    put(orig, p); fill_word((const uint8_t[4]){0x87, 0x81, 0x88, 0x81}, 524); put(orig + p + 748, U - p - 748);
+    expect_status("repeated picture word, no reserved code", UR_NO_FILL);
+
+    make_unit(orig, 0, 0); n = 0; p = HB + 400 * L + 100;      // junk running to the unit's end: nothing displaced (225+ lost rows: declined)
+    put(orig, p); fill_word(filler1, U + 20000 - p);
+    { ur_result r = expect_ok("stall to the unit's end (+)", NULL, 125, 400, 524, 12); CHECK(r.lost_bytes == (long)(U - p), "to end: lost %ld", r.lost_bytes); }
+    make_unit(orig, 0, 0); n = 0; p = HB + 510 * L; put(orig, p); zeros(148);
+    expect_ok("stall to the unit's end (-)", NULL, 15, 510, 524, 12);
+
+    no_blank = 1;                                               // picture to the window's left edge: no line starts on blanking
+    make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;
+    put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
+    expect_ok("tear, no left blanking", orig, 2, 220, 221, 12);
+    make_unit(orig, 0, 0); build_restart(4);
+    expect_ok("restart, no left blanking", orig, 110, 0, 524, 12);
+    { static uint8_t pan[U]; make_unit(orig, 0, 0); memcpy(pan, orig, U); shift_picture(pan, 6);   // previous unit 6 samples off: a pan
+      n = 0; p = HB + 220 * L + 950; put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
+      expect_ok("tear, no left blanking, in a pan", pan, 2, 220, 221, 12);
+      /* A second, fill-less deletion of 8 bytes at row 400: rows 222-400 sit 4 samples off. The previous unit shows it. */
+      n = 0; put(orig, p); zeros(524); put(orig + p + 748, HB + 400 * L - p - 748); put(orig + HB + 400 * L + 8, U - HB - 400 * L - 8);
+      { ur_result r; ur_status st = ur_repair(odd, n, orig, out, &r);
+        CHECK(st != UR_OK, "hidden second deletion accepted (check %+d)", r.edge_check);
+        printf("  %-36s declined: %s\n", "hidden 8-byte deletion, no blanking", ur_status_name(st)); } }
+    /* A restart mid-field with no standard padding after it (the restart re-grids the rest of the unit, as measured):
+     * only the restart padding gives the phase. A hidden 8-byte deletion just after it moves nearly every displaced
+     * row 4 samples; only the picture against the previous unit can show it. */
+    for (int hidden = 0; hidden < 2; hidden++){
+        make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;
+        put(orig, p); fill_word(filler1, 113920); zeros(36580);
+        size_t at = HB + 330 * L + 700;
+        if (!hidden) put(orig + q, U - q);
+        else { put(orig + q, at - q); put(orig + at + 8, U - at - 8); put(orig + HB + 100 * L, 8); }
+        for (int k = 316; k <= 323; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+        for (int k = 523; k <= 524; k++){ uint8_t *w = odd + HB + (size_t)k * L + 33600; memcpy(w, orig + HB + 400 * L, L); }   // no end padding
+        if (!hidden) expect_ok("restart mid-field, no end padding", orig, 95, 234, 524, 12);
+        else { ur_result r; ur_status st = ur_repair(odd, n, orig, out, &r);
+               CHECK(st == UR_CHECK, "hidden deletion after a restart: %s (check %+d)", ur_status_name(st), r.edge_check);
+               printf("  %-36s declined: %s (%+d half-samples)\n", "hidden 8 bytes after a restart", ur_status_name(st), r.edge_check); }
+    }
+    no_blank = 0;
+
+    /* A stall over the next unit's marker: the first unit's bytes up to row 510, the second's from 1,982 bytes before
+     * its restart padding at row 85 to its end. Both units the same picture, so the second's rows lost in both fields
+     * come back exactly from the first. */
+    {
+        make_unit(orig, 0, 0); n = 0; size_t a_end = HB + 510 * L + 300, b0 = HB + 85 * L - 1982;
+        put(orig, a_end); fill_word(filler2, 57000);
+        zeros(2 * U + 33600 - a_end - 57000 - (U - b0));
+        size_t t = n + 1982; put(orig + b0, U - b0);
+        for (int k = 85; k <= 92; k++){ uint8_t *w = odd + t + (size_t)(k - 85) * L; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+        for (int k = 347; k <= 355; k++){ uint8_t *w = odd + t + (size_t)(k - 85) * L; for (int i = 0; i < L; i += 2){ w[i] = 0x80; w[i + 1] = 0x10; } }
+        ur_result r[2]; ur_status st = ur_repair2(odd, n, orig, scratch, out, r);
+        CHECK(st == UR_OK, "double: %s / %s", ur_status_name(r[0].status), ur_status_name(r[1].status));
+        if (st == UR_OK){
+            int da = 0, db = 0;
+            for (int k = 0; k < ROWS; k++){
+                if (memcmp(out + HB + (size_t)k * L, orig + HB + (size_t)k * L, L)){ da++; CHECK(k >= 510, "double: first unit row %d changed", k); }
+                if (memcmp(out + U + HB + (size_t)k * L, orig + HB + (size_t)k * L, L)){ db++; CHECK(k < 93 || (k >= 262 && k < 356), "double: second unit row %d changed", k); }
+            }
+            CHECK(out[U + 4] == (uint8_t)(orig[4] + 1) && !memcmp(out, orig, 4) && !memcmp(out + U, orig, 4), "double: second header not counter + 1");
+            CHECK(r[1].rebuilt_previous > 0, "double: rows lost in both fields not from the first unit");
+            printf("  %-36s ok: rows differing %d / %d, second grid %+d, lost %ld + %ld\n", "stall over the next marker", da, db, r[1].grid_offset, r[0].lost_bytes, r[1].lost_bytes);
+        }
+        size_t keep = n;                                         // with a second stall in the second unit: declined
+        for (size_t i = t + 200 * L; i < t + 200 * L + 600; i++) odd[i] = 0;
+        st = ur_repair2(odd, keep, orig, scratch, out, r);
+        CHECK(st == UR_SECOND_EVENT, "double with a second stall: %s", ur_status_name(st));
+        printf("  %-36s declined: %s\n", "double with a second stall", ur_status_name(st));
+    }
 
     /* Declines: what the bytes cannot place. */
     make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;     // bytes gone with no fill to say where
