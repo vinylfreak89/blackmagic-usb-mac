@@ -16,13 +16,18 @@
 //
 // Why nothing has to be inferred:
 //   - Everything the Shuttle writes itself is an exact pattern: its padding Y16/C128, zeros, a word repeated that carries
-//     a reserved code (00/FF, which picture never does). Its held-sample insert is the one pattern picture can share
-//     (a flat line of one colour), so it is taken only from a unit too long with no stall in it, as the single held run
-//     at least the length error long.
+//     a reserved code (00/FF, which picture never does) or runs straight into the stall's zeros. A unit marker outside
+//     the stall is another unit's header: declined. Its held-sample insert is the one pattern picture can share (flat
+//     lines, the vertical interval), so it is taken only from a unit too long with no stall in it, as the single held
+//     stretch (each byte position within one code, any level) at least the length error long between the last padding
+//     block on the unit's grid and the first one displaced; any other there and it is declined.
 //   - Every other byte is decoded picture, one row of 1440 bytes per line period, in time order.
 //   - Its padding always starts on a row boundary of its own line grid. The padding after the stall therefore gives
 //     the displaced part's exact byte phase; the displacement is the value of that phase nearest the length error
 //     (they differ by a few bytes when the unit ends inside a row: measured -12 to +12, +8 at 25:25 of one capture).
+//     Picture samples that look like padding (Cb128/Y16) join a padding run at either edge; a run over whole rows has
+//     its true start anywhere in the excess, and every grid that range allows is a candidate: one fixes it, several
+//     must be settled by another block, else declined.
 //   - With exactly one stretch of junk: the bytes before it are in place; the bytes after it are the same raster at
 //     the displacement; the lost bytes are the gap between, plus the lines under padding the Shuttle wrote away from
 //     its padding rows (it did not digitise those lines). Junk running to the unit's end displaces nothing.
@@ -32,20 +37,22 @@
 // Picture is never used to place anything. It only checks the result: where this tape's lines start on blanking inside
 // the window, the displaced picture rows must too, and must sit on the blanking as the picture beside it does (to a
 // sample); where they do not (picture at the window's left edge), the displaced rows must show the same sideways
-// motion against the previous unit as the rows in place (to a sample, summed over 20+ rows); and no tear may remain.
+// motion against the previous unit as the rows in place (to a sample, summed over 20+ rows); no tear may remain; and no
+// block of rows may sit 24+ samples sideways against the other field's lines (whole frame, vertical interval included).
 // A unit the bytes do not place (no junk, two stretches, padding that disagrees) or that fails a check is declined
 // (UR_* status), and the caller keeps its old handling. Same bytes in, same frame out.
 // Padding after the stall: the Shuttle's restart (an 8-row block within two rows after the junk, both measured restarts
 // left 824 / 1,982 bytes of data before it, then its next field block 262 rows on) marks lines never digitised; every
 // other block must sit exactly on the raster's padding rows (one landing rows off means the unit is short: declined).
 // A block starting at the junk's end is always the rest of the raster's own block and must end at its standard row.
-// Known limits (adversarial review, 2026-11-15, 8 rounds; on 894 real units with the measured damage no wrong output
-// beyond the second): a second length error in the same unit that leaves no device fill is invisible to the bytes,
-// caught only when it tears 24+ samples, shifts the grid or moves the picture against the previous unit (random
-// two-error units: 0.84% published wrong); an insert whose first byte matches the picture byte before it within one
-// code is found one byte early (one luma byte off by at most one code, 5 of 894 trials). Declines that are conservative:
-// a stall running straight into restart padding (never measured), a tear from row 522 into the final padding (no
-// padding after it gives the grid), two stalls in one unit (the part between them has no whole-row position).
+// Known limits (adversarial reviews 2026-11-15; fuzz of 30,000 units: no single fault published wrong, nor with padding-like picture injected at row edges, except an insert cut inside flat picture): a second length error in the same unit that
+// leaves no device fill is invisible to the bytes, caught only when it tears 24+ samples, shifts the grid or moves the
+// picture against the previous unit or the other field (a fill-less 1-64 byte error hidden beside one fault: 361 of 3,195 published wrong; never seen in a capture); an insert inside flat picture is cut from the
+// start of the held stretch (identical bytes to within one code); a block cut by the unit's end, read as the only
+// grid, is wrong if padding-like picture before it and the unit ending early coincide. Declines that are conservative:
+// an insert sharing its window with another held stretch (the vertical interval: most field-1 inserts), a stall running
+// straight into restart padding (never measured), a tear from row 522 into the final padding (no padding after it
+// gives the grid), two stalls in one unit (the part between them has no whole-row position).
 #ifndef UNIT_REPAIR_H
 #define UNIT_REPAIR_H
 #include <stddef.h>
@@ -70,6 +77,7 @@ typedef enum {
     UR_TOO_MUCH_LOST,       // more than UR_MAX_REBUILT_ROWS rows would be rebuilt
     UR_NO_SOURCE,           // a lost row has no intact line in either field to be rebuilt from
     UR_CHECK,               // the placed picture failed a check (line starts, blanking edge, or nothing confirms the phase)
+    UR_MARKER,              // a unit marker among the bytes outside the stall: another unit's header, not one unit's fault
 } ur_status;
 
 typedef struct {

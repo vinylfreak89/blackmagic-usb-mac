@@ -259,9 +259,12 @@ int main(void){
     n = 0; p = HB + 394 * L + 993;                              // odd byte phase, held sample C135/136 Y129
     put(orig, p); held(512, 135, 129); put(orig + p, U - p);
     { ur_result r = expect_ok("held sample at odd phase (+512 B)", NULL, 0, 0, 0, 0); CHECK(r.lost_bytes == 0, "held: lost %ld", r.lost_bytes); }
-    make_unit(orig, 0, 0); for (int k = 300; k < 302; k++) flat_row(orig, k, 60);   // a flat line as long as the insert: which?
+    make_unit(orig, 0, 0); for (int k = 150; k < 152; k++) flat_row(orig, k, 60);   // a flat line as long, between the same padding blocks: which?
     n = 0; p = HB + 100 * L + 600; put(orig, p); held(512, 125, 84); put(orig + p, U - p);
     expect_status("insert beside a flat run as long", UR_NO_FILL);
+    make_unit(orig, 0, 0); for (int k = 300; k < 302; k++) flat_row(orig, k, 60);   // ... in the other field, past the displaced block: no rival
+    n = 0; p = HB + 100 * L + 600; put(orig, p); held(512, 125, 84); put(orig + p, U - p);
+    expect_ok("insert, flat line in the other field", NULL, 0, 0, 0, 0);
     make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;      // a picture word without a reserved code is not a stall
     put(orig, p); fill_word((const uint8_t[4]){0x87, 0x81, 0x88, 0x81}, 524); put(orig + p + 748, U - p - 748);
     expect_status("repeated picture word, no reserved code", UR_NO_FILL);
@@ -332,6 +335,33 @@ int main(void){
         CHECK(st == UR_SECOND_EVENT, "double with a second stall: %s", ur_status_name(st));
         printf("  %-36s declined: %s\n", "double with a second stall", ur_status_name(st));
     }
+
+    /* Review 2026-11-15 (second round), each published wrong or crashed before its fix. */
+    make_unit(orig, 0, 0); n = 0; put(orig, U); put(orig + HB + 300 * L, 100); zeros(20000);   // picture past a whole raster
+    expect_status("junk to the end past a whole raster", UR_GRID);
+    for (int k = 2; k <= 4; k += 2){                             // row 522 ending in padding-like samples, a field-2 tear
+        make_unit(orig, 0, 0);
+        for (int c = 720 - k; c < 720; c++){ orig[HB + 522 * L + 2 * c] = 0x80; orig[HB + 522 * L + 2 * c + 1] = 0x10; }
+        n = 0; p = HB + 400 * L + 950; put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
+        ur_result r; ur_status st = ur_repair(odd, n, orig, out, &r);
+        int differ, first, last; double worst; if (st == UR_OK) compare(&differ, &first, &last, &worst); else differ = 0, first = last = -1;
+        CHECK(st != UR_OK || (differ <= 2 && first >= 400), "padding-like row end (%d samples): published with rows %d..%d changed", k / 2, first, last);
+        printf("  %-36s %s\n", k == 2 ? "padding-like samples end row 522" : "  ... two of them", st == UR_OK ? "ok, placed exactly" : ur_status_name(st));
+    }
+    make_unit(orig, 0, 0); flat_row(orig, 259, 10);              // an insert held at blanking level, a flat line elsewhere
+    n = 0; p = HB + 12 * L + 600; put(orig, p); held(512, 128, 1); put(orig + p, U - p);
+    { ur_result r; ur_status st = ur_repair(odd, n, orig, out, &r); int differ, first, last; double worst;
+      if (st == UR_OK) compare(&differ, &first, &last, &worst); else differ = 0;
+      CHECK(st != UR_OK || differ == 0, "blanking-level insert beside a flat line published with %d rows changed", differ);
+      printf("  %-36s %s\n", "blanking-level insert, flat line", st == UR_OK ? "ok, placed exactly" : ur_status_name(st)); }
+    make_unit(orig, 0, 0); n = 0; p = HB + 234 * L + 20; q = p + 113920 + 36580 - 33600;   // a fill word without a reserved code
+    put(orig, p); fill_word((const uint8_t[4]){0xa0, 0xad, 0x01, 0x08}, 113920); zeros(36580); put(orig + q, U - q);
+    { ur_result r = expect_ok("fill word with no reserved code", NULL, 85, 234, 316, 12);
+      CHECK(r.lost_bytes == (long)(q - p), "unreserved fill: %ld bytes lost, want %zu", r.lost_bytes, q - p); }
+    make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;       // another unit's header among the picture bytes
+    put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);
+    { uint8_t *m = odd + HB + 400 * L + 100; m[0] = m[1] = 0; m[2] = m[3] = 0xff; m[4] = 0x34; m[5] = 0x12; m[6] = 0x00; m[7] = 0x08; }
+    expect_status("a unit header among the bytes", UR_MARKER);
 
     /* Declines: what the bytes cannot place. */
     make_unit(orig, 0, 0); n = 0; p = HB + 220 * L + 950;     // bytes gone with no fill to say where

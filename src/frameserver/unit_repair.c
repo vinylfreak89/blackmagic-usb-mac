@@ -11,10 +11,10 @@ enum {
     PAD_MIN = 64,             // a run of the padding word this long is the Shuttle's padding (tape picture is never exactly Y16/C128)
     ZERO_MIN = 16,            // picture never carries code 0 (none in any capture): 16 zero bytes are the Shuttle's
     WORD_MIN = 64,            // one 4-byte word repeated over 64 bytes is the Shuttle's (tape noise never repeats exactly)
-    DITHER_MIN = 256,         // the shortest held-sample insert looked for (each byte position within one code)
+    DITHER_MIN = 256,         // the shortest held-sample insert looked for (one sample held, each byte within one code)
     MAX_SPANS = 96,
-    GRID_SLACK = 16,          // the displaced part's grid may sit this far after the length error (measured: 8, a unit stopping
-                              // inside its last row); more is a second, unmarked length error and declines
+    GRID_SLACK = 16,          // the displaced part's grid may sit this far either side of the length error (measured -12 to +12,
+                              // a unit ending inside a row); more is a second, unmarked length error and declines
 };
 
 const char *ur_status_name(ur_status s){
@@ -28,6 +28,7 @@ const char *ur_status_name(ur_status s){
     case UR_TOO_MUCH_LOST: return "too-much-lost";
     case UR_NO_SOURCE: return "no-source";
     case UR_CHECK: return "check";
+    case UR_MARKER: return "marker";
     }
     return "?";
 }
@@ -52,16 +53,16 @@ static long run_word(const uint8_t *a, long i, long n){
         (a[i] == 0x10 && a[i + 1] == 0x80 && a[i + 2] == 0x10 && a[i + 3] == 0x80)) return 0;   // padding, at either phase
     long j = i + 4; while (j + 4 <= n && !memcmp(a + j, a + i, 4)) j += 4; return j - i;
 }
-static long run_dither(const uint8_t *a, long i, long n){
+/* A held stretch: each of the four byte positions (U, Y, V, Y) within one code, at any level, blanking included (the
+ * measured inserts hold one sample, U and V alike; this takes any held pair too, so the true insert is always among the
+ * candidates). Padding is its own span: a held run never runs into it. */
+static long run_held(const uint8_t *a, long i, long n){
     uint8_t lo[4], hi[4]; long j = i;
     if (i + 4 > n) return 0;
-    for (int k = 0; k < 4; k++){
-        lo[k] = hi[k] = a[i + k];
-        if (a[i + k] <= BLANK_MAX + 1) return 0;      // at blanking level: the device's vertical interval (and no scan of it)
-    }
+    for (int k = 0; k < 4; k++) lo[k] = hi[k] = a[i + k];
     while (j + 4 <= n){
-        int pad = 0;                                    // padding is its own span: a dither run never runs into it
-        for (int k = 0; k < 4 && !pad; k++) pad = run_pad(a, j + k, n) >= PAD_MIN;
+        int pad = 0;
+        for (int k = 0; k < 4 && !pad; k++) pad = a[j + k] == 0x80 && a[j + k + 1] == 0x10 && run_pad(a, j + k, n) >= PAD_MIN;
         if (pad) break;
         int ok = 1;
         for (int k = 0; k < 4 && ok; k++){
@@ -71,6 +72,31 @@ static long run_dither(const uint8_t *a, long i, long n){
         if (!ok) break; j += 4;
     }
     return j - i;
+}
+/* A stall's fill word without a reserved code (one measured word with one bit flipped would be one) is still the stall
+ * when it runs straight into the stall's zeros: the repeated word ending at `end` (a partial word of up to 3 bytes
+ * allowed at the end), back to no earlier than `lo`. Returns its length, 0 if under WORD_MIN. */
+static long word_back(const uint8_t *a, long lo, long end){
+    long best = 0;
+    for (int part = 0; part < 4; part++){
+        long w = end - part - 4; if (w < lo) break;
+        const uint8_t *word = a + w;
+        if (!(word[0] | word[1] | word[2] | word[3])) continue;
+        if (word[0] == 0x80 && word[1] == 0x10 && word[2] == 0x80 && word[3] == 0x10) continue;
+        if (word[0] == 0x10 && word[1] == 0x80 && word[2] == 0x10 && word[3] == 0x80) continue;
+        if (part && memcmp(a + end - part, word, (size_t)part)) continue;
+        long k = w; while (k - 4 >= lo && !memcmp(a + k - 4, word, 4)) k -= 4;
+        if (end - k > best) best = end - k;
+    }
+    return best >= WORD_MIN ? best : 0;
+}
+static long word_fwd(const uint8_t *a, long start, long hi){
+    if (start + 4 > hi) return 0;
+    const uint8_t *word = a + start;
+    if (!(word[0] | word[1] | word[2] | word[3])) return 0;
+    if ((word[0] == 0x80 && word[1] == 0x10 && word[2] == 0x80 && word[3] == 0x10) || (word[0] == 0x10 && word[1] == 0x80 && word[2] == 0x10 && word[3] == 0x80)) return 0;
+    long k = start + 4; while (k + 4 <= hi && !memcmp(a + k, word, 4)) k += 4;
+    return k - start >= WORD_MIN ? k - start : 0;
 }
 /* Splits [H,count) into data, padding and junk spans; returns the count, or -1 if there are more than MAX_SPANS. */
 static int segment(const uint8_t *a, long n, span *s){
@@ -106,15 +132,39 @@ static int stall_spans(const uint8_t *a, long n, span *sp, int *junk){
         if (*junk >= 0) return -1;
         *junk = i;
     }
+    if (*junk >= 0){                                     // the stall's fill words, whatever they hold, belong to it
+        int j = *junk;
+        if (j > 0 && sp[j - 1].kind == S_DATA){
+            long b = word_back(a, sp[j - 1].start, sp[j].start);
+            if (b){ sp[j].start -= b; sp[j - 1].end -= b; if (sp[j - 1].end == sp[j - 1].start){ memmove(sp + j - 1, sp + j, sizeof(span) * (size_t)(m - j)); m--; j--; } }
+        }
+        if (j + 1 < m && sp[j + 1].kind == S_DATA){
+            long f = word_fwd(a, sp[j].end, sp[j + 1].end);
+            if (f){ sp[j].end += f; sp[j + 1].start += f; if (sp[j + 1].end == sp[j + 1].start){ memmove(sp + j + 1, sp + j + 2, sizeof(span) * (size_t)(m - j - 2)); m--; } }
+        }
+        *junk = j;
+    }
     return m;
 }
-/* A unit too long with no stall in it: the Shuttle's insert is one sample held (each byte within one code) over exactly
- * the length error. Returns 1 with [*s,*e) when exactly one held run of at least that length exists. */
-static int find_insert(const uint8_t *a, long n, long need, long *s, long *e){
+/* A unit marker (00 00 FF FF) anywhere but the unit's own header and the stall is a device header among the bytes
+ * (picture never carries a 00): the run is not one unit's picture with one fault. */
+static int marker_outside(const uint8_t *a, const span *sp, int m){
+    for (int i = 0; i < m; i++){
+        if (sp[i].kind == S_JUNK) continue;
+        for (long x = sp[i].start > 4 ? sp[i].start - 3 : 4; x + 4 <= sp[i].end; x++)
+            if (!a[x] && !a[x + 1] && a[x + 2] == 0xff && a[x + 3] == 0xff) return 1;
+    }
+    return 0;
+}
+/* A unit too long with no stall in it. The Shuttle's insert holds one sample over exactly the length error, so it lies
+ * in [lo,hi): after the last padding block still on the unit's grid and before the first one displaced. Picture can
+ * hold a sample as long (flat lines, the vertical interval, a blanking-level insert): only a single held run at least
+ * the length error long in that window is the insert. Returns 1 with [*s,*e) the bytes to remove. */
+static int find_insert(const uint8_t *a, long lo, long hi, long need, long *s, long *e){
     int found = 0; long work = 0;
-    if (need < DITHER_MIN) return 0;
-    for (long i = H; i < n; ){
-        long r = run_dither(a, i, n); work += r + 1;
+    if (need < DITHER_MIN || hi - lo < need) return 0;
+    for (long i = lo; i < hi; ){
+        long r = run_held(a, i, hi); work += r + 1;
         if (work > 64L * U) return 0;                       // flat beyond reason: nothing singles out an insert
         if (r >= need){ if (found++) return 0; *s = i; *e = i + need; i += r; }
         else i++;
@@ -229,8 +279,15 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
      *    after it is the same raster displaced. No junk: nothing in the bytes says where the error is. */
     if ((m = stall_spans(unit, n, sp, &junk)) < 0){ st = UR_SECOND_EVENT; goto done; }
     if (junk < 0 && r.delta > 0){
-        long is, ie;
-        if (find_insert(unit, n, r.delta, &is, &ie)){
+        /* The window: after the last block on the unit's grid at its standard row, before the first block that is not. */
+        long is, ie, wlo = H, whi = -1;
+        for (int i = 0; i < m; i++){
+            if (sp[i].kind != S_PAD) continue;
+            long st0 = sp[i].start - H; int row = (int)(st0 / L);
+            if (st0 % L == 0 && (row == 0 || row == 261 || row == 523)) wlo = sp[i].end;
+            else { whi = sp[i].start; break; }
+        }
+        if (whi > wlo && find_insert(unit, wlo, whi, r.delta, &is, &ie)){
             int at = -1;
             for (int i = 0; i < m; i++) if (sp[i].kind == S_DATA && sp[i].start <= is && ie <= sp[i].end){ at = i; break; }
             if (at >= 0 && m + 2 <= MAX_SPANS){
@@ -244,6 +301,7 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
         }
     }
     if (junk < 0){ st = UR_NO_FILL; goto done; }
+    if (marker_outside(unit, sp, m)){ st = UR_MARKER; goto done; }
     long js = sp[junk].start, je = sp[junk].end;
 
     /* 2. The grid. The Shuttle's padding always starts on a row boundary of its own line grid (whole units: rows 0, 261,
@@ -254,9 +312,9 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
      *    as it is, and the checks below must confirm it. */
     long D = r.delta; int have_phase = 0;
     long pstart[MAX_SPANS];                                  // each padding block's start on its grid (its picture-like edge trimmed)
-    long amb_d[MAX_SPANS][2], amb_s[MAX_SPANS][2]; int amb[MAX_SPANS];   // a block whose two edges give two grids
+    long amb_d[MAX_SPANS][2 * GRID_SLACK + 2], amb_s[MAX_SPANS][2 * GRID_SLACK + 2]; int amb[MAX_SPANS], amb_n[MAX_SPANS];   // a block with several possible grids
     for (int i = 0; i < m; i++){
-        pstart[i] = sp[i].start; amb[i] = 0;
+        pstart[i] = sp[i].start; amb[i] = 0; amb_n[i] = 0;
         if (sp[i].kind != S_PAD) continue;
         long len = sp[i].end - sp[i].start, whole = len / L * L;
         if (i < junk){
@@ -266,26 +324,38 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
             if (len % L && sp[i].end != js && (sp[i].end - H) % L == 0){ pstart[i] = sp[i].end - whole; continue; }
             st = UR_GRID; goto done;
         }
-        /* After the junk. A block's start is a row boundary of the displaced grid, unless the block continues one
-         * the stall interrupted (it starts where the junk ends) or picture before it looks like padding; its end is,
-         * if data follows it and nothing after it looks like padding. A block whose length is not whole rows has such
-         * a sample at one edge: the edge whose grid puts the displacement on whole UYVY pairs (4 bytes), a few bytes
-         * from the length error, is the true one. A block with both says nothing by itself: another block's grid
-         * picks its edge (none: declined). A block cut off by the unit's end has no end. */
-        long cand[2]; int nc = 0;
+        /* After the junk. A block's true edges are row boundaries of the displaced grid, but picture that looks like
+         * padding (Cb128/Y16 samples, ending about one row in three before the 261 block) joins the run on either side:
+         * the run reads early, late, or both. Its true length is whole rows, so a run e bytes over whole rows has its
+         * true start somewhere in [start, start + e]. Every grid in that range on whole UYVY pairs (4 bytes) within the
+         * slack of the length error is a candidate: one fixes the grid, several leave it to another block (none:
+         * declined). A block continuing one the stall interrupted has only its end (late by up to the slack); a block
+         * cut by the unit's end has only its start, read only when the run is whole rows or a few bytes short of them
+         * (the unit ended early: padding-like picture only lengthens a run; a few bytes long cannot be told from a unit
+         * ending late). */
+        long cand[2 * GRID_SLACK + 2]; int nc = 0;
         int s_ok = sp[i].start != je, e_ok = sp[i].end != n;
-        if (s_ok) cand[nc++] = sp[i].start;
-        if (e_ok && len % L) cand[nc++] = sp[i].end - whole;      // the start that the block's end implies
+        if (s_ok && e_ok){
+            long e = len % L; if (e > 2 * GRID_SLACK){ st = UR_GRID; goto done; }
+            for (long j = 0; j <= e; j++) cand[nc++] = sp[i].start + j;
+        } else if (s_ok){
+            long rem = len % L; if (!rem || rem > GRID_SLACK) cand[nc++] = sp[i].start;
+        } else if (e_ok){
+            for (long j = 0; j <= GRID_SLACK; j++) cand[nc++] = sp[i].end - j - whole;   // its end (late by j), whole rows back
+        }
         long found = 0, fstart = 0; int nf = 0;
+        amb_n[i] = 0;
         for (int c = 0; c < nc; c++){
             long ph = ((cand[c] - H) % L + L) % L;
             long off = (((ph - r.delta) % L) + L) % L; if (off > L / 2) off -= L;
             long d = r.delta + off;                                  // the phase's value nearest the length error
             if (d % 4 || off < -GRID_SLACK || off > GRID_SLACK) continue;
-            if (nf < 2){ amb_d[i][nf] = d; amb_s[i][nf] = cand[c]; }
-            if (!nf || d != found){ found = d; fstart = cand[c]; nf++; }
+            int seen = 0; for (int k = 0; k < amb_n[i]; k++) seen |= amb_d[i][k] == d;
+            if (seen) continue;
+            amb_d[i][amb_n[i]] = d; amb_s[i][amb_n[i]] = cand[c]; amb_n[i]++;
+            found = d; fstart = cand[c]; nf++;
         }
-        if (nf == 2){ amb[i] = 1; continue; }
+        if (nf >= 2){ amb[i] = 1; continue; }
         if (nf == 0 && nc){ st = UR_GRID; goto done; }           // on no grid the length error allows: not this model
         if (nf != 1) continue;                                   // no edge to read: says nothing
         if (have_phase && found != D){ st = UR_GRID; goto done; }
@@ -293,18 +363,22 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
     }
     /* Every unit carries padding after any stall (at least its final rows 523-524): without any to give the grid, the
      * bytes do not fix where the displaced part sits (a unit missing its end would land rows low). */
-    if (je == n){ have_phase = 1; D = je - (js > (long)U ? js : (long)U); }   // junk to the unit's end: nothing displaced
+    if (je == n){                                         // junk to the unit's end: nothing displaced
+        if (js > (long)U){ st = UR_GRID; goto done; }     // picture past a whole raster: not this model
+        have_phase = 1; D = je - (long)U;
+    }
     if (!have_phase){ st = UR_GRID; goto done; }
     for (int i = 0; i < m && je != n; i++){
         if (!amb[i]) continue;
-        if (amb_d[i][0] == D) pstart[i] = amb_s[i][0];
-        else if (amb_d[i][1] == D) pstart[i] = amb_s[i][1];
-        else { st = UR_GRID; goto done; }
+        int k = 0; while (k < amb_n[i] && amb_d[i][k] != D) k++;
+        if (k == amb_n[i]){ st = UR_GRID; goto done; }
+        pstart[i] = amb_s[i][k];
     }
     r.grid_offset = je == n ? 0 : (int)(D - r.delta);
     if (r.grid_offset > GRID_SLACK || r.grid_offset < -GRID_SLACK){ st = UR_GRID; goto done; }
     long t0 = je - D;                                       // where the displaced part starts in the whole raster
     if (t0 < js){ st = UR_GRID; goto done; }               // it would overlap the part in place: not one stall
+    if (js > (long)U || t0 > (long)U || js < H){ st = UR_GRID; goto done; }   // outside the raster: not one stall
     r.lost_bytes = t0 - js;
     r.prefix_rows = (unsigned)((js - H) / L); r.suffix_row = (unsigned)((t0 - H + L - 1) / L);
 
@@ -424,7 +498,7 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
         if (nd >= 20){
             for (int i = 1; i < nd; i++) for (int j = i; j > 0 && d[j - 1] > d[j]; j--){ int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; }
             r.edge_check = d[nd / 2];
-            if (d[nd / 2] > 4 || d[nd / 2] < -4){ st = UR_CHECK; goto done; }   // half-samples: more than 2 samples apart
+            if (d[nd / 2] > 2 || d[nd / 2] < -2){ st = UR_CHECK; goto done; }   // half-samples: more than a sample apart
         }
         else if (r.suffix_row < UR_ROWS){
             /* No blanking edge to read (picture at the window's edge). The picture moves between units (a pan), so
@@ -451,6 +525,22 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
             }
         }
         if (tear_left(rows, kept)){ st = UR_SECOND_EVENT; goto done; }
+        /* Every row against the other field's line beside it, whole frame (the vertical interval and head-switch rows
+         * the tear check leaves out included): a block of rows put a whole stretch of samples sideways, as removing the
+         * wrong held run would, reads as a clear large shift in row after row. Fields 1/60 s apart rarely move that far;
+         * if they do, the unit is declined. */
+        {
+            int big = 0, seen = 0;
+            for (int k = 7; k < UR_ROWS; k++){
+                if (padding_row(k) || !kept[k]) continue;
+                int o = k < F2 ? k + 262 : k - 263;
+                if (o < 0 || o >= UR_ROWS || padding_row(o) || !kept[o]) continue;
+                int c, sft = best_shift(rows + (size_t)k * L, rows + (size_t)o * L, &c);
+                if (!c) continue;
+                seen++; if (sft >= 24 || sft <= -24) big++;
+            }
+            if (big >= 8 && big * 4 >= seen){ st = UR_CHECK; goto done; }
+        }
     }
 
     /* 5. Rebuild the lost bytes (whole rows, or the lost stretch of a row). Pass 1: an intact line of its kind close by
