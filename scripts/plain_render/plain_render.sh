@@ -11,7 +11,8 @@
 #      A picture unit the Shuttle sent at the wrong length (bytes lost or inserted inside a line, or filler written over
 #      lines while it recovered sync) is put back to a whole frame first (FS_REPAIR=1, src/frameserver/unit_repair.h): the
 #      lines in place and the displaced lines where they belong, the lost lines rebuilt from the field around them;
-#      the sidecar row says Repaired. PLAIN_RENDER_REPAIR=0 turns that off.
+#      the sidecar row says Repaired; the render prints one "repair:" line per unit, put back or declined with its reason.
+#      PLAIN_RENDER_REPAIR=0 turns that off.
 #   2. relay.py places frames on the AUDIO clock: each frame goes to the 1001/30000 s slot nearest its unit's
 #      audio-clock time (a unit counter is not time: in the Shuttle's other-format modes it runs ~50-70 per second);
 #      a slot no frame reached becomes a flat no-signal frame, and of several frames in one slot the nearest is kept
@@ -152,7 +153,7 @@ python3 -c 'import os, sys
 try: os.close(os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK))
 except OSError: pass' "$D/a.fifo"
 wait $AP; ARC=$?; rm -f "$D/v.fifo" "$D/a.fifo"; date
-echo "replay exit $RC, encode exit $FRC, audio exit $ARC${FP:+, filter exit $FLC}"; grep -E "video obs|published|audio|skipped|failed|put back" "$D/replay.log"; cat "$D/relay.log" "$D/audio_relay.log"
+echo "replay exit $RC, encode exit $FRC, audio exit $ARC${FP:+, filter exit $FLC}"; grep -E "video obs|published|audio|skipped|failed|put back|^repair:" "$D/replay.log"; cat "$D/relay.log" "$D/audio_relay.log"
 if [ "$CRC" != 0 ]; then echo "CHECKED READ FAILED (exit $CRC): the capture was not proven intact; see $D/checked_read.log and $D/checked_read.json. Render not finished."; exit 1; fi
 if [ $RC -ne 0 ] || [ $FRC -ne 0 ] || [ $ARC -ne 0 ] || [ "$FLC" != 0 ]; then echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; fi
 python3 "$HERE/finish.py" "$D" "$PART" "$OUT" || { echo "RENDER FAILED: logs in $D, the unfinished render kept at $PART"; exit 1; }
