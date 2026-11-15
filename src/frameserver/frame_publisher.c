@@ -122,7 +122,8 @@ int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, i
         /* One field (a unit framed at field rate, or one cut short): its rows in field 1's aperture, as a whole unit's
          * field 1 is placed, each line shown twice, the line between two of its lines their average (a bob). Stretching
          * its whole raster over 480 rows showed its padding and vertical interval as picture (2026-11-15). A line it
-         * lacks is black. */
+         * lacks is black. Units the Shuttle framed by field can carry fewer vertical-interval rows than a whole unit (0
+         * to 11 measured, against 10), so their picture may sit a few lines off; only their picture would say how far. */
         for (int k = 0; k < FP_FIELD_LINES; k++){
             int r = FP_FIELD1_START + d1 + k, v = r >= 0 && (unsigned)r < n_lines, vn = v && (unsigned)(r + 1) < n_lines && k + 1 < FP_FIELD_LINES;
             uint8_t *o0 = dst + (size_t)(2 * k) * bpr, *o1 = dst + (size_t)(2 * k + 1) * bpr;

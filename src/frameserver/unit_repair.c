@@ -641,18 +641,34 @@ ur_status ur_repair2(const uint8_t *unit, size_t count, const uint8_t *previous,
         }
     /* The stall over the marker leaves at most one unit after it (the second unit, stalled from its top) and at most
      * one unit and the slack before it (the first, which may hold a stall of its own): exactly one stall must fit. */
-    int k = -1, fits = 0;
-    for (int i = 0; i < m; i++)
-        if (sp[i].kind == S_JUNK && sp[i].start <= (long)U + UR_MAX_DELTA_BYTES && n - sp[i].end + H + ZERO_MIN <= (long)U){ fits++; k = i; }
+    int k = -1, fits = 0, first = -1;
+    for (int i = 0; i < m; i++){
+        if (sp[i].kind != S_JUNK) continue;
+        if (first < 0) first = i;
+        if (sp[i].start <= (long)U + UR_MAX_DELTA_BYTES && n - sp[i].end + H + ZERO_MIN <= (long)U){ fits++; k = i; }
+    }
     if (k < 0){ st = UR_NO_FILL; goto fail; }
-    if (fits > 1){ st = UR_SECOND_EVENT; goto fail; }
+    if (fits > 1){
+        /* Which stall took the marker is not fixed, but everything before the first stall is the first unit's in
+         * place either way: it alone can go out (its stall then runs to its end); the second is declined. */
+        long js1 = sp[first].start;
+        if (js1 > (long)U){ st = UR_SECOND_EVENT; goto fail; }
+        memcpy(scratch, unit, (size_t)js1); memset(scratch + js1, 0, (size_t)(U + ZERO_MIN - js1));
+        ur_status sa1 = ur_repair(scratch, U + ZERO_MIN, previous, out, &res[0]);
+        res[1].status = UR_SECOND_EVENT; res[0].delta = res[1].delta = d2;
+        return sa1 != UR_OK ? sa1 : UR_SECOND_EVENT;
+    }
     long js = sp[k].start, je = sp[k].end;
     if (k > 0 && sp[k - 1].kind == S_DATA){ long b = word_back(unit, sp[k - 1].start, js); js -= b; }
     if (k + 1 < m && sp[k + 1].kind == S_DATA) je += word_fwd(unit, je, sp[k + 1].end);
     long tail = n - je;
     if (tail + H + ZERO_MIN > (long)U){ st = UR_GRID; goto fail; }        // more after the stall than one unit holds
-    memcpy(scratch, unit, (size_t)js); memset(scratch + js, 0, (size_t)(U + ZERO_MIN - js));
-    ur_status sa = ur_repair(scratch, U + ZERO_MIN, previous, out, &res[0]);
+    /* The first unit: its bytes to the stall, then zeros: at least a unit long, longer when it holds a stall of its own
+     * (its bytes then run past a unit's length; the scratch holds a unit and the slack). */
+    long alen = js + ZERO_MIN > (long)U + ZERO_MIN ? js + ZERO_MIN : (long)U + ZERO_MIN;
+    if (alen > (long)UR_SCRATCH_BYTES){ st = UR_GRID; goto fail; }
+    memcpy(scratch, unit, (size_t)js); memset(scratch + js, 0, (size_t)(alen - js));
+    ur_status sa = ur_repair(scratch, (size_t)alen, previous, out, &res[0]);
     long z = U + ZERO_MIN - H - tail;
     memcpy(scratch, unit, H); uint16_t c = (uint16_t)(unit[4] | unit[5] << 8); c++;
     scratch[4] = (uint8_t)c; scratch[5] = (uint8_t)(c >> 8);

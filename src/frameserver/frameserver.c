@@ -335,6 +335,7 @@ static void on_video(void *ctx, const unit_video_observation *u_in){
     /* Longer still: a unit whose stall ran on over the units after it to the next marker the parser confirmed it by. */
     else if (f->cfg.repair_units && u->bytes && u->kind == UNIT_VIDEO_E801 && u->counter_confirmed &&
              u->transport == UNIT_TRANSPORT_UNFRAMED && u->byte_count > UNIT_PARSER_VIDEO_UNIT_BYTES + UR_MAX_DELTA_BYTES &&
+             u->byte_count + UR_MAX_DELTA_BYTES < 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&   // a run of two had its turn above
              try_repair(f, u, &it)) {}
     /* A picture unit that is not whole (one short field per unit from a deck in search, or the PAL-family units of
      * an unlocked decoder) is kept for showing if asked. No-signal pseudo-frames, units with bytes missing and
