@@ -159,6 +159,52 @@ static int row_at(int y){
     int k = y % 2 ? (y - 1) / 2 + 263 : y / 2;
     return (y % 2 ? k >= F2 && k < UR_ROWS : k < F2) ? k : -1;
 }
+/* The left blanking edge of a picture row, in half-samples: where luma first crosses halfway from blanking (code ~1.5) to
+ * the row's picture level (mean of samples 40-200); -1 for a row too dark to say. */
+static int row_edge(const uint8_t *w){
+    unsigned sum = 0; for (int c = 40; c < 200; c++) sum += w[2 * c + 1];
+    double lvl = sum / 160.0; if (lvl < 20) return -1;
+    double half = 1.5 + (lvl - 1.5) / 2;
+    for (int c = 1; c < 120; c++){
+        double a = w[2 * (c - 1) + 1], b = w[2 * c + 1];
+        if (a <= half && b > half) return (int)(2 * ((c - 1) + (half - a) / (b - a)) + 0.5);
+    }
+    return -1;
+}
+/* How far (half-samples) the displaced part's left blanking edge sits from where the picture beside it puts it. Each
+ * displaced picture row is compared with a row showing nearly the same picture, so the content under the edge cancels:
+ * the other field's line at the same height when that line is in place, otherwise (fewer than 20 such pairs) the same
+ * row of the previous unit. The median of the per-row differences; EDGE_UNKNOWN when fewer than 20 rows say. */
+enum { EDGE_UNKNOWN = 1 << 20 };
+static int edge_offset(const uint8_t *rows, const unsigned char *trusted, int a_end, const uint8_t *previous){
+    int d[UR_ROWS], n = 0;
+    for (int pass = 0; pass < 2 && n < 20; pass++){
+        if (pass == 1){ if (!previous) break; n = 0; }
+        for (int k = a_end; k < UR_ROWS; k++){
+            if (!trusted[k] || !picture_row(k) || flag_zone(k)) continue;
+            int ek = row_edge(rows + (size_t)k * L); if (ek < 0) continue;
+            int er = -1;
+            if (pass == 0){
+                int o1 = k < F2 ? k + 262 : k - 263, o2 = k < F2 ? k + 263 : k - 262;
+                if (o1 >= 0 && o1 < a_end && trusted[o1] && picture_row(o1)) er = row_edge(rows + (size_t)o1 * L);
+                if (er < 0 && o2 >= 0 && o2 < a_end && trusted[o2] && picture_row(o2)) er = row_edge(rows + (size_t)o2 * L);
+            } else er = row_edge(previous + H + (size_t)k * L);
+            if (er >= 0) d[n++] = ek - er;
+        }
+    }
+    if (n < 20) return EDGE_UNKNOWN;
+    for (int i = 1; i < n; i++) for (int j = i; j > 0 && d[j - 1] > d[j]; j--){ int t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; }
+    return d[n / 2];
+}
+/* Move a row's samples by s (even) samples: positive moves the picture right; vacated samples repeat the edge pair. */
+static void shift_row(uint8_t *w, int s){
+    uint8_t t[L]; int b = 2 * s;
+    for (int i = 0; i < L; i += 4){
+        int src = i - b; if (src < 0) src = 0; if (src > L - 4) src = L - 4;
+        memcpy(t + i, w + src, 4);
+    }
+    memcpy(w, t, L);
+}
 static unsigned luma_mad(const uint8_t *a, const uint8_t *b){
     unsigned s = 0;
     for (unsigned i = 1; i < L; i += 2) s += a[i] > b[i] ? a[i] - b[i] : b[i] - a[i];
@@ -242,6 +288,21 @@ ur_status ur_repair(const uint8_t *unit, size_t count, const uint8_t *previous, 
         else memcpy(out + H + (size_t)k * L, unit + H + (long)k * L + r.delta, L);
     }
     uint8_t *rows = out + H;
+    /* The displaced part sits on the tape's blanking like the rest of the picture. Where the Shuttle restarted its raster
+     * mid-unit (25:25 of one capture) the displaced picture came out 4 samples later than in the units either side, all
+     * the way down: the line-start test cannot see under 16 samples. Its left blanking edge is measured against the
+     * in-place part's, or the previous unit's when there is too little in-place picture, and the displaced rows moved
+     * to match (whole UYVY pairs, so colour stays paired). */
+    {
+        int off = edge_offset(rows, trusted, a_end, previous);
+        if (off != EDGE_UNKNOWN){
+            int s = -off / 4 * 2;                                           // half-samples to whole UYVY pairs, toward zero
+            if (s != 0 && s >= -32 && s <= 32){
+                for (int k = a_end; k < UR_ROWS; k++) if (trusted[k]) shift_row(rows + (size_t)k * L, s);
+                r.phase_shift = s;
+            }
+        }
+    }
     /* Pass 1: a lost row with an intact line of its kind close by in its own field (a gap of one or two lines) is blended
      * from those; otherwise from the other field's lines above and below. Rows with neither wait for pass 2. */
     unsigned char have[UR_ROWS], wait[UR_ROWS];

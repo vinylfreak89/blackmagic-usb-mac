@@ -141,6 +141,25 @@ int main(void){
       CHECK(st == UR_OK && r.rebuilt_previous == 0 && w <= 12, "both fields lost, previous unit another scene: %s, %u rows from it, worst MAD %.2f", ur_status_name(st), r.rebuilt_previous, w);
       printf("  %-34s ok: previous unit not used (%u rows), worst MAD %.2f\n", "both fields lost (cut before)", r.rebuilt_previous, w); }
 
+    /* The displaced part 4 samples late on the tape's blanking (25:25 of one capture, after the Shuttle restarted its raster):
+     * moved back to sit with the rest, measured against the previous unit (no in-place picture) or the other field. */
+    for (int with_prev = 1; with_prev >= 0; with_prev--){
+        make_unit(orig, 0, 0); n = 0;
+        if (with_prev){ q = HB + 92 * L; put(orig, HB + 480); fill_word(filler2, (size_t)(79.47 * L) - 480); zeros(q + 33584 - n); put(orig + q, U - q); }
+        else { p = HB + 220 * L + 950; put(orig, p); zeros(524); put(orig + p + 748, U - p - 748); }
+        long dl = (long)n - U; int first = with_prev ? 92 : 222;
+        for (int k = first; k < ROWS; k++){                              // shift the displaced rows 4 samples right
+            uint8_t *w = odd + HB + (long)k * L + dl, t[L];
+            for (int i = 0; i < L; i += 4){ int src = i - 8; memcpy(t + i, w + (src < 0 ? 0 : src), 4); }
+            memcpy(w, t, L);
+        }
+        ur_result r; ur_status st = ur_repair(odd, n, with_prev ? orig : NULL, out, &r); int d = 0, f = 0, l = 0; double w = 0;
+        if (st == UR_OK) compare(&d, &f, &l, &w);
+        CHECK(st == UR_OK && r.phase_shift == -4 && w <= 12, "displaced part 4 samples late (%s): %s, moved %+d, worst MAD %.2f",
+              with_prev ? "previous unit" : "other field", ur_status_name(st), r.phase_shift, w);
+        printf("  %-34s ok: moved %+d samples, worst MAD %.2f\n", with_prev ? "4 samples late (previous unit)" : "4 samples late (other field)", r.phase_shift, w);
+    }
+
     /* A top-of-field flag (picture to the window edge on lines 24-29) is real picture: kept as it came. */
     make_unit(orig, 0, 1); n = 0; p = HB + 220 * L + 950;
     put(orig, p); zeros(524); put(orig + p + 748, U - p - 748);

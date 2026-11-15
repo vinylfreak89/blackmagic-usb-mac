@@ -76,9 +76,9 @@ static void dump_audio(void *c, const ap_block *b){
 /* FS_REPAIR: one line per unit the Shuttle sent at the wrong length, put back or declined (unit_repair.h). */
 static void on_repair(void *ctx, const unit_video_observation *u, const ur_result *r){
     (void)ctx;
-    fprintf(stderr, "repair: counter %llu (%u) delta %+ld %s: rows 0-%u in place, %u-524 displaced, rebuilt %u+%u (same field %u, other field %u, previous unit %u); agree %d/%d, disagree %d/%d\n",
+    fprintf(stderr, "repair: counter %llu (%u) delta %+ld %s: rows 0-%u in place, %u-524 displaced, rebuilt %u+%u (same field %u, other field %u, previous unit %u), displaced part moved %+d samples; agree %d/%d, disagree %d/%d\n",
             (unsigned long long)u->counter_extended, u->counter16, r->delta, ur_status_name(r->status), r->prefix_rows ? r->prefix_rows - 1 : 0, r->suffix_row,
-            r->rebuilt_rows[0], r->rebuilt_rows[1], r->rebuilt_same_field, r->rebuilt_other_field, r->rebuilt_previous, r->prefix_agree, r->suffix_agree, r->prefix_disagree, r->suffix_disagree);
+            r->rebuilt_rows[0], r->rebuilt_rows[1], r->rebuilt_same_field, r->rebuilt_other_field, r->rebuilt_previous, r->phase_shift, r->prefix_agree, r->suffix_agree, r->prefix_disagree, r->suffix_disagree);
 }
 int main(int argc, char **argv){
     ge_config geometry=ge_default_config();

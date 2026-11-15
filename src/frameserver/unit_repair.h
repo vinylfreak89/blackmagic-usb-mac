@@ -53,6 +53,7 @@ typedef struct {
     unsigned suffix_row;        // rows [suffix_row,525) are read delta bytes later (less rows that are fill)
     unsigned rebuilt_rows[2];   // rebuilt rows of field 1 (rows 0..261) and field 2 (rows 262..524)
     unsigned rebuilt_same_field, rebuilt_other_field, rebuilt_previous;   // by source: own field, other field, previous unit
+    int phase_shift;            // samples the displaced part was moved to sit on the tape's blanking like the rest (0: none)
     int prefix_agree, prefix_disagree;   // picture/padding rows that confirm / contradict the in-place reading
     int suffix_agree, suffix_disagree;   // the same for the displaced reading
 } ur_result;
