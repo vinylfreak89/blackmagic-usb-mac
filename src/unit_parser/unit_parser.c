@@ -265,8 +265,12 @@ static void end_stale_run(unit_parser *parser, size_t position)
     /* A picture marker two or three on that the audio also vouches for ends it too (a stall that wrote over the units
      * between: 2026-11-15), provided the run's counter is past the last one confirmed (a repeat or stale copy is not). */
     bool ahead = !parser->video_counter_valid || (uint16_t)(run16 - parser->video_counter16) - 1u < 0x7fffu;
+    /* (A run three on at a run of two's length is not one unit and junk: it would be taken for a run of two, the third
+     * unit's tail published as the second.) */
+    bool double_length = position + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES >= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&
+                         position <= UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES;
     bool vouched = parser->video_audio_vouched && ahead &&
-                   (ending != 0xe801 || (step >= 2 && step <= 3 && audio_vouches(parser, ending16, ending)));
+                   (ending != 0xe801 || (step >= 2 && step <= 3 && !(step == 3 && double_length) && audio_vouches(parser, ending16, ending)));
     emit_video(parser, parser->video, position, true, vouched,
                parser->video_flags | (vouched ? 0 : UNIT_FLAG_COUNTER_DISCONTINUITY), !vouched);
     size_t retained = parser->video_bytes - position;
@@ -281,6 +285,13 @@ static void end_stale_run(unit_parser *parser, size_t position)
 
 static void feed_video_byte(unit_parser *parser, uint8_t byte)
 {
+    /* A no-signal marker still pending when the buffer fills: no successor came within any run's length (a stall-borne
+     * header sees the run's successor by then), so the input was really lost (2026-11-15: a no-signal unit of 1.67 MB
+     * without a marker followed one). The picture unit ends at it, and the buffer holds the no-signal run. */
+    if (parser->video_bytes == sizeof(parser->video) && parser->ns_pending) {
+        size_t at = parser->ns_pos; parser->ns_pending = false;
+        end_stale_run(parser, at);
+    }
     if (parser->video_bytes == sizeof(parser->video)) {
         emit_video(parser, parser->video, parser->video_bytes,
                    parser->video_has_marker, false,
@@ -310,18 +321,25 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
     }
     if (parser->video_candidate_valid &&
         parser->video_bytes >= parser->video_candidate + 8) {
-        /* A no-signal marker met earlier in this picture run, decided now that the next marker is here: a real
-         * no-signal unit's raster holds no Shuttle padding, while a no-signal header met inside a stall (measured
-         * 2026-11-15) is followed, before the next marker, by the restart padding of the picture resuming. Real: the
-         * picture unit ends at it (cut short by a lost input), and this marker is weighed against the no-signal run. */
+        /* A no-signal marker met earlier in this picture run, decided now that the next marker is here, by counters
+         * (its first bytes cannot tell, and real no-signal units carry Shuttle padding at transitions too):
+         *  - stall-borne (measured inside a stall, 2026-11-15): the next marker is the run's own successor, or two on
+         *    at a run of two's length (a stall over a marker), or the same no-signal header again;
+         *  - a real input loss: the next marker is a no-signal unit one on (they count up), or picture further on.
+         * A real loss ends the picture unit at the no-signal marker, and this marker is weighed against that run. */
         if (parser->ns_pending && parser->video_candidate > parser->ns_pos){
-            size_t from = parser->ns_pos + UNIT_PARSER_VIDEO_HEADER_BYTES, run = 0; bool padded = false;
-            for (size_t i = from; i + 1 < parser->video_candidate && !padded; i += 2){
-                run = parser->video[i] == 0x80 && parser->video[i + 1] == 0x10 ? run + 2 : 0;
-                padded = run >= 64;
-            }
-            size_t at = parser->ns_pos; parser->ns_pending = false;
-            if (!padded){ size_t c = parser->video_candidate - at; end_stale_run(parser, at); parser->video_candidate = c; parser->video_candidate_valid = true; }
+            size_t c = parser->video_candidate, at = parser->ns_pos;
+            uint16_t fm = load_u16(parser->video + c + 6), m16 = load_u16(parser->video + c + 4);
+            uint16_t run16 = load_u16(parser->video + 4), ns16 = load_u16(parser->video + at + 4);
+            uint16_t step = (uint16_t)(m16 - run16);
+            bool real = (fm == 0x0800 && m16 == (uint16_t)(ns16 + 1)) ||
+                        (fm == 0xe801 && step >= 2 && step < 0x8000u &&
+                         !(step == 2 && c + UNIT_PARSER_VIDEO_LONG_SLACK_BYTES >= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&
+                           c <= UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES));
+            bool copy = fm == 0x0800 && m16 == ns16;
+            parser->ns_pending = false;
+            if (real){ end_stale_run(parser, at); parser->video_candidate = c - at; parser->video_candidate_valid = true; }
+            else if (copy){ parser->video_candidate_valid = false; return; }   // the stall's copy of the same header
         }
         size_t candidate = parser->video_candidate;
         uint16_t format = load_u16(parser->video + candidate + 6);

@@ -356,12 +356,31 @@ int main(void)
             }
             feed(parser, CC_EP_VIDEO, ns, stall ? 300000 : UNIT, &video_seq);
             feed_audio_unit(parser, 503);
+            if (stall) feed_video_unit(parser, unit, 503);   // inside a stall: the run's own successor follows
             for (uint16_t c = 504; c <= 506; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
             unit_parser_finish(parser); free(parser);
             if (!stall) CHECK(s->any_seen[502] && s->any_ext[502] == 502, "picture cut short by a no-signal unit: 502 seen %d", s->any_seen[502]);
             else CHECK(!s->any_seen[502], "a no-signal header inside a stall cut the unit short");
             memset(s->any_seen, 0, sizeof s->any_seen); memset(s->long_confirmed, 0, sizeof s->long_confirmed);
         }
+    }
+
+    /* 15: a picture unit cut short by a lost input whose no-signal unit runs past the parser's buffer before any marker
+     * (16:17 of one capture: 1.67 MB): the pending decision is made when the buffer fills, and the unit kept. */
+    {
+        parser = open_parser(s);
+        for (uint16_t c = 900; c <= 901; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+        feed_audio_unit(parser, 902);
+        static uint8_t big[UNIT_PARSER_VIDEO_DOUBLE_MAX_BYTES + 200000];
+        memset(big, 0, 8); big[2] = big[3] = 0xff; big[4] = (uint8_t)902; big[5] = (uint8_t)(902 >> 8); big[6] = 0x01; big[7] = 0xe8;
+        for (size_t i = 48; i < 48 + 7 * 1440; i += 2){ big[i] = 0x80; big[i + 1] = 0x10; }
+        for (size_t i = 48 + 7 * 1440; i < 48 + 245 * 1440; i += 2){ big[i] = 128; big[i + 1] = (uint8_t)(40 + i % 50); }
+        size_t at = 48 + 245 * 1440; memset(big + at, 0, 48); big[at + 2] = big[at + 3] = 0xff; big[at + 4] = (uint8_t)9100; big[at + 5] = (uint8_t)(9100 >> 8); big[at + 7] = 0x08;
+        for (size_t i = at + 48; i < sizeof big; i += 4){ big[i] = 188; big[i + 1] = 12; big[i + 2] = 0; big[i + 3] = 12; }
+        feed(parser, CC_EP_VIDEO, big, sizeof big, &video_seq);
+        for (uint16_t c = 903; c <= 905; c++) { feed_audio_unit(parser, c); feed_video_unit(parser, unit, c); }
+        unit_parser_finish(parser); free(parser);
+        CHECK(s->any_seen[902] && s->any_ext[902] == 902, "picture cut short, no-signal past the buffer: 902 seen %d", s->any_seen[902]);
     }
 
     /* 10: a new epoch starts the numbering afresh, whatever the audio stream stood at */
