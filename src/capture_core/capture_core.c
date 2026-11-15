@@ -949,7 +949,7 @@ static void* ih_main(void *arg){
     s->teardown_incomplete=st.incomplete;
     if(st.device_gone) atomic_store(&s->end_reason,CC_END_DEVICE_GONE);   /* even when a notice came after the queue stopped */
     { char line[240];
-      snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps); transfers that delivered nothing and failed %llu / %llu%s",
+      snprintf(line,sizeof line,"capture_core: IOUSBHost bus check: transfer completion steps off the scheduled frames by at most %.3f / %.3f ms (video / audio, %llu / %llu steps); transfers that ended failing, nothing delivered after %llu / %llu%s",
                st.step_dev_ms[0],st.step_dev_ms[1],(unsigned long long)st.steps[0],(unsigned long long)st.steps[1],
                (unsigned long long)st.dead_transfers[0],(unsigned long long)st.dead_transfers[1],
                st.gap_dev_ms[0]>0||st.gap_dev_ms[1]>0?"; across unread gaps see the lines above":"");

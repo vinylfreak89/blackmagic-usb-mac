@@ -41,6 +41,12 @@ typedef struct {
     _Atomic int link_dead, dead_spacing_ms;
     _Atomic int dead_left[2];       /* also fail the next N completions per endpoint (counts down) */
     _Atomic int dead_pkt_ok;        /* the failed transfers' packets say Success with no data (the transfer still fails) */
+    /* nonzero: the link dies at this bus frame (with link_dead set). A transfer wholly before it completes normally;
+     * the one spanning it keeps its earlier packets' data and fails the rest (measured 2026-11-15: the kernel's first
+     * failed completion on each endpoint was such a transfer); later ones fail wholly */
+    _Atomic uint64_t dead_from_frame;
+    _Atomic long dead_partial[2];   /* out: failed completions that delivered packets before the death frame */
+    _Atomic uint64_t first_dead_ms; /* out: CLOCK_UPTIME_RAW ms of the first failed completion on either endpoint */
     _Atomic long dead_completions[2];
     _Atomic uint64_t dead_next_ns;  /* internal: the procession's next free slot */
 } ih_fake_controls;

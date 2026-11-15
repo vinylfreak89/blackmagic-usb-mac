@@ -22,7 +22,7 @@ typedef struct {
 } ep_rec;
 static struct {
     ep_rec r[2];
-    _Atomic int after_stop, late_calls, calls;
+    _Atomic int after_stop, late_calls, calls, straddle_lines;
     int stall_at, stall_ms, refuse_at, refuse_n, refuse_all_at, terminate_at, late_at, late_k;
     dispatch_semaphore_t stalled, unstalled;
     long submit_failed[2], fatal[4]; int fatal_reason_last; _Atomic uint64_t fatal_ms; _Atomic long ok_video, enq_at_fatal; int stall_dead_ms, stall_dead_done;
@@ -68,7 +68,8 @@ static void on_fatal(void *ctx, int reason, int io, int ep, uint32_t seq){ (void
     if(reason>=1 && reason<=3) T.fatal[reason]++; T.fatal_reason_last=reason; uint64_t z=0; if(atomic_compare_exchange_strong(&T.fatal_ms,&z,clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000000))
         atomic_store(&T.enq_at_fatal,atomic_load(&ih_fake.enqueues[0])+atomic_load(&ih_fake.enqueues[1]));
     if(atomic_load(&T.after_stop)) atomic_fetch_add(&T.late_calls,1); }
-static void on_diag(void *ctx, const char *line){ (void)ctx; if(getenv("IH_TEST_VERBOSE")) fprintf(stderr,"  diag: %s\n",line); }
+static void on_diag(void *ctx, const char *line){ (void)ctx; if(getenv("IH_TEST_VERBOSE")) fprintf(stderr,"  diag: %s\n",line);
+    if(strstr(line,"delivered its first") && strstr(line,"counted as failed")) atomic_fetch_add(&T.straddle_lines,1); }
 static const ih_callbacks CB={ .on_transfer=on_transfer, .on_packet=on_packet, .on_tick=on_tick,
                                .on_submit_failed=on_submit_failed, .on_fatal=on_fatal, .on_diag=on_diag };
 
@@ -280,6 +281,28 @@ int main(void){ @autoreleasepool {
     CHECK(st.dead_transfers[0]==2,"stall between failures: %llu failed video transfers (want 2)",(unsigned long long)st.dead_transfers[0]);
     close_(d);
     printf("  queue stall between two failures: the waiting deliveries cancelled the end\n");
+
+    /* 9e. the link dies inside a video transfer (2026-11-15): that transfer delivers its first half and fails the
+     *     rest, the later ones fail wholly. Failed completions every 300 ms across both endpoints, deadline 400.
+     *     The streak starts at the transfer the link died in: the second failed completion on that endpoint (600 ms
+     *     after the first failure) ends the session. Counting only wholly failed transfers ends it 900-1200 ms in,
+     *     which is what happened on hardware (6.6 s from the kernel's first error instead of 3.2) */
+    reset_(); atomic_store(&ih_fake.dead_spacing_ms,300); atomic_store(&T.straddle_lines,0);
+    d=open_start_(400,&rc); ih_go(d); usleep(200000);
+    { uint64_t now=ih_fake_frame_now(), qe=atomic_load(&ih_fake.queue_end[0]), b=qe;
+      while(b>=now+10+NPK/8) b-=NPK/8;     /* the earliest video transfer starting at least 10 frames ahead */
+      atomic_store(&ih_fake.dead_from_frame,b+NPK/16);   /* half way into it */
+      atomic_store(&ih_fake.link_dead,1); }
+    for(int i=0;i<60 && !atomic_load(&T.fatal_ms);i++) usleep(50000);
+    finish_(d,&st);
+    { uint64_t fms=atomic_load(&T.fatal_ms), f0=atomic_load(&ih_fake.first_dead_ms), after=fms&&f0?fms-f0:0;
+      CHECK(atomic_load(&ih_fake.dead_partial[0])>=1,"link died inside a transfer: the fake made no partly delivered video transfer");
+      CHECK(T.fatal[3]==1 && T.fatal[1]+T.fatal[2]==0,"link died inside a transfer: fatal %ld/%ld/%ld (want 0/0/1)",T.fatal[1],T.fatal[2],T.fatal[3]);
+      CHECK(fms && f0 && after>=400 && after<=750,"link died inside a transfer: ended %llu ms after the first failed completion (want 400..750: the partly delivered transfer starts the streak)",(unsigned long long)after);
+      CHECK(atomic_load(&T.straddle_lines)>=1,"link died inside a transfer: its partly delivered transfer was not logged");
+      check_accounting_("link died inside a transfer",&st);
+      close_(d);
+      printf("  link died inside a transfer: ended %llu ms after the first failed completion, the partly delivered transfer counted\n",(unsigned long long)after); }
 
     /* 10. no device */
     reset_(); atomic_store(&ih_fake.absent,1); ih_dev *x=NULL; char err[100];
