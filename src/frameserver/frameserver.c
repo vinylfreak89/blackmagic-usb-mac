@@ -257,24 +257,29 @@ static int try_repair(frameserver *f, const unit_video_observation *u, fs_item *
     publish_repaired(f, u, it, f->repair_buf, u->counter_extended, &r);
     return 1;
 }
-/* Two units in one run (a stall over the next unit's marker; the parser confirmed it by a successor two on). Put back,
- * the first goes out as `first` (pushed here) and the second as `it` (counter + 1, pushed by the caller). Both or
- * neither: declined, the run keeps the old handling. */
+/* Two units in one run (a stall over the next unit's marker; the parser confirmed it by a successor two on). Each unit
+ * the bytes put back goes out: both as `first` (pushed here) and `it` (counter + 1, pushed by the caller), or the one
+ * as `it`. Neither: declined, the run keeps the old handling. */
 static void push_item(frameserver *f, fs_item *it);
 static int try_repair2(frameserver *f, const unit_video_observation *u, fs_item *it){
     ur_result r[2];
-    ur_status rs = ur_repair2(u->bytes, u->byte_count, repair_previous(f, u), f->repair_scratch, f->repair_buf2, r);
+    (void)ur_repair2(u->bytes, u->byte_count, repair_previous(f, u), f->repair_scratch, f->repair_buf2, r);
     if (f->cfg.on_repair){
         unit_video_observation second = *u; second.counter16++; second.counter_extended++;
         f->cfg.on_repair(f->cfg.repair_ctx, u, &r[0]); f->cfg.on_repair(f->cfg.repair_ctx, &second, &r[1]);
     }
-    if (rs != UR_OK){ atomic_fetch_add(&f->repair_declined, 1); return 0; }
-    fs_item first = *it;
-    publish_repaired(f, u, &first, f->repair_buf2, u->counter_extended, &r[0]);
-    push_item(f, &first);
-    publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
-    it->second_of_run = 1;
-    f->run_next_valid = 1; f->run_next_epoch = u->epoch; f->run_next_counter = u->counter_extended + 2;
+    int a = r[0].status == UR_OK, b = r[1].status == UR_OK;
+    if (!a || !b) atomic_fetch_add(&f->repair_declined, 1);
+    if (!a && !b) return 0;
+    if (a && b){
+        fs_item first = *it;
+        publish_repaired(f, u, &first, f->repair_buf2, u->counter_extended, &r[0]);
+        push_item(f, &first);
+        publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
+        it->second_of_run = 1;
+        f->run_next_valid = 1; f->run_next_epoch = u->epoch; f->run_next_counter = u->counter_extended + 2;
+    } else if (a) publish_repaired(f, u, it, f->repair_buf2, u->counter_extended, &r[0]);
+    else publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
     return 1;
 }
 static void on_video(void *ctx, const unit_video_observation *u_in){

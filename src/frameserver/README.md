@@ -32,7 +32,8 @@ too long with no stall, as the single held stretch at least that long between th
 block on the unit's grid and the first displaced one (any other there, a flat line or the vertical
 interval, and it is declined). Every other byte is decoded picture, one 1440-byte row per line period. With
 exactly one stretch of junk, the bytes before it are in place and the bytes after it are the same
-raster displaced (junk running to the unit's end displaces nothing); the Shuttle's padding, which
+raster displaced (junk running to the unit's end displaces nothing; with several stalls, everything
+from the first to the last is lost and rebuilt, never placed); the Shuttle's padding, which
 always starts on a row boundary of its own line grid, gives the displacement to the byte (a few
 bytes off the length error when a unit ends inside a row, -12 to +12 measured). The lost bytes are
 the gap between the parts plus the lines under padding the Shuttle wrote away from its padding
@@ -40,7 +41,10 @@ rows. Only those are rebuilt: from the same field across a gap of one or two lin
 other field, else (both fields lost at one height) from the previous whole unit when it agrees
 around the gap, else interpolated down the frame. A stall that ran over the next unit's marker
 leaves one run two units long, its successor numbered two on: the parser keeps it whole and it is
-put back as two units (the first's stall runs to its end, the second is stalled from its top).
+put back as two units (the first's stall runs to its end, the second is stalled from its top), each
+on its own evidence. A picture marker whose counter is the one the audio resyncs stand at (or the
+next) is the device's: it ends a no-signal unit's run, and confirms a picture unit the Shuttle ran
+into a no-signal unit, so both reach the repair.
 Picture never places anything; it only checks the result (where the tape's lines start on blanking
 inside the window, the displaced rows must too, their blanking edge within a sample of the picture
 beside them; where picture reaches the window's edge, the displaced rows must move against the

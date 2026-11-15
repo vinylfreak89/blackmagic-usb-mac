@@ -78,7 +78,7 @@ typedef struct {
                                // and publishes it as a whole unit (transport FP_TRANSPORT_REPAIRED; the log row says
                                // Repaired). A run of two units whose middle marker a stall overwrote (confirmed by a
                                // successor two on) is published as two (counters c and c + 1, two log rows with the run's
-                               // ordinal). Only units the parser confirmed (counter_confirmed) are tried. A unit the evidence
+                               // ordinal), or as the one the bytes put back. Only units the parser confirmed (counter_confirmed) are tried. A unit the evidence
                                // does not settle keeps the old handling (show_partial, or not shown), counted in
                                // repair_declined. Registration off only: rebuilt rows are presentation, never geometry
                                // evidence (fs_open refuses it with registration on).
