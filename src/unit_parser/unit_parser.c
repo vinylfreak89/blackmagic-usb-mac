@@ -257,8 +257,13 @@ static void accept_video_boundary(unit_parser *parser, size_t position, bool con
  * run is never a formed unit. A confirmed one keeps its adjacency to the unit before it: the break is after it. */
 static void end_stale_run(unit_parser *parser, size_t position)
 {
-    uint16_t ending = load_u16(parser->video + position + 6);
-    bool vouched = parser->video_audio_vouched && ending != 0xe801;
+    uint16_t ending = load_u16(parser->video + position + 6), ending16 = load_u16(parser->video + position + 4);
+    uint16_t run16 = load_u16(parser->video + 4), step = (uint16_t)(ending16 - run16);
+    /* A picture marker two or three on that the audio also vouches for ends it too (a stall that wrote over the units
+     * between: 2026-11-15), provided the run's counter is past the last one confirmed (a repeat or stale copy is not). */
+    bool ahead = !parser->video_counter_valid || (uint16_t)(run16 - parser->video_counter16) - 1u < 0x7fffu;
+    bool vouched = parser->video_audio_vouched && ahead &&
+                   (ending != 0xe801 || (step >= 2 && step <= 3 && audio_vouches(parser, ending16, ending)));
     emit_video(parser, parser->video, position, true, vouched,
                parser->video_flags | (vouched ? 0 : UNIT_FLAG_COUNTER_DISCONTINUITY), !vouched);
     size_t retained = parser->video_bytes - position;
@@ -332,6 +337,20 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
                 if (padded){ plausible = true; confirmed = false; }
             }
             stale = !plausible && candidate >= UNIT_PARSER_VIDEO_UNIT_BYTES;
+            /* A no-signal marker inside a picture run the audio vouched for: the Shuttle lost its input mid-unit (a unit
+             * cut short, then no-signal units). Real when its no-signal raster follows the header; a no-signal header
+             * met inside a stall is followed by the stall's zeros and stale words (each ending 00 08: two zeros in four
+             * bytes is already more than the raster's one). Wait for those bytes. */
+            if (!plausible && !stale && run_format == 0xe801 && format == 0x0800 && parser->video_audio_vouched){
+                size_t need = candidate + UNIT_PARSER_VIDEO_HEADER_BYTES + 64;
+                if (parser->video_bytes < need) return;
+                /* Its raster holds a zero chroma byte in every sample, never a run of them; a stall's zeros run on. */
+                size_t zeros = 0, longest = 0;
+                for (size_t i = candidate + UNIT_PARSER_VIDEO_HEADER_BYTES; i < need; i++){
+                    zeros = parser->video[i] ? 0 : zeros + 1; if (zeros > longest) longest = zeros;
+                }
+                stale = longest < 4;
+            }
         }
         parser->video_candidate_valid = false;
         if (plausible)
