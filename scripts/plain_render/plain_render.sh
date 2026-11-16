@@ -11,7 +11,8 @@
 #      A picture unit the Shuttle sent at the wrong length (bytes lost or inserted inside a line, or filler written over
 #      lines while it recovered sync) is put back to a whole frame first (FS_REPAIR=1, src/frameserver/unit_repair.h): the
 #      lines in place and the displaced lines where they belong, the lost lines rebuilt from the field around them;
-#      the sidecar row says Repaired; the render prints one "repair:" line per unit, put back or declined with its reason.
+#      repair is the frameserver's last stage and changes only the output (the decision log is the same as with repair off);
+#      the render prints one "repair:" line per unit, put back or declined with its reason.
 #      PLAIN_RENDER_REPAIR=0 turns that off.
 #   2. relay.py places frames on the AUDIO clock: each frame goes to the 1001/30000 s slot nearest its unit's
 #      audio-clock time (a unit counter is not time: in the Shuttle's other-format modes it runs ~50-70 per second);

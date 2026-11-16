@@ -75,15 +75,21 @@ typedef struct {
                                // placement, transport FP_TRANSPORT_SHORT. The log row says ShortShown / OtherShown.
     int repair_units;          // default 0; 1 puts back a 0xe801 unit the Shuttle sent at the wrong length (bytes deleted or
                                // inserted inside a line, or filler written over lines while it recovered sync: unit_repair.h)
-                               // and publishes it as a whole unit (transport FP_TRANSPORT_REPAIRED; the log row says
-                               // Repaired). A run of two units whose middle marker a stall overwrote (confirmed by a
-                               // successor two on) is published as two (counters c and c + 1, two log rows with the run's
-                               // ordinal), or as the one the bytes put back beside an unpublished row for the other. Only units the parser confirmed (counter_confirmed) are tried. A unit the evidence
-                               // does not settle keeps the old handling (show_partial, or not shown), counted in
-                               // repair_declined. Registration off only: rebuilt rows are presentation, never geometry
-                               // evidence (fs_open refuses it with registration on).
+                               // as the LAST stage: after the classifier, registration, H-timing and the decision log have
+                               // handled the unit exactly as it arrived, the frame it puts back (transport
+                               // FP_TRANSPORT_REPAIRED) is published in place of that unit's own output (its partial frame,
+                               // or nothing). It changes no observation, flag or log row, and no count of what arrived or
+                               // was published by an earlier stage (partial_shown counts only partial frames actually
+                               // shown). Offline the decision log is the same byte for byte with repair on or off; live,
+                               // its work on the video worker can delay later units into a pool drop, and a ShortShown row
+                               // is written without the publisher's answer for a frame it replaced. Repaired frames are
+                               // not H-retimed (it runs after H-timing). A run of two units whose middle marker a stall
+                               // overwrote (confirmed by a successor two on) gives two frames (counters c and c + 1), or the
+                               // one the bytes put back. Only units the parser confirmed (counter_confirmed) are tried; a
+                               // unit the evidence does not settle keeps its own output, counted in repair_declined.
+                               // Registration off only (fs_open refuses it with registration on).
     void (*on_repair)(void *ctx, const unit_video_observation *unit, const ur_result *result);
-    void *repair_ctx;          // optional; every repair attempt and its outcome (delivery thread, never blocks: print and return)
+    void *repair_ctx;          // optional; every repair attempt and its outcome (video worker, never blocks: print and return)
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded
@@ -118,10 +124,14 @@ typedef struct {
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
     uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
     uint64_t partial_not_shown; // show_partial: units that were not whole and found no free slot (live only; offline waits)
-    uint64_t repaired_units;    // repair_units: units put back to a whole raster and published as one (counted in exact_units too;
-                                // a run of two units counts two)
+    uint64_t repaired_units;    // repair_units: units put back to a whole raster and published (output only: never in exact_units,
+                                // published or the conservation counts; a run of two units counts two)
     uint64_t repair_rows;       // repair_units: raster rows rebuilt in them (from the same field or the other field)
-    uint64_t repair_declined;   // repair_units: units of the wrong length the evidence did not settle (old handling; a run of two counts each)
+    uint64_t repair_declined;   // repair_units: units of the wrong length the evidence did not settle (own output kept; a run of two counts each)
+    uint64_t repair_skipped;    // repair_units: units not put back in the output: no raw slot free (live only), or put back
+                                // while fields were paired one unit on (reversed pairing: never published on its own;
+                                // decided per frame by its own counter)
+    uint64_t repair_publisher_dropped; // repair_units: frames put back that the publisher refused
     uint64_t backpressure_waits; // offline_backpressure: times the producer waited for the worker (frames kept, not shed)
     uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
     uint64_t unscheduled_events, unscheduled_packets[2], unscheduled_late; // capture core: USB slots never read (explicit HostLoss); late: found after their data went by

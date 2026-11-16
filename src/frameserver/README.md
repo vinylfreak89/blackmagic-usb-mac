@@ -22,6 +22,10 @@ works from that placement.
 
 ## Units the Shuttle sent at the wrong length
 
+The frameserver is a pipeline of stages: parse, classify, register, H-timing, repair. Output can
+come from any stage; a stage may measure or modify, but only measurements reach the decision log,
+and no stage changes what an earlier one received or wrote. Repair is the last stage.
+
 `fs_config.repair_units` (tools: `FS_REPAIR=1`; the plain render turns it on) puts back a 0xe801
 unit whose length is wrong but whose transport is intact and whose counter the parser confirmed,
 from its byte order alone (`unit_repair.h` has the model). Everything the Shuttle writes itself in
@@ -55,13 +59,22 @@ inside the window, the displaced rows must too, their blanking edge within a sam
 beside them; where picture reaches the window's edge, the displaced rows must move against the
 previous unit as the rows in place do, to a sample; no tear left; no block of rows 24+ samples
 sideways against the other field), and a unit the bytes cannot place, or that fails a check, is
-declined (`repair_declined`) and keeps the old handling. Without a previous unit on a tape whose
-picture reaches the window's edge, only the tear and other-field checks verify the placement. The
-repaired unit is published as a whole one with transport `FP_TRANSPORT_REPAIRED`; its row says
-`drop_reason=Repaired`, and `on_repair` (`frameserver_replay`: one `repair:` line on stderr per
-unit attempted, which the plain render prints) reports the grid offset, lost bytes, rebuilt rows
-and the check. Registration off only (`fs_open` refuses it otherwise): rebuilt rows are
-presentation, never geometry evidence. The parser keeps a unit up to 64 lines longer than a whole
+declined (`repair_declined`) and the unit keeps its own output. Without a previous unit on a tape
+whose picture reaches the window's edge, only the tear and other-field checks verify the placement.
+
+As the last stage it works only on its own input: the delivery thread copies a candidate unit's raw
+bytes to a raw slot beside the item, and every earlier stage (classifier, registration, H-timing,
+the decision log) handles the unit exactly as it arrived (`Unframed` or `Short`, no raster). After
+them the repair stage puts the unit back and publishes it with transport `FP_TRANSPORT_REPAIRED`,
+in place of the unit's own output (its partial frame, or nothing); the row keeps the earlier
+stage's decision (`ShortShown` when that stage chose its partial frame). Its "previous unit" is its
+own: the last whole unit that arrived, or the last unit it put back. The decision log is byte for
+byte the same with repair on or off (`scripts/test_unit_repair_replay.py`), and repaired units are
+never in `exact_units`, `published` or the conservation counts. While fields are paired one unit
+on (reversed pairing) a frame takes its fields from two units, so nothing put back is published
+(`repair_skipped`). `on_repair` (`frameserver_replay`: one `repair:` line on stderr per unit
+attempted, which the plain render prints) reports the grid offset, lost bytes, rebuilt rows and the
+check. Registration off only (`fs_open` refuses it otherwise). The parser keeps a unit up to 64 lines longer than a whole
 one, or two units and that slack ended by a marker two on, as one observation so the repair can see
 all of it; at or past a whole unit, any other marker ends the run unconfirmed (`counter_confirmed`
 false).

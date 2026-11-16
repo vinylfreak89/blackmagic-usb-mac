@@ -174,7 +174,7 @@ int main(int argc, char **argv){
     printf("video obs %llu | exact %llu short %llu hole %llu unframed %llu other %llu 0x0800 %llu\n",
         (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.short_units,
         (unsigned long long)s.holes, (unsigned long long)s.unframed, (unsigned long long)s.other_format, (unsigned long long)s.no_signal_0800);
-    if(cfg.repair_units) printf("units put back from the wrong length: %llu (%llu raster rows rebuilt), declined: %llu\n",(unsigned long long)s.repaired_units,(unsigned long long)s.repair_rows,(unsigned long long)s.repair_declined);
+    if(cfg.repair_units) printf("units put back from the wrong length: %llu (%llu raster rows rebuilt), declined: %llu, not published (no raw slot or reversed pairing): %llu, refused by the publisher: %llu\n",(unsigned long long)s.repaired_units,(unsigned long long)s.repair_rows,(unsigned long long)s.repair_declined,(unsigned long long)s.repair_skipped,(unsigned long long)s.repair_publisher_dropped);
     if(s.partial_shown||s.partial_not_shown) printf("search frames shown from units that were not whole: %llu (not shown, no free slot: %llu)\n",(unsigned long long)s.partial_shown,(unsigned long long)s.partial_not_shown);
     printf("published %llu | dropped(pool) %llu dropped(ring) %llu dropped(surfaces) %llu | unsettled %llu | begin_segment %llu discontinuity %llu | log rows %llu | pool high %u\n",
         (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.dropped_ring_full, (unsigned long long)s.publisher_dropped,

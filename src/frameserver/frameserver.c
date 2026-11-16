@@ -12,6 +12,8 @@
 #include "pairing_schedule.h"
 #include "hretime.h"
 #include "unit_repair.h"
+#define UR_RAW_SLOT_BYTES (2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES + (size_t)UR_MAX_DELTA_BYTES)
+#define UR_RAW_SLOTS 4
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -40,9 +42,11 @@ typedef struct {
     fs_drop drop;                          // why an eligible unit carries no bytes (sidecar honesty)
     int eligible, gap_only;
     unsigned partial_lines;                // show_partial: whole lines of picture in a unit that is not whole, held in the slot
-    int repaired;                          // repair_units: the slot holds this unit put back to a whole raster
-    unit_transport_state repaired_from;    // its transport as it arrived (SHORT / UNFRAMED)
-    int second_of_run;                     // the second unit put back from a run of two: its observation is counted with the first
+    /* Repair stage input (repair_units), read by the repair stage only, after every other stage has handled the item as it
+     * arrived: a raw copy of a unit the Shuttle sent at the wrong length, and the audio snapshots for its counter and the
+     * next (a run of two). Nothing here reaches the classifier, registration or the decision log. */
+    int raw_slot; size_t raw_len;          // raw_len 0: none
+    int rep_audio_known[2]; ap_correlation rep_audio[2];
     uint64_t preceding_ring_drops;
     unit_video_observation obs;            // metadata copy; bytes/payload re-pointed to the slot
     /* Decision-log evidence has an input-order cutoff: the parser's video-unit
@@ -105,11 +109,13 @@ struct frameserver {
     fs_stats st; _Atomic uint64_t audio_records, audio_resync, dropped_pool_full, dropped_ring_full, video_obs, holes, unframed, shorts, other_fmt, ns0800;
     _Atomic int bp_waiting, bp_abort; _Atomic uint64_t bp_waits;   // offline_backpressure: producer waits; fs_stop aborts them
     _Atomic uint64_t partial_not_shown;    // show_partial: a picture unit that was not whole found no free slot (live only: offline waits)
-    _Atomic uint64_t repaired, repair_rows, repair_declined;   // repair_units (delivery thread writes, fs_get_stats reads)
-    uint8_t *repair_buf;                   // repair_units: delivery thread's scratch raster; a slot is taken only for a repair that succeeded
-    uint8_t *repair_buf2, *repair_scratch; // repair_units: two units put back from one run (ur_repair2), and its working raster
-    int run_next_valid; uint64_t run_next_epoch, run_next_counter;   // the unit after a run of two put back: its counter jump is explained
-    uint8_t *repair_prev; int repair_prev_valid; uint64_t repair_prev_epoch, repair_prev_counter;   // repair_units: the last whole unit (delivery thread)
+    _Atomic uint64_t repaired, repair_rows, repair_declined, repair_skipped, repair_publisher_dropped;   // repair stage (worker writes; skipped: delivery thread, live only)
+    unsigned n_raw; uint8_t *raw_pool; _Atomic int *raw_used;   // repair stage input: raw copies (delivery thread fills, worker frees)
+    uint8_t *repair_buf;                   // repair stage (worker): one unit put back
+    uint8_t *repair_buf2, *repair_scratch; // repair stage (worker): two units put back from one run (ur_repair2), and its working raster
+    int run_next_valid; uint64_t run_next_epoch, run_next_counter;   // repair stage: a run of two it put back explains the next unit's counter jump
+    uint8_t *repair_prev; int repair_prev_valid; uint64_t repair_prev_epoch, repair_prev_counter;   // repair stage: the last whole unit
+    int repair_replaces;                   // worker: the repair stage has a frame for the item in hand (its output replaces the item's own)
     pthread_mutex_t bp_m; pthread_cond_t bp_c;                      // statically initialised in fs_open
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
@@ -170,6 +176,7 @@ static int bp_slot_free(frameserver *f){
     return 0;
 }
 static int bp_ring_room(frameserver *f);
+static void push_item(frameserver *f, fs_item *it);
 static int bp_audio_room(frameserver *f);
 
 // ------------------------------------------------------------ producer side (delivery thread)
@@ -198,7 +205,9 @@ static int push(frameserver *f, const fs_item *it){
         if (!f->ring_drops_pending) f->ring_drop_first_ordinal = it->obs.ordinal;
         f->ring_drops_pending++;
         if (it->eligible) f->st.eligible_ring_drops++;
-        if (it->slot >= 0) atomic_store(&f->slot_used[it->slot], 0); return 0;
+        if (it->slot >= 0) atomic_store(&f->slot_used[it->slot], 0);
+        if (it->raw_len){ atomic_store(&f->raw_used[it->raw_slot], 0); bp_notify(f); }   /* the repair stage's input goes with the item */
+        return 0;
     }
     fs_item q=*it;
     q.preceding_ring_drops=f->ring_drops_pending;
@@ -218,92 +227,33 @@ static void push_tail_gap(frameserver *f){
     atomic_store_explicit(&f->r_head,h+1,memory_order_release);
     if(pthread_mutex_trylock(&f->m)==0){ pthread_cond_signal(&f->c); pthread_mutex_unlock(&f->m); }
 }
-/* Delivery thread. Returns 1 when the unit was put back (the item then travels as a whole unit, or as an eligible PoolFull
- * drop when no slot is free), 0 when it was declined (the caller's old handling runs). The repair is made in a scratch
- * raster first, so a unit that would be declined never takes a slot or becomes a PoolFull row. */
-/* A put-back unit (`raster`, counter `counter`) goes on as a whole unit: the item becomes eligible and takes a pool slot
- * (or travels as an eligible PoolFull drop), and the raster becomes the next unit's previous. */
-static void publish_repaired(frameserver *f, const unit_video_observation *u, fs_item *it, const uint8_t *raster, uint64_t counter,
-                             const ur_result *r){
-    it->eligible = 1; it->repaired = 1; it->repaired_from = u->transport;
-    atomic_fetch_add(&f->eligible_ingress, 1);
-    atomic_fetch_add(&f->repaired, 1); atomic_fetch_add(&f->repair_rows, r->rebuilt_rows[0] + r->rebuilt_rows[1]);
-    it->obs.transport = UNIT_TRANSPORT_COMPLETE; it->obs.byte_count = UNIT_PARSER_VIDEO_UNIT_BYTES;
-    it->obs.payload_bytes = UNIT_PARSER_VIDEO_PAYLOAD_BYTES; it->obs.fixed_raster_eligible = true;
-    it->obs.counter_extended = counter; it->obs.counter16 = (uint16_t)(u->counter16 + (counter - u->counter_extended));
-    it->audio_evidence_known = ap_lookup_correlation(f->aud, u->epoch, counter, &it->audio_evidence);
-    memcpy(f->repair_prev, raster, UNIT_PARSER_VIDEO_UNIT_BYTES);   // the next unit's previous
-    f->repair_prev_valid = 1; f->repair_prev_epoch = u->epoch; f->repair_prev_counter = counter;
-    if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
-    int s = take_slot(f);
-    if (s < 0){ it->drop = FS_DROP_POOL_FULL; fs_test_pool_drop(); return; }
-    memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, raster, UNIT_PARSER_VIDEO_UNIT_BYTES);
-    it->slot = s;
+/* Repair stage input (delivery thread): a free raw slot. */
+static int take_raw(frameserver *f){
+    for (unsigned i = 0; i < f->n_raw; i++){ int z = 0; if (atomic_compare_exchange_strong(&f->raw_used[i], &z, 1)) return (int)i; }
+    return -1;
 }
-/* The previous unit only if it is the one just before: same epoch, the counter one less, and no counter break (a
- * repeated or backward raw counter is extended by one, so the arithmetic alone could match across a break). */
-static const uint8_t *repair_previous(frameserver *f, const unit_video_observation *u){
-    return f->repair_prev_valid && f->repair_prev_epoch == u->epoch && f->repair_prev_counter + 1 == u->counter_extended &&
-           !(u->transport_flags & UNIT_FLAG_COUNTER_DISCONTINUITY) ? f->repair_prev : NULL;
+static int bp_raw_free(frameserver *f){
+    for (unsigned i = 0; i < f->n_raw; i++) if (!atomic_load(&f->raw_used[i])) return 1;
+    return 0;
 }
-/* Delivery thread. Returns 1 when the unit was put back (the item then travels as a whole unit, or as an eligible PoolFull
- * drop when no slot is free), 0 when it was declined (the caller's old handling runs). The repair is made in a scratch
- * raster first, so a unit that would be declined never takes a slot or becomes a PoolFull row. */
-static int try_repair(frameserver *f, const unit_video_observation *u, fs_item *it){
-    ur_result r;
-    ur_status rs = ur_repair(u->bytes, u->byte_count, repair_previous(f, u), f->repair_buf, &r);
-    if (f->cfg.on_repair) f->cfg.on_repair(f->cfg.repair_ctx, u, &r);
-    if (rs != UR_OK){ atomic_fetch_add(&f->repair_declined, 1); return 0; }
-    publish_repaired(f, u, it, f->repair_buf, u->counter_extended, &r);
-    return 1;
+/* A 0xe801 unit of the wrong length with its own marker, confirmed by the parser: the Shuttle deleted or inserted bytes
+ * inside a line, or wrote filler over lines while it recovered sync (unit_repair.h); or a run of two whose middle marker
+ * a stall overwrote. Only these reach the repair stage. */
+static int repair_candidate(const frameserver *f, const unit_video_observation *u){
+    if (!f->cfg.repair_units || !u->bytes || u->kind != UNIT_VIDEO_E801 || !u->counter_confirmed) return 0;
+    size_t W = UNIT_PARSER_VIDEO_UNIT_BYTES, n = u->byte_count, D = (size_t)UR_MAX_DELTA_BYTES;
+    if (n == W || n + D < W || n > 2 * W + D) return 0;
+    if (u->transport == UNIT_TRANSPORT_SHORT) return n <= W + D;
+    return u->transport == UNIT_TRANSPORT_UNFRAMED;
 }
-/* Two units in one run (a stall over the next unit's marker; the parser confirmed it by a successor two on). Each unit
- * the bytes put back goes out: both as `first` (pushed here) and `it` (counter + 1, pushed by the caller), or the one
- * as `it`. Neither: declined, the run keeps the old handling. */
-static void push_item(frameserver *f, fs_item *it);
-static int try_repair2(frameserver *f, const unit_video_observation *u, fs_item *it){
-    ur_result r[2];
-    (void)ur_repair2(u->bytes, u->byte_count, repair_previous(f, u), f->repair_scratch, f->repair_buf2, r);
-    if (f->cfg.on_repair){
-        unit_video_observation second = *u; second.counter16++; second.counter_extended++;
-        f->cfg.on_repair(f->cfg.repair_ctx, u, &r[0]); f->cfg.on_repair(f->cfg.repair_ctx, &second, &r[1]);
-    }
-    int a = r[0].status == UR_OK, b = r[1].status == UR_OK;
-    if (!a && !b){ atomic_fetch_add(&f->repair_declined, 2); return 0; }
-    if (!a || !b) atomic_fetch_add(&f->repair_declined, 1);
-    fs_item first = *it;
-    if (a) publish_repaired(f, u, &first, f->repair_buf2, u->counter_extended, &r[0]);
-    push_item(f, &first);                                   // the first unit: put back, or its row as declined (old handling)
-    if (b){
-        publish_repaired(f, u, it, f->repair_buf2 + UNIT_PARSER_VIDEO_UNIT_BYTES, u->counter_extended + 1, &r[1]);
-        f->run_next_valid = 1; f->run_next_epoch = u->epoch; f->run_next_counter = u->counter_extended + 2;
-    } else {                                                // the second unit's row as declined: a gap, at counter + 1
-        it->obs.counter_extended = u->counter_extended + 1; it->obs.counter16 = (uint16_t)(u->counter16 + 1);
-    }
-    it->second_of_run = 1;
-    return 1;
-}
-static void on_video(void *ctx, const unit_video_observation *u_in){
+static void on_video(void *ctx, const unit_video_observation *u){
     frameserver *f = ctx;
-    /* The parser flags the unit after a run of two (its counter is two on). When that run was put back as two units, the
-     * numbering is whole again: the flag would only make registration and pairing start over. */
-    unit_video_observation u_fixed = *u_in; const unit_video_observation *u = u_in;
-    if (f->run_next_valid){
-        if (u_in->counter_confirmed && u_in->epoch == f->run_next_epoch && u_in->counter_extended == f->run_next_counter){
-            u_fixed.transport_flags &= ~(uint32_t)UNIT_FLAG_COUNTER_DISCONTINUITY; u = &u_fixed;
-        }
-        if (u_in->counter_confirmed || u_in->kind == UNIT_VIDEO_E801) f->run_next_valid = 0;
-    }
     fs_test_before_video(f);
     atomic_fetch_add(&f->video_obs, 1);
     fs_item it; memset(&it,0,sizeof it); it.slot = -1; it.drop = FS_DROP_NONE; it.obs = *u; it.obs.bytes = NULL; it.obs.payload = NULL;
     if(u->fixed_raster_eligible)
         it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
-        if (f->cfg.repair_units && u->counter_confirmed){   /* kept as the previous unit for a repair (unit_repair.h) */
-            memcpy(f->repair_prev, u->bytes, UNIT_PARSER_VIDEO_UNIT_BYTES);
-            f->repair_prev_valid = 1; f->repair_prev_epoch = u->epoch; f->repair_prev_counter = u->counter_extended;
-        }
         it.eligible=1;
         atomic_fetch_add(&f->eligible_ingress, 1);
         if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
@@ -318,25 +268,6 @@ static void on_video(void *ctx, const unit_video_observation *u_in){
             it.slot = s;
         }
     }
-    /* A 0xe801 unit of the wrong length with its own marker and no transport loss: the Shuttle deleted or inserted bytes
-     * inside a line, or wrote filler over lines while it recovered sync (unit_repair.h). Put back (in a scratch raster,
-     * then a pool slot) it goes on as a whole unit; if the evidence does not settle it, the old handling below runs. */
-    else if (f->cfg.repair_units && u->bytes && u->kind == UNIT_VIDEO_E801 && u->counter_confirmed &&
-             (u->transport == UNIT_TRANSPORT_SHORT || u->transport == UNIT_TRANSPORT_UNFRAMED) &&
-             u->byte_count != UNIT_PARSER_VIDEO_UNIT_BYTES &&
-             u->byte_count + UR_MAX_DELTA_BYTES >= UNIT_PARSER_VIDEO_UNIT_BYTES &&
-             u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES + UR_MAX_DELTA_BYTES &&
-             try_repair(f, u, &it)) {}
-    else if (f->cfg.repair_units && u->bytes && u->kind == UNIT_VIDEO_E801 && u->counter_confirmed &&
-             u->transport == UNIT_TRANSPORT_UNFRAMED &&
-             u->byte_count + UR_MAX_DELTA_BYTES >= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&
-             u->byte_count <= 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES + UR_MAX_DELTA_BYTES &&
-             try_repair2(f, u, &it)) {}
-    /* Longer still: a unit whose stall ran on over the units after it to the next marker the parser confirmed it by. */
-    else if (f->cfg.repair_units && u->bytes && u->kind == UNIT_VIDEO_E801 && u->counter_confirmed &&
-             u->transport == UNIT_TRANSPORT_UNFRAMED && u->byte_count > UNIT_PARSER_VIDEO_UNIT_BYTES + UR_MAX_DELTA_BYTES &&
-             u->byte_count + UR_MAX_DELTA_BYTES < 2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES &&   // a run of two had its turn above
-             try_repair(f, u, &it)) {}
     /* A picture unit that is not whole (one short field per unit from a deck in search, or the PAL-family units of
      * an unlocked decoder) is kept for showing if asked. No-signal pseudo-frames, units with bytes missing and
      * stubs of a few lines are not picture. Offline, it waits for a free slot exactly as a whole unit does: whether
@@ -355,6 +286,20 @@ static void on_video(void *ctx, const unit_video_observation *u_in){
             size_t shown = ur_picture_bytes(u->bytes, u->byte_count);
             it.slot = s; it.partial_lines = (unsigned)((shown - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
             it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);   /* its time on the audio clock, for the consumer's timestamp */
+        }
+    }
+    /* Repair stage input, beside the item and never in it: a raw copy for the last stage, which runs after every other stage
+     * has handled the unit as it arrived. The audio snapshots are taken here, in input order, as for any unit. Offline
+     * waits for a raw slot; live, none free means the unit is not tried (counted). */
+    if (repair_candidate(f, u)){
+        if (f->cfg.offline_backpressure) bp_wait(f, bp_raw_free);
+        int r = take_raw(f);
+        if (r < 0) atomic_fetch_add(&f->repair_skipped, 1);
+        else {
+            memcpy(f->raw_pool + (size_t)r * UR_RAW_SLOT_BYTES, u->bytes, u->byte_count);
+            it.raw_slot = r; it.raw_len = u->byte_count;
+            for (int k = 0; k < 2; k++)
+                it.rep_audio_known[k] = ap_lookup_correlation(f->aud, u->epoch, u->counter_extended + (uint64_t)k, &it.rep_audio[k]);
         }
     }
     push_item(f, &it);
@@ -696,11 +641,11 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
             (long long)it->audio_evidence.residual_ticks,(long long)audio.residual_ticks);
 #endif
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
-    int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,it->repaired?FP_TRANSPORT_REPAIRED:FP_TRANSPORT_COMPLETE,known,audio.pts_num);
+    int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
     if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); f->ht_cpu0=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID); }   /* accounting restarts at each handoff */
     uint64_t tl=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
-    geometry_log(f,it,d,rc==0,rc==0?(it->repaired?"Repaired":"None"):"PublisherFull",
+    geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
     f->ht.log_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tl;
 }
@@ -750,7 +695,10 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
             const uint8_t *rows=f->pool+(size_t)it->slot*UNIT_PARSER_VIDEO_UNIT_BYTES+UNIT_PARSER_VIDEO_HEADER_BYTES;
             /* In the aperture a whole unit gets with registration off (the configured first lines), else the nominal one. */
             int o1=f->cfg.registration_off&&f->cfg.first_line_f1?f->cfg.first_line_f1-23:0,o2=f->cfg.registration_off&&f->cfg.first_line_f2?f->cfg.first_line_f2-286:0;
-            if(fp_publish_partial(f->pub,rows,it->partial_lines,o1,o2,it->obs.counter_extended,it->audio_evidence_known,it->audio_evidence.pts_num)==0) {
+            /* The row records this stage's decision. When the repair stage has a frame for the unit, that frame is the
+             * output in place of this one (the last stage that has a frame for a unit publishes it). */
+            if(f->repair_replaces && !f->geometry_reversed) why=it->obs.transport==UNIT_TRANSPORT_SHORT?"ShortShown":"OtherShown";
+            else if(fp_publish_partial(f->pub,rows,it->partial_lines,o1,o2,it->obs.counter_extended,it->audio_evidence_known,it->audio_evidence.pts_num)==0) {
                 f->st.partial_shown++;
                 why=it->obs.transport==UNIT_TRANSPORT_SHORT?"ShortShown":"OtherShown";
             }
@@ -808,15 +756,93 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     }
     atomic_store(&f->slot_used[it->slot],0); bp_notify(f);
 }
+/* ------------------------------------------------------------ repair stage (worker; last stage)
+ * Puts back a unit the Shuttle sent at the wrong length (unit_repair.h). It runs after every other stage has handled the
+ * item exactly as it arrived (classifier, registration, H-timing, decision log), reads only its own input (the raw copy and
+ * its own previous unit) and writes only output: the frames it puts back replace the item's own output (a partial frame,
+ * or nothing). It never changes an observation, a flag, a count or a row of an earlier stage. */
+typedef struct { int n; const uint8_t *raster[2]; uint64_t counter[2]; int audio_k[2]; unsigned rows[2]; } repair_out;
+static const uint8_t *repair_previous(frameserver *f, const unit_video_observation *u, int jump_explained){
+    return f->repair_prev_valid && f->repair_prev_epoch == u->epoch && f->repair_prev_counter + 1 == u->counter_extended &&
+           (jump_explained || !(u->transport_flags & UNIT_FLAG_COUNTER_DISCONTINUITY)) ? f->repair_prev : NULL;
+}
+static void repair_keep(frameserver *f, const uint8_t *raster, uint64_t epoch, uint64_t counter){
+    memcpy(f->repair_prev, raster, UNIT_PARSER_VIDEO_UNIT_BYTES);
+    f->repair_prev_valid = 1; f->repair_prev_epoch = epoch; f->repair_prev_counter = counter;
+}
+static void repair_report(frameserver *f, const unit_video_observation *u, const uint8_t *raw, size_t len, uint64_t step, const ur_result *r){
+    if (!f->cfg.on_repair) return;
+    unit_video_observation o = *u; o.bytes = raw; o.byte_count = len; o.payload = raw + UNIT_PARSER_VIDEO_HEADER_BYTES;
+    o.counter_extended += step; o.counter16 = (uint16_t)(o.counter16 + step);
+    f->cfg.on_repair(f->cfg.repair_ctx, &o, r);
+}
+/* Before the earlier stages run for the item: its own state (the previous unit, the counter jump after a run of two it put
+ * back) and the frames it puts back, from the raw copy. */
+static void repair_prepare(frameserver *f, fs_item *it, repair_out *o){
+    memset(o, 0, sizeof *o);
+    if (!f->cfg.repair_units || it->gap_only) return;
+    const unit_video_observation *u = &it->obs;
+    int jump_explained = 0;
+    if (f->run_next_valid){
+        if (u->counter_confirmed && u->epoch == f->run_next_epoch && u->counter_extended == f->run_next_counter) jump_explained = 1;
+        if (u->counter_confirmed || u->kind == UNIT_VIDEO_E801) f->run_next_valid = 0;
+    }
+    if (it->eligible && it->slot >= 0 && !it->partial_lines && u->counter_confirmed)
+        repair_keep(f, f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES, u->epoch, u->counter_extended);
+    if (!it->raw_len) return;
+    const uint8_t *raw = f->raw_pool + (size_t)it->raw_slot * UR_RAW_SLOT_BYTES; size_t n = it->raw_len;
+    size_t W = UNIT_PARSER_VIDEO_UNIT_BYTES, D = (size_t)UR_MAX_DELTA_BYTES;
+    if (n + D >= 2 * W){                                      // a run of two: each unit the bytes put back goes out
+        ur_result r[2];
+        (void)ur_repair2(raw, n, repair_previous(f, u, jump_explained), f->repair_scratch, f->repair_buf2, r);
+        repair_report(f, u, raw, n, 0, &r[0]); repair_report(f, u, raw, n, 1, &r[1]);
+        int a = r[0].status == UR_OK, b = r[1].status == UR_OK;
+        atomic_fetch_add(&f->repair_declined, (uint64_t)(!a + !b));
+        if (a){ repair_keep(f, f->repair_buf2, u->epoch, u->counter_extended);
+                o->raster[o->n] = f->repair_buf2; o->counter[o->n] = u->counter_extended; o->rows[o->n] = r[0].rebuilt_rows[0] + r[0].rebuilt_rows[1]; o->audio_k[o->n++] = 0; }
+        if (b){ repair_keep(f, f->repair_buf2 + W, u->epoch, u->counter_extended + 1);
+                o->raster[o->n] = f->repair_buf2 + W; o->counter[o->n] = u->counter_extended + 1; o->rows[o->n] = r[1].rebuilt_rows[0] + r[1].rebuilt_rows[1]; o->audio_k[o->n++] = 1;
+                f->run_next_valid = 1; f->run_next_epoch = u->epoch; f->run_next_counter = u->counter_extended + 2; }
+    } else {
+        ur_result r;
+        ur_status rs = ur_repair(raw, n, repair_previous(f, u, jump_explained), f->repair_buf, &r);
+        repair_report(f, u, raw, n, 0, &r);
+        if (rs != UR_OK) atomic_fetch_add(&f->repair_declined, 1);
+        else { repair_keep(f, f->repair_buf, u->epoch, u->counter_extended);
+               o->raster[0] = f->repair_buf; o->counter[0] = u->counter_extended; o->rows[0] = r.rebuilt_rows[0] + r.rebuilt_rows[1]; o->audio_k[0] = 0; o->n = 1; }
+    }
+    atomic_store(&f->raw_used[it->raw_slot], 0); bp_notify(f);
+}
+/* After the earlier stages: publish what it put back, at the placement a whole unit gets with registration off. Not while
+ * fields are paired one unit on (reversed pairing): a frame there takes its fields from two units, and a unit put back on
+ * its own would weave two source frames; those are counted in repair_skipped and the item keeps its own output. */
+static int reversed_at(const frameserver *f, uint64_t counter){
+    const fs_pairing_row *pair = fs_pairing_find(&f->pairing, counter);
+    return pair ? pair->reversed : f->geometry_reversed;
+}
+static void repair_publish(frameserver *f, const fs_item *it, const repair_out *o){
+    int d1 = f->cfg.first_line_f1 ? f->cfg.first_line_f1 - 23 : 0, d2 = f->cfg.first_line_f2 ? f->cfg.first_line_f2 - 286 : 0;
+    for (int i = 0; i < o->n; i++){
+        if (reversed_at(f, o->counter[i])){ atomic_fetch_add(&f->repair_skipped, 1); continue; }   /* each frame by its own counter */
+        ap_correlation audio = {0}; int known;
+        if (f->cfg.offline_backpressure){ known = it->rep_audio_known[o->audio_k[i]]; if (known) audio = it->rep_audio[o->audio_k[i]]; }
+        else known = ap_lookup_correlation(f->aud, it->obs.epoch, o->counter[i], &audio);
+        if (fp_publish_placed(f->pub, o->raster[i], FP_UNIT_BYTES, o->counter[i], d1, d2, FP_TRANSPORT_REPAIRED, known, audio.pts_num))
+            atomic_fetch_add(&f->repair_publisher_dropped, 1);
+        else { atomic_fetch_add(&f->repaired, 1); atomic_fetch_add(&f->repair_rows, o->rows[i]); }
+    }
+}
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
         geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
         geometry_log(f,it,NULL,0,"RingFullTail",NULL,NULL);return;
     }
+    repair_out ro; repair_prepare(f, (fs_item *)it, &ro);
+    f->repair_replaces = ro.n > 0;
     unit_video_observation obs = it->obs;
     const uint8_t *unit = NULL;
     if (it->slot >= 0 && !it->partial_lines){ unit = f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES; obs.bytes = unit; obs.payload = unit + UNIT_PARSER_VIDEO_HEADER_BYTES; }
-    if (!it->second_of_run) switch (it->repaired ? it->repaired_from : obs.transport){ case UNIT_TRANSPORT_HOLE: atomic_fetch_add(&f->holes, 1); break;
+    switch (obs.transport){ case UNIT_TRANSPORT_HOLE: atomic_fetch_add(&f->holes, 1); break;
         case UNIT_TRANSPORT_SHORT: atomic_fetch_add(&f->shorts, 1); break;
         case UNIT_TRANSPORT_UNFRAMED: atomic_fetch_add(&f->unframed, 1); break; default: break; }
     if (obs.kind == UNIT_VIDEO_DEVICE_NO_SIGNAL_0800) atomic_fetch_add(&f->ns0800, 1);
@@ -834,6 +860,8 @@ static void process_item(frameserver *f, const fs_item *it){
     bool classified = signal_state_classify(f->sig, &obs, &signal_ctx, &sr);
     f->ht.classify_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tc;
     process_geometry(f,it,unit,&sr,classified);
+    if (ro.n) repair_publish(f, it, &ro);
+    f->repair_replaces = 0;
 }
 static void *worker_main(void *arg){
     frameserver *f = arg;
@@ -936,9 +964,10 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (cfg->repair_units){
         f->repair_buf = malloc(UNIT_PARSER_VIDEO_UNIT_BYTES); f->repair_prev = malloc(UNIT_PARSER_VIDEO_UNIT_BYTES);
         f->repair_buf2 = malloc(2 * (size_t)UNIT_PARSER_VIDEO_UNIT_BYTES); f->repair_scratch = malloc(UR_SCRATCH_BYTES);
+        f->n_raw = UR_RAW_SLOTS; f->raw_pool = malloc(UR_RAW_SLOTS * UR_RAW_SLOT_BYTES); f->raw_used = calloc(UR_RAW_SLOTS, sizeof *f->raw_used);
     }
     if (!f->pool || !f->slot_used || !f->parser || !f->sig ||
-        (cfg->repair_units && (!f->repair_buf || !f->repair_prev || !f->repair_buf2 || !f->repair_scratch))){ fs_close(f); return -1; }
+        (cfg->repair_units && (!f->repair_buf || !f->repair_prev || !f->repair_buf2 || !f->repair_scratch || !f->raw_pool || !f->raw_used))){ fs_close(f); return -1; }
     unit_parser_callbacks pcb = { on_video, on_audio, f };
     unit_parser_init(f->parser, NULL, &pcb);
     signal_state_init(f->sig, cfg->signal_config);
@@ -1139,7 +1168,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
         o->capture_teardown_incomplete = cs.teardown_incomplete;
         o->rt_priority_at_stop = cs.rt_priority_at_stop; o->rt_priority_min = cs.rt_priority_min; o->schedule_shifts = cs.schedule_shifts; o->schedule_shift_frames = cs.schedule_shift_frames; }
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->partial_not_shown = atomic_load(&f->partial_not_shown);
-    o->repaired_units = atomic_load(&f->repaired); o->repair_rows = atomic_load(&f->repair_rows); o->repair_declined = atomic_load(&f->repair_declined); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
+    o->repaired_units = atomic_load(&f->repaired); o->repair_rows = atomic_load(&f->repair_rows); o->repair_declined = atomic_load(&f->repair_declined); o->repair_skipped = atomic_load(&f->repair_skipped); o->repair_publisher_dropped = atomic_load(&f->repair_publisher_dropped); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
@@ -1170,5 +1199,5 @@ void fs_close(frameserver *f){
     free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
     free(f->retime_unit);free(f->retime_previous);free(f->retime_work);
     fs_pairing_free(&f->pairing);
-    free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->repair_buf); free(f->repair_prev); free(f->repair_buf2); free(f->repair_scratch); free(f);
+    free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->repair_buf); free(f->repair_prev); free(f->repair_buf2); free(f->repair_scratch); free(f->raw_pool); free((void *)f->raw_used); free(f);
 }

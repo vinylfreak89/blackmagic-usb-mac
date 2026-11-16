@@ -8,8 +8,11 @@ samples of blanking at code 1-2 starting every picture line) with the device's m
   counter 12: a long run ended by a marker that does not follow it (unconfirmed: never repaired or published)
   counters 16-17: a stall over 17's marker (one run two units long, ended by 18's marker), the Shuttle restarting its
     raster in 17 with its padding
-Expected: 3, 6, 16 and 17 published with drop_reason Repaired; 9 ShortShown; 12 unpublished; one report line per unit
-attempted on stderr; the replay refuses FS_REPAIR with registration on. No captured media is required.
+Expected: repair is the last stage and only output changes. Frames put back at 3, 6, 16 and 17 (transport 3 in the
+published stream); 9 declined, shown as its partial frame (transport 1); 12 unconfirmed, never tried or published; one
+report line per unit attempted on stderr. The decision log is byte-identical with repair on and off. Paired one unit on,
+nothing put back is published (a frame there takes its fields from two units). Refused with registration on. No captured
+media is required.
     test_unit_repair_replay.py path/to/frameserver_replay"""
 import csv, importlib.util, subprocess, sys, tempfile
 from pathlib import Path
@@ -72,53 +75,50 @@ with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d
     d = Path(d); cap = d / 'repair.tpc'
     write_cap(cap, video)
     env = {'FS_REGISTRATION_OFF': '1', 'FS_HRETIME': '0', 'FS_SHOW_PARTIAL': '1', 'FS_REPAIR': '1', 'PATH': '/usr/bin:/bin'}
-    log = d / 'log.csv'
-    r = subprocess.run([str(binary), str(cap), str(log), '--offline', '--pool', '8'], env=env, capture_output=True, text=True, timeout=120)
-    assert r.returncode == 0, (r.returncode, r.stdout[-2000:], r.stderr[-2000:])
-    rows = list(csv.DictReader(log.open()))
-    by = {}
-    for row in rows:
-        c = row['observed_counter']
-        if c != '' and row['drop_reason'] != 'Unframed': by.setdefault(int(c), []).append(row)
-    def reason(c): return [(x['drop_reason'], x['published']) for x in by.get(c, [])]
-    assert reason(3) == [("Repaired", "1")], (reason(3), r.stderr[-1500:])
-    assert reason(6) == [('Repaired', '1')], reason(6)
-    assert reason(9) == [('ShortShown', '0')], reason(9)
-    assert reason(16) == [('Repaired', '1')] and reason(17) == [('Repaired', '1')], (reason(16), reason(17), r.stderr[-1500:])
-    assert [x['counter_extended'] for x in by[16] + by[17]] == ['16', '17'], [x['counter_extended'] for x in by[16] + by[17]]
-    # the unconfirmed run's row (after 11, before 14) is unpublished and takes no picture counter of its own
-    i11 = next(i for i, x in enumerate(rows) if x['observed_counter'] == '11')
-    run = rows[i11 + 1]
-    assert run['published'] == '0' and run['drop_reason'] == 'Unframed' and run['counter_extended'] == '', run
-    assert rows[i11 + 2]['observed_counter'] == '14' and rows[i11 + 2]['published'] == '1', rows[i11 + 2]
-    assert not any(x['published'] == '1' and x['counter_extended'] in ('12', '13') for x in rows)
-    for c in (0, 1, 2, 4, 5, 7, 8, 10, 11, 14, 15, 18): assert reason(c) == [('None', '1')], (c, reason(c))
+    def replay(cap, tag, repair, *extra):
+        e = dict(env, FS_REPAIR='1' if repair else '0'); dec = d / (tag + '.dec.csv'); tim = d / (tag + '.timing.csv')
+        r = subprocess.run([str(binary), str(cap), str(dec), '--offline', '--pool', '8', '--dump-log', str(tim), *extra],
+                           env=e, capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, (tag, r.returncode, r.stdout[-2000:], r.stderr[-2000:])
+        frames = [l.split(',') for l in tim.read_text().splitlines() if l.startswith('V,')]
+        return r, dec.read_bytes(), [(int(x[1]), int(x[6])) for x in frames]
+    r, dec_on, fr = replay(cap, 'on', True)
+    _, dec_off, fr_off = replay(cap, 'off', False)
+    # the record: repair changes nothing an earlier stage wrote
+    assert dec_on == dec_off, 'decision log differs with repair on'
+    # the output: the frames put back, in counter order, beside the units' own frames
+    tr = dict(fr)
+    assert [c for c, _ in fr] == sorted(c for c, _ in fr), fr
+    assert all(tr.get(c) == 3 for c in (3, 6, 16, 17)), (fr, r.stderr[-1500:])
+    assert tr.get(9) == 1 and 12 not in tr and 13 not in tr, fr
+    for c in (0, 1, 2, 4, 5, 7, 8, 10, 11, 14, 15, 18): assert tr.get(c) == 0, (c, fr)
+    # repair off: the same frames of the units' own, nothing put back (3 and 6 only as their partial frames, if any)
+    assert all(t != 3 for _, t in fr_off) and [x for x in fr if x[1] != 3] == [x for x in fr_off if x[0] not in (3, 6, 16, 17)], (fr, fr_off)
     lines = [l for l in r.stderr.splitlines() if l.startswith('repair:')]
     assert len(lines) == 5 and ' ok:' in lines[0] and ' ok:' in lines[1] and 'no-fill' in lines[2], lines
     assert ' ok:' in lines[3] and ' ok:' in lines[4] and 'counter 17 ' in lines[4], lines
     assert 'units put back from the wrong length: 4' in r.stdout and 'declined: 1' in r.stdout, r.stdout
-    # paired one unit on (a reversed-pairing capture): the run of two put back weaves straight through, no reset after it
-    log2 = d / 'log2.csv'
-    r3 = subprocess.run([str(binary), str(cap), str(log2), '--offline', '--pool', '8', '--pair-next'], env=env, capture_output=True, text=True, timeout=120)
-    assert r3.returncode == 0, (r3.returncode, r3.stderr[-1500:])
-    rows2 = {x['observed_counter']: x for x in csv.DictReader(log2.open()) if x['drop_reason'] in ('None', 'Repaired')}
-    for c in ('15', '16', '17', '18'):
-        x = rows2[c]; assert (x['f1_unused'], x['f2_unused'], x['reset_before']) == ('0', '0', '0') and x['frame_top_unit'] == str(int(c) + 1), (c, x)
-    # a run of two whose first unit cannot be put back (its stall from row 100: too much lost): the second goes out alone,
-    # the first keeps a row of its own (unpublished), and paired one unit on the second weaves with 18, no reset
-    cap2 = d / 'repair2.tpc'; write_cap(cap2, build(100)); log3 = d / 'log3.csv'
-    r4 = subprocess.run([str(binary), str(cap2), str(log3), '--offline', '--pool', '8', '--pair-next'], env=env, capture_output=True, text=True, timeout=120)
-    assert r4.returncode == 0, (r4.returncode, r4.stderr[-1500:])
-    rows3 = list(csv.DictReader(log3.open()))
-    r16 = [x for x in rows3 if x['observed_counter'] == '16']; r17 = [x for x in rows3 if x['observed_counter'] == '17']
-    r18 = [x for x in rows3 if x['observed_counter'] == '18']
-    assert len(r16) == 1 and r16[0]['published'] == '0', r16
-    # 17's first field would pair with 16's second (declined): unused; its second field weaves with 18's first
-    assert len(r17) == 1 and (r17[0]['drop_reason'], r17[0]['published'], r17[0]['frame_top_unit'], r17[0]['f2_unused']) == ('Repaired', '1', '18', '0'), r17
-    assert r18 and r18[0]['reset_before'] == '0', r18
+    # a run of two whose first unit cannot be put back (its stall from row 100: too much lost): the second goes out alone
+    cap2 = d / 'repair2.tpc'; write_cap(cap2, build(100))
+    r4, dec4_on, fr4 = replay(cap2, 'run_on', True)
+    _, dec4_off, _ = replay(cap2, 'run_off', False)
+    assert dec4_on == dec4_off, 'decision log differs with repair on (run of two)'
+    tr4 = dict(fr4); assert tr4.get(17) == 3 and 16 not in tr4, fr4
     assert 'units put back from the wrong length: 3' in r4.stdout and 'declined: 2' in r4.stdout, r4.stdout
+    # paired one unit on (reversed pairing): nothing put back is published, the record is unchanged
+    r3, dec3_on, fr3 = replay(cap, 'pair_on', True, '--pair-next')
+    _, dec3_off, fr3_off = replay(cap, 'pair_off', False, '--pair-next')
+    assert dec3_on == dec3_off and fr3 == fr3_off and all(t != 3 for _, t in fr3), (fr3, fr3_off)
+    # a pairing schedule that switches at 17, the second unit of the run 16/17: each frame put back is decided by its own
+    # counter (16 and 17 come from one observation, counted at 16)
+    for k, (sched, want) in enumerate((('0,aligned,\n17,reversed,\n', {16}), ('0,reversed,\n17,aligned,\n', {17}))):
+        sp = d / ('sched%d.csv' % k); sp.write_text('first_counter,pairing,note\n' + sched)
+        rs, dec_s_on, frs = replay(cap, 'sched%d_on' % k, True, '--pairing-schedule', str(sp))
+        _, dec_s_off, _ = replay(cap, 'sched%d_off' % k, False, '--pairing-schedule', str(sp))
+        put = {c for c, t in frs if t == 3 and c in (16, 17)}
+        assert put == want and dec_s_on == dec_s_off, (sched, frs)
     # with registration on the frameserver refuses to repair: rebuilt rows are not geometry evidence
     env2 = dict(env); env2.pop('FS_REGISTRATION_OFF')
     r2 = subprocess.run([str(binary), str(cap), '--offline'], env=env2, capture_output=True, text=True, timeout=60)
     assert r2.returncode != 0 and 'only with registration off' in r2.stderr, (r2.returncode, r2.stderr[-500:])
-print('unit repair replay: PASS (4 repaired, two of them from one run, 1 declined to the partial path, 1 unconfirmed run unpublished, refused with registration on)')
+print('unit repair replay: PASS (4 put back in the output, two from one run; 1 declined to its partial frame; 1 unconfirmed run unpublished; decision log identical with repair on and off; nothing published while paired one unit on; refused with registration on)')

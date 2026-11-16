@@ -31,6 +31,10 @@ tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publ
 tests/async_file_test: async_file.c async_file.h tests/async_file_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) async_file.c tests/async_file_test.c -o $@ -lpthread
 
+tests/repair_raw_slot_test: $(SRCS) tests/repair_raw_slot_test.c frameserver.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DRING_ITEMS=4 $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/repair_raw_slot_test.c -o $@ $(LIBS)
+tests/repair_many.tpc: tests/gen_repair_many.py ../../scripts/test_unit_repair_replay.py
+	python3 tests/gen_repair_many.py $@ 121
 tests/unit_repair_test: unit_repair.c unit_repair.h ../unit_parser/unit_parser.h tests/unit_repair_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) unit_repair.c tests/unit_repair_test.c -o $@ -lm
 
@@ -44,8 +48,9 @@ tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_s
 tests/replay_probe_test: $(SRCS) tests/replay_probe_test.c replay_probe.h frameserver.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -DCAPTURE_CORE_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_probe_test.c -o $@ $(LIBS)
 
-test: tests/unit_repair_test tests/replay_probe_test tests/async_file_test tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+test: tests/unit_repair_test tests/repair_raw_slot_test tests/repair_many.tpc tests/replay_probe_test tests/async_file_test tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 	./tests/unit_repair_test
+	./tests/repair_raw_slot_test tests/repair_many.tpc
 	./tests/async_file_test
 	./tests/hretime_test
 	./tests/audio_evidence_test
