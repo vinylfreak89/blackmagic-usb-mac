@@ -80,9 +80,11 @@ typedef struct {
                                // FP_TRANSPORT_REPAIRED) is published in place of that unit's own output (its partial frame,
                                // or nothing). It changes no observation, flag or log row, and no count of what arrived or
                                // was published by an earlier stage (partial_shown counts only partial frames actually
-                               // shown). Offline the decision log is the same byte for byte with repair on or off; live,
-                               // its work on the video worker can delay later units into a pool drop, and a ShortShown row
-                               // is written without the publisher's answer for a frame it replaced. Repaired frames are
+                               // shown). Offline the decision log is the same byte for byte with repair on or off. Live,
+                               // its work shares the video worker (a few ms per repair, rare): the pool absorbs it (busiest
+                               // measured stretch, 26 repairs in 25 s: pool high-water 1 at 1x, 8 and no drop at 16x); only
+                               // a pool drop, which a slower machine could reach, would reach the log. A ShortShown row is
+                               // written without the publisher's answer for a frame repair replaced. Repaired frames are
                                // not H-retimed (it runs after H-timing). A run of two units whose middle marker a stall
                                // overwrote (confirmed by a successor two on) gives two frames (counters c and c + 1), or the
                                // one the bytes put back. Only units the parser confirmed (counter_confirmed) are tried; a
