@@ -73,6 +73,14 @@ static void dump_audio(void *c, const ap_block *b){
     if (g_log) fprintf(g_log, "A,%llu,%llu,%u,%u,%u,%llu,%lld\n", (unsigned long long)b->sample_ordinal, (unsigned long long)b->pts_num, b->pts_den,
                        b->n_frames, b->flags, (unsigned long long)b->last_resync_counter_ext, (long long)b->correlation_residual);
 }
+/* FS_REPAIR: one line per unit the Shuttle sent at the wrong length, put back or declined (unit_repair.h). */
+static void on_repair(void *ctx, const unit_video_observation *u, const ur_result *r){
+    (void)ctx;
+    fprintf(stderr, "repair: counter %llu (%u) delta %+ld %s: grid %+d bytes, %ld bytes lost, rows 0-%u in place, %u-524 displaced, rebuilt %u+%u (same field %u, other field %u, previous unit %u), edge check %+d half-samples\n",
+            (unsigned long long)u->counter_extended, u->counter16, r->delta, ur_status_name(r->status), r->grid_offset, r->lost_bytes,
+            r->prefix_rows ? r->prefix_rows - 1 : 0, r->suffix_row, r->rebuilt_rows[0], r->rebuilt_rows[1],
+            r->rebuilt_same_field, r->rebuilt_other_field, r->rebuilt_previous, r->edge_check);
+}
 int main(int argc, char **argv){
     ge_config geometry=ge_default_config();
     if(!ge_tool_controls_from_env(&geometry))return 2;
@@ -94,6 +102,8 @@ int main(int argc, char **argv){
     }
     cfg.hretime=retime && !strcmp(retime,"1");
     cfg.show_partial=getenv("FS_SHOW_PARTIAL") && !strcmp(getenv("FS_SHOW_PARTIAL"),"1");
+    cfg.repair_units=getenv("FS_REPAIR") && !strcmp(getenv("FS_REPAIR"),"1");   /* put back units the Shuttle sent at the wrong length */
+    if(cfg.repair_units) cfg.on_repair=on_repair;
     const char *regoff=getenv("FS_REGISTRATION_OFF");
     if(regoff && strcmp(regoff,"0") && strcmp(regoff,"1")) {
         fputs("FS_REGISTRATION_OFF must be 0 or 1\n",stderr);return 2;
@@ -164,6 +174,7 @@ int main(int argc, char **argv){
     printf("video obs %llu | exact %llu short %llu hole %llu unframed %llu other %llu 0x0800 %llu\n",
         (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.short_units,
         (unsigned long long)s.holes, (unsigned long long)s.unframed, (unsigned long long)s.other_format, (unsigned long long)s.no_signal_0800);
+    if(cfg.repair_units) printf("units put back from the wrong length: %llu (%llu raster rows rebuilt), declined: %llu, not published (no raw slot or reversed pairing): %llu, refused by the publisher: %llu\n",(unsigned long long)s.repaired_units,(unsigned long long)s.repair_rows,(unsigned long long)s.repair_declined,(unsigned long long)s.repair_skipped,(unsigned long long)s.repair_publisher_dropped);
     if(s.partial_shown||s.partial_not_shown) printf("search frames shown from units that were not whole: %llu (not shown, no free slot: %llu)\n",(unsigned long long)s.partial_shown,(unsigned long long)s.partial_not_shown);
     printf("published %llu | dropped(pool) %llu dropped(ring) %llu dropped(surfaces) %llu | unsettled %llu | begin_segment %llu discontinuity %llu | log rows %llu | pool high %u\n",
         (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.dropped_ring_full, (unsigned long long)s.publisher_dropped,

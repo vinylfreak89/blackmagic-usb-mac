@@ -26,7 +26,8 @@ typedef struct {
 void tmt_start(void);                   // window opened: start measuring (idempotent)
 void tmt_stop(void);                    // window closed: stop and join the thread (idempotent)
 // From the frame callback, with the surface locked: cheap when inactive or busy. Only whole units are measured:
-// `complete` is 0 for a stretched partial unit or a hole, which say nothing about the two heads.
+// `complete` is 0 for a stretched partial unit, a hole or a repaired unit (rows rebuilt, partly from the other field),
+// which say nothing about the two heads.
 void tmt_offer(const uint8_t *uyvy, size_t bytes_per_row, int complete);
 // Called on the UI's own cadence; also advances the history by one point.
 void tmt_snapshot_take(tmt_snapshot *out);

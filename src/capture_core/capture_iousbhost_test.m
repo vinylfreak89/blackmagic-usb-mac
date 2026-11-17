@@ -18,14 +18,14 @@ static int fails;
 
 typedef struct {
     int started; uint64_t expect; uint32_t last_seq;
-    long xfers, packets, ok, too_old, other_bad, mismatch, seq_bad, gap_frames, gaps;
+    long xfers, packets, ok, too_old, dead, other_bad, mismatch, seq_bad, gap_frames, gaps;
 } ep_rec;
 static struct {
     ep_rec r[2];
-    _Atomic int after_stop, late_calls, calls;
+    _Atomic int after_stop, late_calls, calls, straddle_lines;
     int stall_at, stall_ms, refuse_at, refuse_n, refuse_all_at, terminate_at, late_at, late_k;
     dispatch_semaphore_t stalled, unstalled;
-    long submit_failed[2], fatal[3]; int fatal_reason_last;
+    long submit_failed[2], fatal[4]; int fatal_reason_last; _Atomic uint64_t fatal_ms; _Atomic long ok_video, enq_at_fatal; int stall_dead_ms, stall_dead_done;
 } T;
 
 static void on_transfer(void *ctx, int ep, uint32_t seq, int io, uint64_t unread, uint32_t too_old){ (void)ctx; (void)io; (void)too_old;
@@ -51,24 +51,32 @@ static void on_packet(void *ctx, int ep, uint32_t seq, int pi, int ok, uint32_t 
         uint64_t uf; memcpy(&uf,d,8);
         if(!r->started){ r->started=1; r->expect=uf; }
         if(uf!=r->expect) r->mismatch++;
-        r->ok++;
+        r->ok++; if(!ep) atomic_fetch_add(&T.ok_video,1);
     } else if(st==(uint32_t)kIOReturnIsoTooOld) r->too_old++;
+    else if(st==(uint32_t)kIOReturnNoResources) r->dead++;   /* the fake's dead link */
     else r->other_bad++;
     if(r->started) r->expect++;
+    /* the first failed video transfer's last packet (after the backend has timed it): one more failed video transfer
+     * to come, then the queue stands still */
+    if(ep==0 && st==(uint32_t)kIOReturnNoResources && pi==NPK-1 && T.stall_dead_ms && !T.stall_dead_done){
+        T.stall_dead_done=1; atomic_store(&ih_fake.link_dead,0); atomic_store(&ih_fake.dead_left[0],1); atomic_store(&ih_fake.dead_left[1],0);
+        usleep((useconds_t)T.stall_dead_ms*1000); }
 }
 static void on_tick(void *ctx){ (void)ctx; }
 static void on_submit_failed(void *ctx, int ep, uint32_t seq, int io){ (void)ctx; (void)seq; (void)io; T.submit_failed[ep]++; }
 static void on_fatal(void *ctx, int reason, int io, int ep, uint32_t seq){ (void)ctx; (void)io; (void)ep; (void)seq;
-    if(reason>=1 && reason<=2) T.fatal[reason]++; T.fatal_reason_last=reason;
+    if(reason>=1 && reason<=3) T.fatal[reason]++; T.fatal_reason_last=reason; uint64_t z=0; if(atomic_compare_exchange_strong(&T.fatal_ms,&z,clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000000))
+        atomic_store(&T.enq_at_fatal,atomic_load(&ih_fake.enqueues[0])+atomic_load(&ih_fake.enqueues[1]));
     if(atomic_load(&T.after_stop)) atomic_fetch_add(&T.late_calls,1); }
-static void on_diag(void *ctx, const char *line){ (void)ctx; if(getenv("IH_TEST_VERBOSE")) fprintf(stderr,"  diag: %s\n",line); }
+static void on_diag(void *ctx, const char *line){ (void)ctx; if(getenv("IH_TEST_VERBOSE")) fprintf(stderr,"  diag: %s\n",line);
+    if(strstr(line,"delivered its first") && strstr(line,"counted as failed")) atomic_fetch_add(&T.straddle_lines,1); }
 static const ih_callbacks CB={ .on_transfer=on_transfer, .on_packet=on_packet, .on_tick=on_tick,
                                .on_submit_failed=on_submit_failed, .on_fatal=on_fatal, .on_diag=on_diag };
 
 static void reset_(void){
     memset(&T.r,0,sizeof T.r); atomic_store(&T.after_stop,0); atomic_store(&T.late_calls,0); atomic_store(&T.calls,0);
     T.stall_at=T.refuse_at=T.refuse_all_at=T.terminate_at=T.late_at=-1; T.late_k=0; T.stall_ms=0; T.refuse_n=0; T.stalled=nil; T.unstalled=nil;
-    memset(T.submit_failed,0,sizeof T.submit_failed); memset(T.fatal,0,sizeof T.fatal); T.fatal_reason_last=0;
+    memset(T.submit_failed,0,sizeof T.submit_failed); memset(T.fatal,0,sizeof T.fatal); T.fatal_reason_last=0; atomic_store(&T.fatal_ms,0); atomic_store(&T.ok_video,0); atomic_store(&T.enq_at_fatal,0); T.stall_dead_ms=0; T.stall_dead_done=0;
     memset(&ih_fake,0,sizeof ih_fake);
 }
 static ih_dev *open_start_(int deadline_ms, int *rc){
@@ -154,6 +162,30 @@ int main(void){ @autoreleasepool {
     close_(d);
     printf("  refused 5 times: one report, recovered, nothing lost\n");
 
+    /* 3b. the stop called while completions wait on the queue behind a stalled callback (150 ms, under the backstop):
+     *     each of them, and the stalled one, completes before the stop reaches the queue and is requeued, so the
+     *     fleet is whole. With the stop begun from the caller's thread they were withheld and counted missing (the
+     *     e2e "late" flake, 2026-11-15) */
+    reset_(); T.stall_at=20; T.stall_ms=150; T.stalled=dispatch_semaphore_create(0); T.unstalled=dispatch_semaphore_create(0);
+    d=open_start_(2000,&rc); ih_go(d);
+    CHECK(!dispatch_semaphore_wait(T.stalled,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC)),"stop behind a stall: never stalled");
+    usleep(60000);                        /* about 4 transfers per endpoint fall due behind the stall meanwhile */
+    finish_(d,&st);
+    check_accounting_("stop behind a stall",&st);
+    CHECK(!st.incomplete && st.fleet[0]==32 && st.fleet[1]==32,"stop behind a stall: fleet %d+%d, incomplete %d",st.fleet[0],st.fleet[1],st.incomplete);
+    close_(d);
+    printf("  stop behind a stalled callback: fleet %d+%d\n",st.fleet[0],st.fleet[1]);
+
+    /* 3c. the stop while video requeues are being refused (not fatal yet): the transfers waiting on a retry are in
+     *     the fleet, not lost from it */
+    reset_(); T.refuse_all_at=10;
+    d=open_start_(2000,&rc); ih_go(d); usleep(400000); finish_(d,&st);
+    check_accounting_("stop during retries",&st);
+    CHECK(T.fatal[1]+T.fatal[2]==0 && T.submit_failed[0]>=2,"stop during retries: fatal %ld/%ld, %ld refused transfers",T.fatal[1],T.fatal[2],T.submit_failed[0]);
+    CHECK(st.fleet[0]==32 && st.fleet[1]==32,"stop during retries: fleet %d+%d",st.fleet[0],st.fleet[1]);
+    close_(d);
+    printf("  stop with %ld video transfers on retry: fleet %d+%d\n",T.submit_failed[0],st.fleet[0],st.fleet[1]);
+
     /* 4. refusals past the deadline: one report per transfer (not per retry), then one fatal */
     reset_(); T.refuse_all_at=10;
     d=open_start_(60,&rc); ih_go(d); usleep(500000); finish_(d,&st);
@@ -202,9 +234,111 @@ int main(void){ @autoreleasepool {
     CHECK(atomic_load(&ih_fake_xfer_deallocs)==closed_transfers,"%ld of %ld transfers deallocated after their sessions closed",atomic_load(&ih_fake_xfer_deallocs),closed_transfers);
     printf("  all %ld transfers of the closed sessions deallocated\n",closed_transfers);
 
-    /* 8. no device */
+    /* 8. a link that dies with the device still attached (2026-11-10): the reads complete about every 100 ms here
+     *    (2 s on hardware), each failed, nothing delivered, and the requeues are accepted. Once one endpoint's streak
+     *    reaches the deadline (300 ms): one reason-3 fatal, and requeuing stops */
+    reset_(); atomic_store(&ih_fake.dead_spacing_ms,100);
+    d=open_start_(300,&rc); ih_go(d); usleep(300000);
+    uint64_t died_ms=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000000;
+    atomic_store(&ih_fake.link_dead,1);
+    for(int i=0;i<60 && !atomic_load(&T.fatal_ms);i++) usleep(50000);
+    long enq_at_fatal=atomic_load(&T.enq_at_fatal);   /* sampled inside on_fatal: the fatal transfer's own requeue counts */
+    usleep(400000);
+    long enq_after=atomic_load(&ih_fake.enqueues[0])+atomic_load(&ih_fake.enqueues[1]);
+    long dead_seen=atomic_load(&ih_fake.dead_completions[0])+atomic_load(&ih_fake.dead_completions[1]);
+    finish_(d,&st);
+    CHECK(T.fatal[3]==1 && T.fatal[1]==0 && T.fatal[2]==0,"dead link: fatal %ld/%ld/%ld (want 0/0/1)",T.fatal[1],T.fatal[2],T.fatal[3]);
+    uint64_t fms=atomic_load(&T.fatal_ms), took=fms?fms-died_ms:0;
+    CHECK(fms && took>=300 && took<=900,"dead link: ended %llu ms after the link died (want 300..900)",(unsigned long long)took);
+    CHECK(enq_after==enq_at_fatal,"dead link: %ld reads queued after the session ended",enq_after-enq_at_fatal);
+    CHECK(st.dead_transfers[0]+st.dead_transfers[1]>=2 && T.r[0].dead+T.r[1].dead>=2*NPK,"dead link: %llu+%llu dead transfers, %ld+%ld dead packets",
+          (unsigned long long)st.dead_transfers[0],(unsigned long long)st.dead_transfers[1],T.r[0].dead,T.r[1].dead);
+    check_accounting_("dead link",&st);
+    close_(d);
+    printf("  dead link (device attached): ended %llu ms after it died, %ld failed completions, no read queued after\n",(unsigned long long)took,dead_seen);
+
+    /* 9. a dead stretch shorter than the deadline (here 150 ms of failed reads against 600): no fatal, and the
+     *    stream goes on delivering */
+    reset_(); d=open_start_(600,&rc); ih_go(d); usleep(200000);
+    atomic_store(&ih_fake.link_dead,1); usleep(150000); atomic_store(&ih_fake.link_dead,0);
+    long ok_before=atomic_load(&T.ok_video); usleep(500000);
+    long ok_after=atomic_load(&T.ok_video);
+    finish_(d,&st);
+    CHECK(T.fatal[1]+T.fatal[2]+T.fatal[3]==0,"brief dead stretch: fatal %ld/%ld/%ld",T.fatal[1],T.fatal[2],T.fatal[3]);
+    CHECK(st.dead_transfers[0]>0 && ok_after>ok_before+100,"brief dead stretch: %llu dead video transfers, %ld packets delivered after",
+          (unsigned long long)st.dead_transfers[0],ok_after-ok_before);
+    check_accounting_("brief dead stretch",&st);
+    close_(d);
+    printf("  dead stretch shorter than the deadline: %llu+%llu failed transfers, no fatal, delivery resumed\n",
+           (unsigned long long)st.dead_transfers[0],(unsigned long long)st.dead_transfers[1]);
+
+    /* 9b. the transfer fails while its packets say Success with no data: still counted as failed, one reason-3 fatal */
+    reset_(); atomic_store(&ih_fake.dead_spacing_ms,100); atomic_store(&ih_fake.dead_pkt_ok,1);
+    d=open_start_(300,&rc); ih_go(d); usleep(200000); atomic_store(&ih_fake.link_dead,1);
+    for(int i=0;i<60 && !atomic_load(&T.fatal_ms);i++) usleep(50000);
+    finish_(d,&st);
+    CHECK(T.fatal[3]==1 && T.fatal[1]+T.fatal[2]==0,"transfer-level failure: fatal %ld/%ld/%ld (want 0/0/1)",T.fatal[1],T.fatal[2],T.fatal[3]);
+    close_(d);
+    printf("  transfer failed, packets Success with no data: one reason-3 fatal\n");
+
+    /* 9c. two failed stretches of 400 ms, delivery between them, against a 600 ms deadline: a delivery ends the
+     *     streak, so no fatal (without the reset the second stretch would reach the deadline) */
+    reset_(); d=open_start_(600,&rc); ih_go(d); usleep(200000);
+    atomic_store(&ih_fake.link_dead,1); usleep(400000); atomic_store(&ih_fake.link_dead,0); usleep(150000);
+    atomic_store(&ih_fake.link_dead,1); usleep(400000); atomic_store(&ih_fake.link_dead,0); usleep(200000);
+    finish_(d,&st);
+    CHECK(T.fatal[1]+T.fatal[2]+T.fatal[3]==0,"two stretches: fatal %ld/%ld/%ld",T.fatal[1],T.fatal[2],T.fatal[3]);
+    CHECK(st.dead_transfers[0]>=20,"two stretches: only %llu failed video transfers",(unsigned long long)st.dead_transfers[0]);
+    check_accounting_("two stretches",&st);
+    close_(d);
+    printf("  two failed stretches split by delivery: %llu failed video transfers, no fatal\n",(unsigned long long)st.dead_transfers[0]);
+
+    /* 9d. two failed video transfers with an 800 ms queue stall between their processing (deadline 500): the streak
+     *     looks long only because the queue stood still; the transfers that completed during the stall are already
+     *     waiting, and their data cancels the end */
+    reset_(); T.stall_dead_ms=800; d=open_start_(500,&rc); ih_go(d); usleep(200000);
+    atomic_store(&ih_fake.link_dead,1);
+    usleep(1800000);
+    finish_(d,&st);
+    CHECK(T.stall_dead_done,"stall between failures: the hook never ran");
+    CHECK(T.fatal[1]+T.fatal[2]+T.fatal[3]==0,"stall between failures: fatal %ld/%ld/%ld",T.fatal[1],T.fatal[2],T.fatal[3]);
+    CHECK(st.dead_transfers[0]==2,"stall between failures: %llu failed video transfers (want 2)",(unsigned long long)st.dead_transfers[0]);
+    close_(d);
+    printf("  queue stall between two failures: the waiting deliveries cancelled the end\n");
+
+    /* 9e. the link dies inside a video transfer (2026-11-15): that transfer delivers its first half and fails the
+     *     rest, the later ones fail wholly. Failed completions every 300 ms across both endpoints, deadline 400.
+     *     The streak starts at the transfer the link died in: the second failed completion on that endpoint (600 ms
+     *     after the first failure) ends the session. Counting only wholly failed transfers ends it 900-1200 ms in,
+     *     which is what happened on hardware (6.6 s from the kernel's first error instead of 3.2) */
+    reset_(); atomic_store(&ih_fake.dead_spacing_ms,300); atomic_store(&T.straddle_lines,0);
+    d=open_start_(400,&rc); ih_go(d); usleep(200000);
+    { uint64_t now=ih_fake_frame_now(), qe=atomic_load(&ih_fake.queue_end[0]), b=qe;
+      while(b>=now+10+NPK/8) b-=NPK/8;     /* the earliest video transfer starting at least 10 frames ahead */
+      atomic_store(&ih_fake.dead_from_frame,b+NPK/16);   /* half way into it */
+      atomic_store(&ih_fake.link_dead,1); }
+    for(int i=0;i<60 && !atomic_load(&T.fatal_ms);i++) usleep(50000);
+    finish_(d,&st);
+    { uint64_t fms=atomic_load(&T.fatal_ms), f0=atomic_load(&ih_fake.first_dead_ms), after=fms&&f0?fms-f0:0;
+      CHECK(atomic_load(&ih_fake.dead_partial[0])>=1,"link died inside a transfer: the fake made no partly delivered video transfer");
+      CHECK(T.fatal[3]==1 && T.fatal[1]+T.fatal[2]==0,"link died inside a transfer: fatal %ld/%ld/%ld (want 0/0/1)",T.fatal[1],T.fatal[2],T.fatal[3]);
+      CHECK(fms && f0 && after>=400 && after<=750,"link died inside a transfer: ended %llu ms after the first failed completion (want 400..750: the partly delivered transfer starts the streak)",(unsigned long long)after);
+      CHECK(atomic_load(&T.straddle_lines)>=1,"link died inside a transfer: its partly delivered transfer was not logged");
+      check_accounting_("link died inside a transfer",&st);
+      close_(d);
+      printf("  link died inside a transfer: ended %llu ms after the first failed completion, the partly delivered transfer counted\n",(unsigned long long)after); }
+
+    /* 10. no device */
     reset_(); atomic_store(&ih_fake.absent,1); ih_dev *x=NULL; char err[100];
     CHECK(ih_open(&x,0,0,0,err,sizeof err)==CC_ERR_NODEVICE && !x,"absent device opened");
+
+    /* 11. another process holds it open: CC_ERR_BUSY (the caller waits for that process to close it), with the
+     *     kernel's reason in the text */
+    reset_(); atomic_store(&ih_fake.busy,1); x=NULL; char berr[200]="";
+    int brc=ih_open(&x,0,0,0,berr,sizeof berr);
+    CHECK(brc==CC_ERR_BUSY && !x,"held by another process: rc %d (want CC_ERR_BUSY)",brc);
+    CHECK(strstr(berr,"Exclusive open")!=NULL,"held by another process: the reason is missing from \"%s\"",berr);
+    printf("  held by another process: CC_ERR_BUSY (%s)\n",berr);
 
     if(fails){ printf("FAILURES: %d\n",fails); return 1; }
     printf("ALL TESTS PASSED\n"); return 0;

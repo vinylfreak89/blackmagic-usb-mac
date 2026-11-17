@@ -30,9 +30,12 @@ typedef struct {
      * until the deadline. Called once per requeue (the first refusal). seq: that transfer's previous one, whose data
      * was delivered (libusb names the new, empty seq instead); the requeued transfer takes the next free seq. */
     void (*on_submit_failed)(void *ctx, int ep_index, uint32_t seq, int ioreturn);
-    /* The session cannot go on: the device left (reason 1, ioreturn 0) or a transfer could not be queued within
-     * the deadline (reason 2, with the IOReturn, endpoint and seq). Each reason at most once (a reason 1 after a
-     * reason 2 still comes: an unplug can fail a requeue before its notice arrives); requeuing stops. */
+    /* The session cannot go on: the device left (reason 1, ioreturn 0), a transfer could not be queued within
+     * the deadline (reason 2, with the IOReturn, endpoint and seq), or an endpoint's reads failed for a reason other
+     * than lateness and delivered nothing after, for the deadline (reason 3, with the failure's IOReturn, endpoint
+     * and the last seq): a link that died while the device stayed attached. Reason 1 at most once, and reasons 2
+     * and 3 together at most once (a reason 1 after either still comes: an unplug can fail a requeue before its
+     * notice arrives); requeuing stops. */
     void (*on_fatal)(void *ctx, int reason, int ioreturn, int ep_index, uint32_t seq);
     /* A line for the session's diagnosis log (rare: one per unread-frame gap). Optional. */
     void (*on_diag)(void *ctx, const char *line);
@@ -45,7 +48,10 @@ typedef struct {
     uint64_t too_old_mismatch[2];   /* transfers whose too-old count differed from the prediction (see on_diag) */
     uint64_t submit_failures[2], resubmit_recovered[2];   /* refused attempts (each retry), requeues that recovered */
     uint64_t completions[2], aborted[2];
-    int fleet[2];                   /* transfers in flight per endpoint when the stop began */
+    uint64_t dead_transfers[2];     /* transfers ending in failed packets (other than too old) or failing outright,
+                                     * nothing delivered after: the reason-3 streak counts them */
+    int fleet[2];                   /* transfers per endpoint queued or waiting on a retry when the stop began (on
+                                     * the completion queue; 0 if it did not answer): none lost from the cycle */
     int transfers, transfers_freed; /* allocated (both endpoints) / released by us at ih_stop (none if incomplete) */
     int incomplete;                 /* the queue did not drain within 5 s of the abort: callbacks were cut off */
     int device_gone;                /* a termination notice arrived at any time before ih_stop returned */
@@ -57,7 +63,7 @@ typedef struct {
 } ih_stats;
 /* Open the Shuttle and run the start sequence (alt 0, mode words, alt 1 -> alt 2, mode word, latch). Both iso
  * endpoints must have bInterval 1 (8 packets per 1 ms frame), or it refuses. 0 or a negative capture_core error
- * (CC_ERR_NODEVICE / CC_ERR_USB); err gets a description. */
+ * (CC_ERR_NODEVICE / CC_ERR_BUSY: another process has it open / CC_ERR_USB); err gets a description. */
 int  ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char *err, size_t errn);
 /* Queue `xfers` transfers per endpoint at consecutive frames, the first ones held back from the callbacks until
  * ih_go (the hardware reads meanwhile; 512 ms are queued). npk: a multiple of 8 (one frame). A refusal here is

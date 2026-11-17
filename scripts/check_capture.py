@@ -78,7 +78,7 @@ def check_sidecar(path, expect):
     real_epochs = [e for e in epochs if e and e != "0"]
     if len(real_epochs) > 1: problems.append(f"sidecar: {len(real_epochs)} capture epochs (the device restarted mid-recording)")
     if device: notes.append(f"sidecar: {sum(device.values()):,} units not published as pictures because of how the device framed them {device} "
-                            "(Short/ShortShown = short unit, Unframed/OtherShown = no marker, Complete = whole unit of a non-picture format "
+                            "(Short/ShortShown = short unit, Unframed/OtherShown = no marker or too long, Complete = whole unit of a non-picture format "
                             "such as no-signal; expected around start-up, relock, a stopped deck and tape end)")
     if audio_steps: notes.append(f"sidecar: {audio_steps} audio clock steps (device audio discontinuities)")
 

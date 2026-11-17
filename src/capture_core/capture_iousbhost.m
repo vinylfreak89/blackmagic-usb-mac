@@ -65,7 +65,11 @@
     BOOL running;                      /* ih_go has run: completions are handed over; refusals are retried */
     BOOL suspended;                    /* q is suspended (ih_start .. ih_go); touched by the caller's thread only */
     BOOL discard;                      /* stopped without ih_go: completions are dropped, never handed over */
+    uint64_t dead_since_ms[2]; uint32_t dead_n[2];   /* per endpoint: consecutive transfers ending failed, no delivery since */
+    uint32_t dead_gen[2]; BOOL dead_check[2];        /* deliveries so far (a pending end is cancelled by one); an end pending */
+    BOOL empty_logged[2];                           /* this run of empty transfers has been logged */
     ih_stats st; int live[2];
+    int retrying[2];                   /* refused transfers waiting on their 1 ms retry: in the fleet, not on the bus */
     uint64_t last_ts[2]; double abs_ns;
     IHCounter *freed;
     NSMutableArray<IHXfer*> *all;
@@ -77,7 +81,8 @@
 static IHDev *D(ih_dev *d){ return (__bridge IHDev*)(void*)d; }
 static uint64_t ih_ms_(void){ return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000000; }
 static void ih_err(char *err, size_t n, const char *what, NSError *e){
-    if(err && n) snprintf(err,n,"%s: %s",what,e?e.localizedDescription.UTF8String:"failed");
+    if(err && n) snprintf(err,n,"%s: %s%s%s",what,e?e.localizedDescription.UTF8String:"failed",
+                          e.localizedFailureReason?" ":"",e.localizedFailureReason?e.localizedFailureReason.UTF8String:"");
 }
 static BOOL ih_off_(IHDev *d){ return atomic_load(&d->detached) || atomic_load(&d->quiesced) || d->discard; }
 /* dispatch_sync with a backstop: NO if q did not run b within s seconds (it still runs b later) */
@@ -132,6 +137,76 @@ static void ih_complete_(IHDev *d, IHXfer *x, IOReturn status, IOUSBHostIsochron
     }
     d->last_ts[ep]=status==kIOReturnSuccess && !old?ts:0;
     x.gap=0;
+    /* A link that died without the device being terminated (measured 2026-11-10, a Shuttle on a USB 3 hub: the port
+     * logged a state change, then the kernel completed the queued reads one at a time, about 2 s apart, each with
+     * "missed service error" 0xe00002be or "transaction error" 0xe00002ed; every requeue at its frame was refused as
+     * too old and accepted 8 frames ahead; no termination notice came for 22 minutes, until the process let go of
+     * the device, and other devices on the hub ran at a few percent of their speed until then). A transfer that
+     * delivered no byte and failed for a reason other than lateness starts a streak on its endpoint; any byte
+     * delivered on it ends the streak. A streak reaching the deadline (at least two transfers) ends the session:
+     * the device is then released, and the caller reconnects once it is back. The streak is timed where this queue
+     * processes completions, so a queue stall between two failed transfers stretches it: the end is therefore
+     * decided behind whatever completions are already waiting on the queue, and one of them delivering cancels it.
+     * The streak is per packet, in bus order: it begins at the first failed packet with no delivered packet after
+     * it. So the transfer the link dies inside (its first packets delivered, the rest failed) starts it, and its
+     * deliveries do not hide the failure (measured 2026-11-15: that transfer on each endpoint was not counted, and
+     * the end came 6.6 s after the kernel's first error instead of 3.2 s). A transfer whose own status failed with
+     * undelivered packets after its last delivery ends failing too.
+     * The first transfer of each run that ends without delivering is logged with its statuses, whether or not it
+     * counts as failed: a kernel answer this test misses still leaves its evidence. */
+    { uint32_t delivered=0, tail=0, nst=0; IOReturn tfail=status!=kIOReturnSuccess && status!=kIOReturnUnderrun && status!=kIOReturnIsoTooOld?status:kIOReturnSuccess;
+      IOReturn why=kIOReturnSuccess;     /* first failure after the last delivered packet (the transfer's own, last) */
+      IOReturn sv[3]={0}; uint32_t sc[3]={0}, other=0;
+      for(int i=0;i<d->npk[ep];i++){
+          IOReturn ps=tl[i].status;
+          if((ps==kIOReturnSuccess || ps==kIOReturnUnderrun) && tl[i].completeCount){
+              delivered++; tail=0; why=kIOReturnSuccess; nst=0; other=0; continue; }   /* the histogram covers the tail */
+          tail++;
+          if(ps!=kIOReturnSuccess && ps!=kIOReturnUnderrun && ps!=kIOReturnIsoTooOld){ if(why==kIOReturnSuccess) why=ps; }
+          uint32_t k=0; while(k<nst && sv[k]!=ps) k++;
+          if(k<nst) sc[k]++; else if(nst<3){ sv[nst]=ps; sc[nst++]=1; } else other++;
+      }
+      if(why==kIOReturnSuccess && tail) why=tfail;
+      if(delivered){ d->dead_n[ep]=0; d->dead_since_ms[ep]=0; d->dead_gen[ep]++; d->empty_logged[ep]=NO; }
+      if(tail){
+          /* a partly delivered transfer is logged only when its tail counts as failed (a healthy one can end in
+           * empty packets) */
+          if(!d->empty_logged[ep] && d->cb.on_diag && (!delivered || why!=kIOReturnSuccess)){ char line[360], h[160]="", what[64]; size_t o=0;
+              d->empty_logged[ep]=YES;
+              for(uint32_t k=0;k<nst && o<sizeof h;k++) o+=(size_t)snprintf(h+o,sizeof h-o,"%s%u x 0x%08x",k?", ":"",sc[k],(unsigned)sv[k]);
+              if(other && o<sizeof h) snprintf(h+o,sizeof h-o,", %u other",other);
+              if(delivered) snprintf(what,sizeof what,"delivered its first %u packets, then nothing",(unsigned)d->npk[ep]-tail);
+              else snprintf(what,sizeof what,"delivered nothing");
+              snprintf(line,sizeof line,"capture_iousbhost: %s transfer seq %u %s: transfer 0x%08x, %s %s%s",
+                       ep?"audio":"video",x.seq,what,(unsigned)status,delivered?"the rest":"packets",h,
+                       why!=kIOReturnSuccess?"; counted as failed (the Shuttle may not be answering)":"");
+              d->cb.on_diag(d->cb.ctx,line); }
+          if(why!=kIOReturnSuccess){
+              uint64_t now=ih_ms_();
+              d->st.dead_transfers[ep]++;
+              if(!d->dead_n[ep]++) d->dead_since_ms[ep]=now;
+              else if(now-d->dead_since_ms[ep]>=(uint64_t)d->deadline_ms && !d->dead_check[ep]
+                      && !atomic_load(&d->stopping) && !d->fatal_sent && !ih_off_(d)){
+                  uint32_t gen=d->dead_gen[ep], n=d->dead_n[ep], seq=x.seq; uint64_t span=now-d->dead_since_ms[ep];
+                  __weak IHDev *wd=d;
+                  d->dead_check[ep]=YES; dispatch_group_enter(d->inflight);
+                  dispatch_async(d->q,^{   /* behind the completions already waiting */
+                      IHDev *sd=wd; if(!sd) return;
+                      sd->dead_check[ep]=NO;
+                      if(sd->dead_gen[ep]==gen && !atomic_load(&sd->stopping) && !sd->fatal_sent && !ih_off_(sd)){
+                          if(sd->cb.on_diag){ char line[240];
+                              snprintf(line,sizeof line,"capture_iousbhost: %s: %u transfers in a row failed with nothing delivered over %llu ms (last 0x%08x): ending the session to release the device",
+                                       ep?"audio":"video",n,(unsigned long long)span,(unsigned)why);
+                              sd->cb.on_diag(sd->cb.ctx,line); }
+                          ih_fatal_(sd,3,(int)why,ep,seq);
+                      }
+                      dispatch_group_leave(sd->inflight);
+                  });
+              }
+          }
+      }
+    }
+    if(ih_off_(d)){ dispatch_group_leave(d->inflight); return; }
     const uint8_t *base=(const uint8_t*)x.buf.bytes;
     for(int i=0;i<d->npk[ep] && !ih_off_(d);i++){
         IOUSBHostIsochronousTransaction *t=&tl[i];
@@ -187,9 +262,10 @@ static void ih_enqueue_(IHDev *d, IHXfer *x){
         if(d->cb.on_submit_failed) d->cb.on_submit_failed(d->cb.ctx,ep,x.seq,io);
     }
     if(now-x.fail_since_ms>=(uint64_t)d->deadline_ms){ ih_fatal_(d,2,io,ep,x.seq); return; }
-    dispatch_group_enter(d->inflight);
+    dispatch_group_enter(d->inflight); d->retrying[ep]++;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_MSEC),d->q,^{
         IHDev *sd=wd; if(!sd) return;
+        sd->retrying[ep]--;
         if(!atomic_load(&sd->stopping) && !ih_off_(sd)) ih_enqueue_(sd,x);
         dispatch_group_leave(sd->inflight);
     });
@@ -220,7 +296,10 @@ int ih_open(ih_dev **out, uint32_t mode_word, uint32_t r4, uint32_t latch, char 
         atomic_store(&sd->gone,1);
         dispatch_async(sd->q,^{ ih_fatal_(sd,1,0,0,0); }); }];
     IOObjectRelease(ds);
-    if(!d->dev){ ih_err(err,errn,"open the Shuttle (IOUSBHostDevice)",e); return CC_ERR_USB; }
+    /* held open by another process: macOS answers kIOReturnExclusiveAccess (measured 2026-11-15 with
+     * experiments/usb_close_notice_probe.m; on 2026-11-15 03:54 Chrome had the just re-enumerated Shuttle open) */
+    if(!d->dev){ ih_err(err,errn,"open the Shuttle (IOUSBHostDevice)",e);
+        return e && (IOReturn)e.code==kIOReturnExclusiveAccess?CC_ERR_BUSY:CC_ERR_USB; }
     if(!d->dev.configurationDescriptor && ![d->dev configureWithValue:1 matchInterfaces:NO error:&e]){
         ih_err(err,errn,"configure",e); atomic_store(&d->quiesced,1); [d->dev destroy]; return CC_ERR_USB; }
     io_service_t is=0, c; io_iterator_t it;   /* interface 0: the device's IOUSBHostInterface child */
@@ -308,15 +387,23 @@ void ih_go(ih_dev *dv){
     d->suspended=NO; dispatch_resume(d->q);
 }
 
+/* The stop begins on q, in the step that samples the fleet: every transfer is then either queued (live), waiting on
+ * a retry, or not yet completed, and none can complete and go unrequeued before the count. Set from this thread
+ * instead, a completion already waiting on q ran between the store and the sample, was not requeued, and was
+ * counted as missing from the fleet (measured 2026-11-15: live 31+32 with one such completion, 2 of 8 runs). Off q
+ * only when q never ran (suspended) or did not answer within the backstop. */
+static void ih_stop_on_q_(IHDev *d){
+    atomic_store(&d->stopping,1);
+    for(int ep=0;ep<2;ep++) d->st.fleet[ep]=d->live[ep]+d->retrying[ep];
+    if(d->tick) dispatch_source_cancel(d->tick);
+}
 void ih_stop(ih_dev *dv, ih_stats *st){ @autoreleasepool {
     IHDev *d=D(dv);
-    atomic_store(&d->stopping,1);
     if(d->suspended){                     /* never went: q has run nothing since ih_start, so this thread may write */
-        d->discard=YES; d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1];
-        if(d->tick) dispatch_source_cancel(d->tick);
+        d->discard=YES; ih_stop_on_q_(d);
         d->suspended=NO; dispatch_resume(d->q);
-    } else if(!ih_sync_(d->q,^{ d->st.fleet[0]=d->live[0]; d->st.fleet[1]=d->live[1]; if(d->tick) dispatch_source_cancel(d->tick); },IH_BACKSTOP_S)){
-        atomic_store(&d->detached,1); d->st.incomplete=1;
+    } else if(!ih_sync_(d->q,^{ ih_stop_on_q_(d); },IH_BACKSTOP_S)){
+        atomic_store(&d->stopping,1); atomic_store(&d->detached,1); d->st.incomplete=1;
     }
     for(int ep=0;ep<2;ep++) if(d->pipe[ep]) [d->pipe[ep] abortWithOption:IOUSBHostAbortOptionAsynchronous error:nil];
     long left=d->st.incomplete?1:dispatch_group_wait(d->inflight,dispatch_time(DISPATCH_TIME_NOW,(int64_t)(IH_BACKSTOP_S*NSEC_PER_SEC)));

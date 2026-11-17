@@ -12,8 +12,14 @@
 
 bool obs_module_load(void);
 void shuttle_test_device_gone(void *d);
+void shuttle_test_device_closed(void *d);
+extern int shuttle_test_open_rc, shuttle_test_close_during_open;
 int shuttle_test_reconnect_wanted(void *d);
 unsigned shuttle_test_reconnect_tries(void *d);
+void shuttle_test_power(void *d, unsigned msg);
+int shuttle_test_asleep(void *d);
+void shuttle_test_full_wake(void *d);
+extern int shuttle_test_power_acks, shuttle_test_ack_with_session, shuttle_test_sleep_replays, shuttle_test_display_on;
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -27,10 +33,13 @@ static const char *const L_RESTART = "capture restart failed";
 static const char *const L_GONE = "disconnected (USB connection lost)";
 static const char *const L_GAVE_UP = "could not reconnect to the Shuttle after 30 attempts";
 static const char *const L_NOFILE = "replay file cannot be opened";
+static const char *const L_SLEEP = "the Mac is going to sleep: stopping the Shuttle session";
+static const char *const L_HELD = "the Mac is asleep: the Shuttle session starts when it wakes";
+static const char *const L_WOKE = "the Mac woke";
 #define WAIT(cond, secs, what) do{ double t0_ = now(); while(!(cond) && now() - t0_ < (secs)) usleep(2000); CHECK((cond), "timed out after %g s waiting for %s", (double)(secs), what); }while(0)
 
 int main(int argc, char **argv){
-    if (argc < 2){ fprintf(stderr, "usage: %s fixture_plain.tpc\n", argv[0]); return 9; }
+    if (argc < 2){ fprintf(stderr, "usage: %s fixture_plain.tpc [repair_many.tpc]\n", argv[0]); return 9; }
     stub_verbose = getenv("VERBOSE") != NULL;
     setenv("SHUTTLE_SOURCE_NO_SPILL_RECOVERY", "1", 1);   /* the load starts spill recovery: not on this user's scratch */
     obs_module_load();
@@ -205,6 +214,131 @@ int main(int argc, char **argv){
           CHECK(o >= 1 && g == 0 && u <= 1, "after the second disconnect: %d open failures (want at least 1), %d disconnect lines (want 0), %d give-ups (want at most 1)", o, g, u); }
     }
 
+    /* 6b. the device drops off USB and comes back held open by another process (2026-11-15 03:54: Chrome opened the
+     * just re-enumerated Shuttle first). The attempt is refused busy; no timed retries follow (the old code retried
+     * every RECONNECT_INTERVAL_NS, 20 ms in this build: about 15 attempts in 300 ms); the holder's close notice brings
+     * the next attempt at once. A close during an attempt still brings the next one (the watch is armed before the
+     * attempt). After a user stop a close notice does nothing. */
+    {
+        static const char *const L_BUSY_OPEN = "frameserver open failed: another process holds the Shuttle open";
+        static const char *const L_BUSY_WAIT = "reconnecting when it lets go";
+        shuttle_test_open_rc = CC_ERR_BUSY;
+        stub_expect(L_BUSY_OPEN); stub_expect(L_BUSY_WAIT); stub_expect(L_GONE);
+        shuttle_test_device_gone(d);
+        WAIT(stub_expect_count(L_BUSY_OPEN) >= 1, 2, "the first reconnect attempt");
+        usleep(300000);
+        CHECK(stub_expect_count(L_BUSY_OPEN) == 1, "held open: %d attempts before the holder closed it (want 1: the next waits for its close)", stub_expect_count(L_BUSY_OPEN));
+        shuttle_test_device_closed(d);
+        WAIT(stub_expect_count(L_BUSY_OPEN) >= 2, 2, "an attempt on the holder's close notice");
+        shuttle_test_close_during_open = 1; shuttle_test_device_closed(d);   /* attempt 3 sees a close before it returns */
+        WAIT(stub_expect_count(L_BUSY_OPEN) >= 4, 2, "an attempt after a close during the previous one");
+        usleep(300000);
+        CHECK(stub_expect_count(L_BUSY_OPEN) == 4, "held open: %d attempts (want 4: the gone, two closes, the close during attempt 3)", stub_expect_count(L_BUSY_OPEN));
+        CHECK(shuttle_test_reconnect_wanted(d), "held open: stopped wanting to reconnect");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting");
+        shuttle_test_device_closed(d); usleep(100000);
+        { int o = stub_expect_end(L_BUSY_OPEN), w = stub_expect_end(L_BUSY_WAIT), g = stub_expect_end(L_GONE);
+          CHECK(o == 4 && w == 1 && g == 1, "held open: %d busy attempts (want 4, none after the user stop), %d wait lines (want 1), %d disconnects (want 1)", o, w, g); }
+        shuttle_test_open_rc = 0;
+    }
+
+    /* 6c. system sleep (IOKit's messages, as power_cb receives them; NSWorkspace's wake notifications reach the same
+     * power_wake). A running session is stopped and the picture blanked BEFORE the sleep is acknowledged; a replay
+     * stands in for the live session (no device here), and a real replay is left running. A wake counts only with the
+     * main display on (shuttle_test_display_on stands for it): HasPoweredOn also comes on the dark wakes a Mac makes
+     * with its lid shut, and a wake notification can be late. A user action ends the sleep. */
+    {
+        enum { CAN_SLEEP = 0xe0000270, WILL_SLEEP = 0xe0000280, WILL_NOT_SLEEP = 0xe0000290, POWERED_ON = 0xe0000300 };
+        shuttle_test_display_on = 0;
+        st = stub_settings(argv[1], 1); I->update(d, st);
+        WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "a session to put to sleep");
+        stub_expect(L_SLEEP); stub_expect(L_WOKE);
+        int acks = shuttle_test_power_acks, with = shuttle_test_ack_with_session; uint64_t blanks = stub_blank_calls;
+        shuttle_test_sleep_replays = 1;
+        shuttle_test_power(d, CAN_SLEEP);
+        CHECK(shuttle_test_power_acks == acks + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "an idle-sleep query was not allowed, or it stopped the session");
+        shuttle_test_power(d, WILL_SLEEP);
+        CHECK(shuttle_test_power_acks == acks + 2, "the sleep was not acknowledged");
+        CHECK(shuttle_test_ack_with_session == with + 1, "the sleep was acknowledged while a session was still running (%d of 2 acks with a session; only the query may)", shuttle_test_ack_with_session - with);
+        CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED && shuttle_test_asleep(d), "after WillSleep: state %d, asleep %d", I->media_get_state(d), shuttle_test_asleep(d));
+        CHECK(stub_blank_calls == blanks + 1, "the sleep stop did not blank the picture (%llu blank calls)", (unsigned long long)(stub_blank_calls - blanks));
+        uint64_t f = stub_video_frames;
+        shuttle_test_power(d, POWERED_ON);   /* a dark wake: display off */
+        shuttle_test_full_wake(d);           /* a wake notification that arrives with the display off: stale */
+        usleep(200000);
+        CHECK(shuttle_test_asleep(d) && stub_video_frames == f, "a dark or stale wake ended the sleep (asleep %d) or frames arrived (%llu)", shuttle_test_asleep(d), (unsigned long long)(stub_video_frames - f));
+        shuttle_test_power(d, WILL_SLEEP);   /* back to sleep: nothing left to stop */
+        CHECK(shuttle_test_power_acks == acks + 3 && shuttle_test_ack_with_session == with + 1, "the second sleep was not acknowledged cleanly");
+        CHECK(stub_expect_count(L_WOKE) == 0, "a wake was logged before the display came on");
+        shuttle_test_display_on = 1;
+        shuttle_test_full_wake(d);
+        CHECK(!shuttle_test_asleep(d) && stub_expect_count(L_WOKE) == 1, "the full wake (display on) did not end the sleep (asleep %d, %d wake lines)", shuttle_test_asleep(d), stub_expect_count(L_WOKE));
+        CHECK(stub_expect_end(L_SLEEP) == 1, "the sleep stop was not logged once");
+        shuttle_test_sleep_replays = 0;
+        /* IOKit's power-on with the display on ends a sleep too (a sleep aborted after WillSleep) */
+        shuttle_test_power(d, WILL_SLEEP); shuttle_test_power(d, POWERED_ON);
+        CHECK(!shuttle_test_asleep(d), "power-on with the display on left the source asleep");
+        stub_expect_end(L_WOKE);
+        /* a real replay keeps running through a sleep; a refused idle-sleep query (WillNotSleep) changes nothing */
+        I->update(d, st);
+        WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "a replay before a sleep");
+        shuttle_test_power(d, CAN_SLEEP); shuttle_test_power(d, WILL_NOT_SLEEP);
+        CHECK(!shuttle_test_asleep(d) && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "a refused sleep query changed the source");
+        acks = shuttle_test_power_acks;
+        shuttle_test_power(d, WILL_SLEEP);
+        CHECK(shuttle_test_power_acks == acks + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "a sleep stopped a replay, or was not acknowledged");
+        shuttle_test_full_wake(d);
+        /* live, the device drops off USB while asleep: no attempt through a dark wake, attempts after the full wake */
+        st = stub_settings(argv[1], 0);
+        stub_expect(L_OPEN); stub_expect(L_GONE); stub_expect(L_GAVE_UP);
+        I->update(d, st);                      /* one refused live start */
+        shuttle_test_power(d, WILL_SLEEP);
+        shuttle_test_device_gone(d);
+        shuttle_test_display_on = 0; shuttle_test_power(d, POWERED_ON);   /* a dark wake */
+        usleep(300000);
+        CHECK(stub_expect_end(L_OPEN) == 1, "reconnect attempts ran while asleep or in a dark wake");
+        stub_expect(L_OPEN);
+        shuttle_test_display_on = 1; shuttle_test_full_wake(d);
+        WAIT(stub_expect_count(L_OPEN) >= 1, 5, "a reconnect attempt after the full wake");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting after the wake");
+        { int o = stub_expect_end(L_OPEN), g = stub_expect_end(L_GONE), u = stub_expect_end(L_GAVE_UP);
+          CHECK(o >= 1 && g == 1 && u == 0, "after the wake: %d open failures (want at least 1), %d disconnects (want 1), %d give-ups (want 0)", o, g, u); }
+        /* a missed wake: a user action proves the Mac is awake. A settings change while "asleep" starts at once (not held),
+         * a restart likewise, and a stop clears the sleep so a later wake restarts nothing. */
+        stub_expect(L_OPEN); stub_expect(L_HELD); stub_expect(L_RESTART);
+        shuttle_test_power(d, WILL_SLEEP);
+        I->update(d, st);
+        CHECK(!shuttle_test_asleep(d) && stub_expect_count(L_OPEN) == 1 && stub_expect_count(L_HELD) == 0, "a settings change while asleep: asleep %d, %d opened (want 1), %d held (want 0)", shuttle_test_asleep(d), stub_expect_count(L_OPEN), stub_expect_count(L_HELD));
+        shuttle_test_power(d, WILL_SLEEP);
+        I->media_restart(d);
+        WAIT(stub_expect_count(L_OPEN) == 2, 5, "a restart while asleep to try the device at once");
+        CHECK(!shuttle_test_asleep(d) && stub_expect_count(L_HELD) == 0, "a restart while asleep: asleep %d, %d held", shuttle_test_asleep(d), stub_expect_count(L_HELD));
+        shuttle_test_power(d, WILL_SLEEP);
+        I->media_stop(d);
+        WAIT(!shuttle_test_asleep(d), 5, "a stop while asleep to end the sleep");
+        shuttle_test_full_wake(d);
+        usleep(200000);
+        CHECK(stub_expect_count(L_OPEN) == 2 && !shuttle_test_reconnect_wanted(d), "a wake after a user stop restarted something (%d opens)", stub_expect_count(L_OPEN));
+        { int o = stub_expect_end(L_OPEN), h = stub_expect_end(L_HELD), r = stub_expect_end(L_RESTART);
+          CHECK(o == 2 && h == 0 && r == 1, "user actions while asleep: %d opens (want 2), %d held (want 0), %d restart failures (want 1)", o, h, r); }
+        /* the same user actions from automation in a dark wake (display off: hotkeys, obs-websocket, macros) do not end it */
+        stub_expect(L_OPEN); stub_expect(L_HELD);
+        shuttle_test_display_on = 0;
+        shuttle_test_power(d, WILL_SLEEP);
+        I->update(d, st);
+        I->media_restart(d);
+        usleep(200000);
+        CHECK(shuttle_test_asleep(d) && stub_expect_count(L_OPEN) == 0 && stub_expect_count(L_HELD) == 2, "user actions with the display off: asleep %d, %d opened (want 0), %d held (want 2)", shuttle_test_asleep(d), stub_expect_count(L_OPEN), stub_expect_count(L_HELD));
+        shuttle_test_display_on = 1; shuttle_test_full_wake(d);
+        WAIT(stub_expect_count(L_OPEN) >= 1, 5, "the held start to be made at the full wake");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop after the held start");
+        stub_expect_end(L_OPEN); stub_expect_end(L_HELD);
+        shuttle_test_display_on = 0;
+    }
+
     /* 6b. a replay path that cannot be opened: the previous file's length does not stay on the bar */
     st = stub_settings(argv[1], 1);
     I->update(d, st);
@@ -217,6 +351,42 @@ int main(int argc, char **argv){
       CHECK(n == 1 && o == 0, "unopenable replay: %d file errors (want 1), %d open failures (want 0: it stops before opening)", n, o); }
     CHECK(I->media_get_duration(d) == 0 && stub_ended_signals == ended + 1, "after a failed replay start: duration %lld, ended signals +%d",
           (long long)I->media_get_duration(d), stub_ended_signals - ended);
+
+    /* 6c. unit repair follows registration: off -> on. The repair fixture has 121 picture units, every 4th 224 bytes
+     * short; "Search picture" is off here, so with repair off only the 91 whole units reach OBS and with it on the 30
+     * short ones come back as whole frames too. */
+    if (argc > 2){
+        static const char *L_REP_ON = "unit repair ON", *L_REP_OFF = "unit repair off";
+        stub_plain_content = 0;   /* this fixture carries picture: format and planes are still checked */
+        for (int reg = 1; reg >= 0; reg--){
+            stub_registration(reg);
+            stub_expect(reg ? L_REP_OFF : L_REP_ON);
+            ended = stub_ended_signals; f0 = stub_video_frames;
+            st = stub_settings(argv[2], 1); I->update(d, st);
+            int stops = stub_stop_lines;   /* after the update: it stopped the previous session */
+            WAIT(stub_ended_signals > ended, 20, "the repair fixture to play to its end");
+            I->media_stop(d);   /* the session's stats line */
+            WAIT(stub_stop_lines > stops, 10, "the repair fixture's session to log its stats");
+            uint64_t got = stub_video_frames - f0;
+            char line[2048]; stub_last_stop_line(line, sizeof line);
+            unsigned long long put = 0, dec = 0, skip = 0, refused = 0; const char *p = strstr(line, "units put back ");
+            int parsed = p && sscanf(p, "units put back %llu (declined %llu, not tried or not published %llu, refused by the publisher %llu)", &put, &dec, &skip, &refused) == 4;
+            /* every short unit is accounted for, and every frame put back reached OBS */
+            CHECK(parsed && got == 91u + put && (reg ? put + dec + skip + refused == 0 : put + dec + skip + refused == 30),
+                  "registration %s: stats %s put back %llu declined %llu skipped %llu refused %llu, %llu frames to OBS",
+                  reg ? "on" : "off", parsed ? "parsed:" : "NOT PARSED", put, dec, skip, refused, (unsigned long long)got);
+            int n = stub_expect_end(reg ? L_REP_OFF : L_REP_ON);
+#if defined(__has_feature) && __has_feature(thread_sanitizer)
+            /* Live, a repair waits for nothing: TSan's slow worker keeps the four raw slots busy and some are skipped (counted). */
+            int frames_ok = reg ? got == 91u : got > 91u && got <= 121u;
+#else
+            int frames_ok = got == (reg ? 91u : 121u);
+#endif
+            CHECK(n == 1 && frames_ok, "registration %s: %d \"%s\" start lines (want 1), %llu frames to OBS (want %s)",
+                  reg ? "on" : "off", n, reg ? L_REP_OFF : L_REP_ON, (unsigned long long)got, reg ? "91" : "121; under TSan 92-121");
+        }
+        stub_registration(1); stub_plain_content = 1;
+    }
 
     /* 7. back to replay, then destroy while it plays: prompt, no hang */
     st = stub_settings(argv[1], 1);
