@@ -13,7 +13,7 @@ a flat no-signal fill, so real dropouts stay visible. A frame without an audio t
 a short queue (the log is buffered by the writer).
 plain_render.sh creates replay.done beside the log once the replay has exited: frames still unmatched after the log's last
 lines are then an error (exit 3), never an endless wait (2026-10-20: a replay that died mid-stream left this waiting 10 h).
-Writes schedule.json beside the log: a0 (ticks), slots written, frames placed/dropped/estimated, fill slots, and the largest
+Writes schedule.json beside the log: a0 (ticks), slots written, frames placed/dropped/estimated, fill slots (and fill_runs: each run of fill as [first slot, slots], also printed with its time), and the largest
 distance between a placed frame's audio time and its slot start. As soon as the first frame is placed, a0.json beside the log
 holds a0, so audio_relay.py can place the audio against the same timeline while the render runs."""
 import os, sys, time, json
@@ -24,6 +24,7 @@ lost = sorted({int(x) % 65536 for x in open(lostarg).read().split()}) if holds_o
 log = None; partial = b""; vlines = []; queue = []; eof = False
 a0 = None; prev = None; nxt = 0; pending = None
 st = dict(placed=0, dropped=0, estimated=0, filled=0, held=0, not_held_lost=0, max_dev_ticks=0, holds_on=holds_on); last = None
+fill_runs = []   # [first slot, slots] of every run of no-signal fill, in output order
 def lost_between(c1, c2):
     """a lost unit's 16-bit counter lies strictly between frame counters c1 < c2"""
     span = (c2 - c1) % 65536
@@ -50,6 +51,9 @@ def emit(slot, frame, counter):
     if slot - nxt == 1 and last is not None and holds_on:
         if lost_between(last[1], counter): st["not_held_lost"] += 1
         else: out.write(last[0]); st["held"] += 1; nxt += 1
+    if nxt < slot:
+        if fill_runs and fill_runs[-1][0] + fill_runs[-1][1] == nxt: fill_runs[-1][1] += slot - nxt
+        else: fill_runs.append([nxt, slot - nxt])
     while nxt < slot: out.write(fill); st["filled"] += 1; nxt += 1
     out.write(frame); nxt += 1; last = (frame, counter)
 def place():
@@ -87,8 +91,11 @@ while True:
         time.sleep(0.2)       # the replay is flushing its last log lines
 if pending is not None: emit(pending[0], pending[1], pending[3]); st["placed"] += 1; st["max_dev_ticks"] = max(st["max_dev_ticks"], pending[2])
 out.flush()
-st.update(a0_ticks=a0, slots=nxt)
+st.update(a0_ticks=a0, slots=nxt, fill_runs=fill_runs)
 json.dump(st, open(os.path.join(os.path.dirname(logp) or ".", "schedule.json"), "w"))
 print("relay: %d slots on the audio clock: %d frames placed, %d dropped (another frame was nearer the slot), %d estimated (no audio time), "
       "%d held (one empty slot: previous frame repeated%s), %d not held (lost data in the gap), %d filled; largest placement error %.2f ms" % (
       nxt, st["placed"], st["dropped"], st["estimated"], st["held"], "" if holds_on else "; OFF: no sidecar lists lost units", st["not_held_lost"], st["filled"], st["max_dev_ticks"] / 240), file=sys.stderr)
+def at(slot): t = slot * 1001 / 30000; return "%d:%05.2f" % (t // 60, t % 60)
+for s0, n in fill_runs:     # each slot is two frames of the 59.94 fps render
+    print("relay: no-signal fill at %s for %d slot%s (%d frames, %.2f s)" % (at(s0), n, "" if n == 1 else "s", 2 * n, n * 1001 / 30000), file=sys.stderr)

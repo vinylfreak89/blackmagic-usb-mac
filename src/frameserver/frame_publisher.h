@@ -39,7 +39,8 @@ extern "C" {
 #define FP_FRAME_WIDTH    720u
 #define FP_FRAME_HEIGHT   480u
 
-enum fp_transport { FP_TRANSPORT_COMPLETE = 0, FP_TRANSPORT_SHORT = 1, FP_TRANSPORT_HOLE = 2 };
+enum fp_transport { FP_TRANSPORT_COMPLETE = 0, FP_TRANSPORT_SHORT = 1, FP_TRANSPORT_HOLE = 2,
+                    FP_TRANSPORT_REPAIRED = 3 /* a whole raster put back from a unit of the wrong length: some rows rebuilt (unit_repair.h) */ };
 
 typedef struct {
     IOSurfaceRef surface;      // '2vuy', 720×480, interlaced TFF; use-count held by consumer
@@ -86,11 +87,13 @@ void fp_get_stats(const fp_publisher *p, fp_stats *out);
 void fp_close(fp_publisher *p);
 
 /* A picture that did not arrive as a whole unit: a deck in search (fast-forward, rewind) or an unlocked source makes
- * the device send one short field per unit. `rows` holds n_lines lines of 1440 bytes as they arrived; they are
- * stretched over the 480 output rows by repeating lines, with no placement and no field structure. For looking,
- * not for keeping: the frame carries FP_TRANSPORT_SHORT. A unit of more than 300 lines is taken to hold two
- * fields one after the other and only the first is shown. Returns as fp_publish. */
-int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, uint64_t counter_ext,
+ * the device send one short field per unit. `rows` holds n_lines lines of 1440 bytes as they arrived. Up to 300 lines
+ * (one field) they are stretched over the 480 output rows by repeating lines, with no field structure. More than 300
+ * lines hold both fields as a whole unit's rows do: they are published in the whole unit's aperture, field 1 from row
+ * 19+d1 and field 2 from 282+d2 (frame_publisher placement, d1/d2 as for fp_publish_placed), a line the unit does not
+ * carry taken from the other field. For looking, not for keeping: the frame carries FP_TRANSPORT_SHORT.
+ * Returns as fp_publish. */
+int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, int d1, int d2, uint64_t counter_ext,
                        int audio_pts_known, uint64_t audio_pts_num);
 
 // Pure assembly, no IOSurface: writes the 480-line interlaced frame (1440 B/row) into dst.

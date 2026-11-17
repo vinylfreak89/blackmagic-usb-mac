@@ -6,6 +6,7 @@
 #include <util/dstr.h>
 #include <util/platform.h>
 #include <media-io/video-io.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -19,16 +20,20 @@ const struct obs_source_info *stub_info;
 _Atomic int stub_started_signals, stub_ended_signals;
 _Atomic uint64_t stub_video_frames;
 int stub_verbose;
-struct obs_data { _Atomic(const char *) path; _Atomic(const char *) usb; _Atomic int use_replay, restart_on_record; };   /* OBS's obs_data is thread-safe; so is this */
+struct obs_data { _Atomic(const char *) path; _Atomic(const char *) usb; _Atomic int use_replay, restart_on_record, registration_off; };   /* OBS's obs_data is thread-safe; so is this */
 void *stub_data; obs_source_t *stub_source;
 static obs_frontend_event_cb g_event_cb; static void *g_event_param;
 void stub_fire_event(enum obs_frontend_event ev){ if (g_event_cb) g_event_cb(ev, g_event_param); }
 static struct obs_data g_settings;
 void stub_restart_on_record(int on){ atomic_store(&g_settings.restart_on_record, on); }
 void stub_usb_backend(const char *v){ atomic_store(&g_settings.usb, v); }
+void stub_registration(int on){ atomic_store(&g_settings.registration_off, !on); }
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
 _Atomic int stub_late_reports;
+/* The plugin's last "stopped:" line (its session stats), and how many there have been. */
+static pthread_mutex_t g_stop_m = PTHREAD_MUTEX_INITIALIZER; static char g_stop_line[2048]; _Atomic int stub_stop_lines;
+void stub_last_stop_line(char *out, size_t n){ pthread_mutex_lock(&g_stop_m); snprintf(out, n, "%s", g_stop_line); pthread_mutex_unlock(&g_stop_m); }
 /* Expected log lines: a test that drives a failure path names the lines it must cause (stub_expect); while
  * named, matching lines are counted instead of printed, and the test asserts the count (stub_expect_end).
  * Every other warning or error still prints, so a clean run shows only results. */
@@ -43,9 +48,14 @@ int stub_expect_end(const char *text){
     for (int i = 0; i < STUB_EXPECT_MAX; i++) if (atomic_load(&g_expect[i]) == text){ atomic_store(&g_expect[i], NULL); return atomic_load(&g_expect_n[i]); }
     fprintf(stderr, "stub_expect_end: \"%s\" was not expected\n", text); abort();
 }
+int stub_expect_count(const char *text){
+    for (int i = 0; i < STUB_EXPECT_MAX; i++) if (atomic_load(&g_expect[i]) == text) return atomic_load(&g_expect_n[i]);
+    fprintf(stderr, "stub_expect_count: \"%s\" was not expected\n", text); abort();
+}
 void blog(int level, const char *fmt, ...){
     char line[2048]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
     if (strstr(line, "delivery timing: counter")) atomic_fetch_add(&stub_late_reports, 1);
+    if (strstr(line, "[shuttle-source] stopped:")){ pthread_mutex_lock(&g_stop_m); snprintf(g_stop_line, sizeof g_stop_line, "%s", line); pthread_mutex_unlock(&g_stop_m); atomic_fetch_add(&stub_stop_lines, 1); }
     for (int i = 0; i < STUB_EXPECT_MAX; i++){
         const char *e = atomic_load(&g_expect[i]);
         if (e && strstr(line, e)){ atomic_fetch_add(&g_expect_n[i], 1); if (!stub_verbose) return; }
@@ -67,7 +77,7 @@ lookup_t *obs_module_load_locale(obs_module_t *m, const char *d, const char *l){
 bool obs_data_get_bool(obs_data_t *d, const char *name){
     if (!strcmp(name, "use_replay")) return atomic_load(&d->use_replay);
     if (!strcmp(name, "replay_restart_on_record")) return atomic_load(&d->restart_on_record);
-    if (!strcmp(name, "registration")) return true;
+    if (!strcmp(name, "registration")) return !atomic_load(&d->registration_off);   /* on unless a test turns it off */
     if (!strcmp(name, "setup_7_5_ire")) return true;   /* the device default: setup bit on */
     return false;   /* hretime, raw_tpc, restart/stop-on-record, sidecar: off */
 }
@@ -117,6 +127,7 @@ void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_en
 /* What the plugin hands OBS: I210, byte linesizes 1440/720/720, contiguous Y/U/V planes, codes as 4c
  * (fixture_plain is Y16/C128 everywhere -> 64/512), range clamp opened, limited range kept. */
 _Atomic uint64_t stub_frame_errors;
+_Atomic int stub_plain_content = 1;   /* the replayed fixture is Y16/C128 everywhere: check the codes too */
 _Atomic uint64_t stub_blank_calls;
 void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){
     (void)s; if (!f){ atomic_fetch_add(&stub_blank_calls, 1); return; }
@@ -126,8 +137,8 @@ void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){
              f->linesize[0] == 1440 && f->linesize[1] == 720 && f->linesize[2] == 720 &&
              f->data[1] == f->data[0] + 720 * 480 * 2 && f->data[2] == f->data[1] + 360 * 480 * 2 &&
              f->color_range_min[0] == 0.0f && f->color_range_max[0] == 1.0f;
-    for (unsigned i = 0; ok && i < 720 * 480; i += 997) ok = y[i] == 64;
-    for (unsigned i = 0; ok && i < 360 * 480; i += 499) ok = u[i] == 512 && v[i] == 512;
+    for (unsigned i = 0; ok && atomic_load(&stub_plain_content) && i < 720 * 480; i += 997) ok = y[i] == 64;
+    for (unsigned i = 0; ok && atomic_load(&stub_plain_content) && i < 360 * 480; i += 499) ok = u[i] == 512 && v[i] == 512;
     if (!ok && atomic_fetch_add(&stub_frame_errors, 1) == 0)
         fprintf(stderr, "stub: frame not as expected: format %d %ux%u linesize %u/%u/%u full_range %d y0 %u u0 %u\n", (int)f->format,
                 f->width, f->height, f->linesize[0], f->linesize[1], f->linesize[2], (int)f->full_range, y ? y[0] : 0, u ? u[0] : 0);

@@ -7,7 +7,7 @@
 #   make uninstall
 CC ?= clang
 OBS_APP ?= /Applications/OBS.app
-OBS_HEADERS ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/obs-headers-32.2.2/libobs
+OBS_HEADERS ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/obs-headers-33.0.1/libobs
 # frontend/obs-frontend-api.h sits beside libobs/ in OBS_HEADERS's parent (same obs-studio tag)
 # SIMDe (header-only SSE emulation): the libobs headers need it on arm64
 SIMDE_DIR ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/simde-0.8.2
@@ -22,7 +22,7 @@ INSTALL_DIR = $(HOME)/Library/Application Support/obs-studio/plugins
 
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c \
        ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
-       ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/async_file.c ../frameserver/pairing_schedule.c ../frameserver/hretime.c ../frameserver/replay_probe.c
+       ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/async_file.c ../frameserver/pairing_schedule.c ../frameserver/hretime.c ../frameserver/replay_probe.c ../frameserver/unit_repair.c
 CPPFLAGS = -I. -I"$(OBS_HEADERS)" -I"$(OBS_HEADERS)/../frontend" -I"$(SIMDE_DIR)" -I.. -I../capture_core -I../frameserver $(shell pkg-config --cflags libusb-1.0)
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden
 # obs-frontend-api.dylib (recording started/stopped events, recording output) is linked by path;
@@ -38,7 +38,7 @@ $(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h tracking_meter.c t
 	$(CC) $(CPPFLAGS) -O2 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -fobjc-arc -c tracking_meter_window.m -o "$(BUILD_DIR)/tracking_meter_window.o"
 	# the IOUSBHost USB stack (the source's "USB stack" setting; libusb stays the default)
 	$(CC) $(CPPFLAGS) -O2 -Wall -Wextra -fvisibility=hidden -fobjc-arc -DCC_WITH_IOUSBHOST -c ../capture_core/capture_iousbhost.m -o "$(BUILD_DIR)/capture_iousbhost.o"
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DCC_WITH_IOUSBHOST $(LDFLAGS) -framework AppKit -framework IOUSBHost "$(BUILD_DIR)/tracking_meter_window.o" "$(BUILD_DIR)/capture_iousbhost.o" tracking_meter.c tracking_meter_tap.c shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DCC_WITH_IOUSBHOST $(LDFLAGS) -framework AppKit -framework CoreGraphics -framework IOUSBHost "$(BUILD_DIR)/tracking_meter_window.o" "$(BUILD_DIR)/capture_iousbhost.o" tracking_meter.c tracking_meter_tap.c shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
 	cp $(BUNDLE)/Contents/Resources/locale/en-US.ini $(BUNDLE)/Contents/Resources/locale/ja-JP.ini
@@ -54,9 +54,10 @@ test: test-tracking-meter test-audio test-frame-levels test-timing-report test-r
 .PHONY: test-tracking-meter test-audio test-frame-levels test-replay-timeline test-media-controls
 # The plugin's media controls in a test process: libobs replaced by stubs, the real frameserver
 # replaying the plain synthetic fixture. Plain and ThreadSanitizer builds.
-MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc
+MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc ../frameserver/tests/repair_many.tpc
 test-media-controls: shuttle_source.c tracking_meter.c tracking_meter_tap.c frame_levels.h tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
+	$(MAKE) -C ../frameserver tests/repair_many.tpc
 	$(CC) $(CPPFLAGS) -DSHUTTLE_TEST_HOOKS -DRECONNECT_INTERVAL_NS=20000000ull -O1 -g -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c tracking_meter.c tracking_meter_tap.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls $(MEDIA_FIXTURE)
 	$(CC) $(CPPFLAGS) -DSHUTTLE_TEST_HOOKS -DRECONNECT_INTERVAL_NS=20000000ull -O1 -g -fsanitize=thread -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c tracking_meter.c tracking_meter_tap.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls_tsan -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls_tsan $(MEDIA_FIXTURE)
 

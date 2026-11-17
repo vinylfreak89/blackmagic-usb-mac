@@ -51,18 +51,54 @@ a parser contract.
   `_LATE` records. Completions are held back until `cc_start` succeeds, so a failed start hands
   nothing over. Another refusal is retried every millisecond until `resubmit_deadline_ms`. Each
   attempt goes out as a `0xffff` TransferError, then the session ends, as with libusb. Device
-  removal notices come on IOUSBHost's own queue and are moved onto the completion queue. Opens as
+  removal notices come on IOUSBHost's own queue and are moved onto the completion queue. A link
+  can also die with no removal notice (below): when an endpoint's reads fail for a reason other than
+  lateness and deliver nothing after, for `resubmit_deadline_ms` (at least two transfers), the session
+  ends `CC_END_TRANSFER_FAILED` and releases the device. The streak is per packet in bus order, so the
+  transfer the link dies inside (first packets delivered, the rest failed) starts it. The end is
+  decided behind the completions already waiting on the queue, so a queue stall between two failures
+  (which stretches the streak) is cancelled by the data that arrived meanwhile. The first transfer of
+  each run that ends without delivering is logged with its transfer and packet statuses. An open
+  refused because another process holds the Shuttle (`kIOReturnExclusiveAccess`) returns
+  `CC_ERR_BUSY`. Opens as
   a normal user with no entitlement, and refuses endpoints whose bInterval is not 1. Packet
   statuses are IOReturn values here, libusb ones there; the SESSION note names the backend.
   `make test-iousbhost` runs three tests under TSan. The unmodified backend against a fake
   IOUSBHost (`ih_fake_iousbhost.m`: a real-time bus clock, the refusal and too-old rules measured
   here, every packet carrying its microframe number), checking that each microframe is accounted
   for exactly once through stalls, requeues landing exactly 1, 8, 14 and 20 frames late,
-  refusals, an unplug, the start gate and a stop during a stalled callback. The same, end to
+  refusals, an unplug, a dead link with the device attached (also with Success-but-empty packets;
+  a dead stretch shorter than the deadline; two stretches split by delivery; a queue stall between
+  two failures; the link dying inside a transfer), an open held by another process, the start gate
+  and a stop during a stalled callback. The same, end to
   end through capture_core (the delivered packet stream and its HostLoss records). And
   capture_core's side against a scripted mock of the `ih_*` interface
   (`capture_iousbhost_mock.c`). The fake does not model interrupt coalescing, packet errors
-  other than too old, short packets, or how a real unplug fails the transfers in flight.
+  other than too old and the dead link's, short packets, or how a real unplug fails the transfers
+  in flight.
+
+Measured on hardware, 2026-11-10 (Shuttle on a USB 3 hub with Ethernet and an SSD, OBS streaming, from
+the kernel log): the Shuttle's link died 0.4 s after the Mac's port logged a USB 3 state change (cause
+not established). No removal notice came. The kernel completed the queued reads one at a time about
+every 2 s, alternating endpoints, each with "missed service error" (0xe00002be) or "transaction error"
+(0xe00002ed). Each requeue at its own frame was refused as too old, then accepted 8 frames ahead, so
+the session logged a ~4 s unread gap per transfer for 22 minutes without ending. The device was only
+terminated ("hardware connection lost") 41 ms after OBS quit and aborted the pipes. Until then the
+hub's Ethernet ran at ~5 of 120 Mbit/s with 30–47 ms pings, and its SSD at ~4 MB/s; both recovered in
+the second OBS quit. This is what the dead-link end above handles.
+
+Rerun with that end installed, 2026-11-15 03:53:56 (the USB 3 network project's load test): the session
+ended 6.6 s after the kernel's first failed read, not ~3 s. The first failed completion on each endpoint
+(audio 03:53:57.085, video 03:53:59.307) was the transfer the link died inside. It is processed (its
+requeue's refusal is in the log at the same millisecond) yet was not logged as delivering nothing, so it
+had delivered packets, and any delivery ended the streak. Per-packet counting would have ended it at the
+second audio failure, 03:54:00.293. The device was then destroyed and re-enumerated within 3 ms, and the
+plugin's first reopen was refused: the kernel logged `provider is already opened for exclusive access by
+pid 644, Google Chrome`. Our old handle could not be the holder (a new device object, opened after our
+close). `experiments/usb_close_notice_probe.m` measured on a Billboard device: a held device refuses with
+`kIOReturnExclusiveAccess`, and a general-interest watcher gets `kIOMessageServiceWasClosed` in the
+millisecond the holder destroys its handle; a reopen 1 ms later succeeded. The plugin now retries on that
+notice instead of a timer.
 
 Measured on hardware, 2026-10-17 (M3, bars), by holding the completion queue (`shuttle-capture-hold`):
 

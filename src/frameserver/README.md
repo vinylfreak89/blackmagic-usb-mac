@@ -20,6 +20,69 @@ checkbox, default on) publishes every field at the nominal (0,0) placement. The 
 and logs its evaluation; only applied_d1/d2 and frame_d1/d2 carry the published 0. H-retiming
 works from that placement.
 
+## Units the Shuttle sent at the wrong length
+
+The frameserver is a pipeline of stages: parse, classify, register, H-timing, repair. Output can
+come from any stage; a stage may measure or modify, but only measurements reach the decision log,
+and no stage changes what an earlier one received or wrote. Repair is the last stage.
+
+`fs_config.repair_units` (tools: `FS_REPAIR=1`; the plain render turns it on) puts back a 0xe801
+unit whose length is wrong but whose transport is intact and whose counter the parser confirmed,
+from its byte order alone (`unit_repair.h` has the model). Everything the Shuttle writes itself in
+a stall is an exact pattern no tape picture produces (its padding, zeros, one repeated word carrying
+a reserved code, or any word running straight into its zeros); its held-sample insert (one sample
+held over the length error) is the one pattern picture can share, so it is taken only from a unit
+too long with no stall, as the single held stretch at least that long between the last padding
+block on the unit's grid and the first displaced one (any other there, a flat line or the vertical
+interval, and it is declined). Every other byte is decoded picture, one 1440-byte row per line period. With
+exactly one stretch of junk, the bytes before it are in place and the bytes after it are the same
+raster displaced (junk running to the unit's end displaces nothing; with several stalls, everything
+from the first to the last is lost and rebuilt, never placed); the Shuttle's padding, which
+always starts on a row boundary of its own line grid, gives the displacement to the byte (a few
+bytes off the length error when a unit ends inside a row, -12 to +12 measured). The lost bytes are
+the gap between the parts plus the lines under padding the Shuttle wrote away from its padding
+rows. Only those are rebuilt: from the same field across a gap of one or two lines, else from the
+other field, else (both fields lost at one height) from the previous whole unit when it agrees
+around the gap, else interpolated down the frame. A stall that ran over the next unit's marker
+leaves one run two units long, its successor numbered two on: the parser keeps it whole and it is
+put back as two units (the first's stall runs to its end, the second is stalled from its top), each
+on its own evidence. A picture marker whose counter is the one the audio resyncs stand at (or the
+next) is the device's: it ends a no-signal unit's run, and confirms a picture unit the Shuttle ran
+into a no-signal unit, so both reach the repair. A no-signal marker inside a vouched picture unit
+(the input lost mid-unit, or a no-signal header the Shuttle wrote inside a stall) is decided by the
+next marker's counter: the unit's own successor, two on at a run of two's length, or the same header
+again mean a stall; a no-signal unit one on or picture further on (or the buffer filling first) mean
+a lost input, and the picture unit ends there. A partial frame holding one field is shown as a bob in
+field 1's aperture, and any partial frame only down to its first 00 byte (never picture).
+Picture never places anything; it only checks the result (where the tape's lines start on blanking
+inside the window, the displaced rows must too, their blanking edge within a sample of the picture
+beside them; where picture reaches the window's edge, the displaced rows must move against the
+previous unit as the rows in place do, to a sample; no tear left; no block of rows 24+ samples
+sideways against the other field), and a unit the bytes cannot place, or that fails a check, is
+declined (`repair_declined`) and the unit keeps its own output. Without a previous unit on a tape
+whose picture reaches the window's edge, only the tear and other-field checks verify the placement.
+
+As the last stage it works only on its own input: the delivery thread copies a candidate unit's raw
+bytes to a raw slot beside the item, and every earlier stage (classifier, registration, H-timing,
+the decision log) handles the unit exactly as it arrived (`Unframed` or `Short`, no raster). After
+them the repair stage puts the unit back and publishes it with transport `FP_TRANSPORT_REPAIRED`,
+in place of the unit's own output (its partial frame, or nothing); the row keeps the earlier
+stage's decision (`ShortShown` when that stage chose its partial frame). Its "previous unit" is its
+own: the last whole unit that arrived, or the last unit it put back. The decision log is byte for
+byte the same with repair on or off (`scripts/test_unit_repair_replay.py`), and repaired units are
+never in `exact_units`, `published` or the conservation counts. While fields are paired one unit
+on (reversed pairing) a frame takes its fields from two units, so nothing put back is published
+(`repair_skipped`). `on_repair` (`frameserver_replay`: one `repair:` line on stderr per unit
+attempted, which the plain render prints) reports the grid offset, lost bytes, rebuilt rows and the
+check. Registration off only (`fs_open` refuses it otherwise). The parser keeps a unit up to 64 lines longer than a whole
+one, or two units and that slack ended by a marker two on, as one observation so the repair can see
+all of it; at or past a whole unit, any other marker ends the run unconfirmed (`counter_confirmed`
+false).
+
+`show_partial` places a partial unit that holds both fields in the whole unit's aperture (the
+configured first lines), a missing line taken from the other field; it used to stretch field 1's
+whole raster, padding and vertical interval included, over the frame.
+
 ## Optional horizontal retiming (other-field blanking)
 
 `fs_config.hretime` remains OFF by default; tools map `FS_HRETIME`.
@@ -160,7 +223,10 @@ targets.
   explicit drop reason; they do not receive fabricated raster measurements.
 
 These rules preserve the conservation relation between ingress observations,
-sidecar rows/ranges, and published or explicitly dropped units.
+sidecar rows/ranges, and published or explicitly dropped units. One exception is counted: a run of
+two units with either unit put back (`repair_units`) is one observation and two rows sharing its
+ordinal (a unit declined keeps its row, unpublished), so rows = observations + such runs; its
+transport is counted once.
 
 ## Checks and worker budget
 

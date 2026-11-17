@@ -293,6 +293,37 @@ host loss; this closes the question of whether the Shuttle can itself emit short
 Arbitrary endpoint edges add a 1,652,048-byte leading
 fragment and 495,376-byte trailing fragment outside the marker-delimited census.
 
+**Wrong-length units are the Shuttle's own damage, and placed from its bytes alone (measured 2026-11-15 on a
+commercial-tape capture through the JVC; every packet in sequence, status 0).** A short unit had 748 bytes of one line
+deleted with 524 zeros in their place; a +512 unit had 512 bytes of a dithered constant (Y160/161 U92/93 V92/93) inserted;
+the 23⅓-line-long units (+33,600 / +33,584) are a stall: ~40 whole USB packets of one repeated word (`af8c0008`,
+`a0ad0008`), zeros, a few hundred bytes of data, then the Shuttle restarting its raster with an 8-row padding block (and
+its next field block 262 rows on). At 25:25 that restart padding fell on the same picture height in two consecutive
+fields: a sync-like disturbance in the signal at that height (the owner's reading). Picture is NOT extra: each unit took one
+normal frame on the audio clock. Everything the Shuttle writes itself is an exact pattern tape picture never produces, and
+its padding always starts on a row boundary of its own line grid, so the bytes fix the placement: before the junk in
+place, after it displaced by the padding's phase (8 bytes off the length error at 25:25, where the unit stops 8 bytes into
+its last row: this was a visible 4-sample shift while the placement was inferred from picture). Lost = the gap between the
+parts plus the lines under restart padding. `src/frameserver/unit_repair.h`; the owner saw the short unit as a one-frame
+sideways tear and the long ones as a one-field step back (the render had repeated a frame).
+**A second capture through another chain (2026-11-15, 28 min, 73 wrong-length units) widened the model.** Its picture
+reaches the window's left edge (no line starts on blanking), and flat neutral lines (C128/129, luma dithered by one code,
+often the head-switch rows) look exactly like a held fill: the first engine put back none of its units. The +512 insert is
+one sample held, at whatever value (C135/136 Y129 there), so it is taken only from a unit too long with no stall, and only
+when it is the single held stretch between the padding blocks it lies between (the vertical interval is one too: most
+field-1 inserts are declined); every stale word measured ends `00 08` (a reserved code no picture carries). Picture samples
+that look like padding join padding runs at either edge (about one row in three ends that way before the 261 block): a
+run's true start is anywhere in its excess over whole rows, and an adversarial review found that reading one edge as
+true published 2-sample shifts. One such reading is kept by the owner's choice (2026-11-15): the final block, cut by the
+unit's end, still fixes the grid for faults in field 2, accepting a 2-sample shift when padding-like picture ends row
+522 and the unit ends early, rather than declining every field-2 tear and insert (on the two captures: 4 repairs). Restarts fall anywhere, the top of the unit included,
+and units end up to 12 bytes either side of a row. Stalls also run to the unit's end (7) and over the next unit's marker
+(19: one run two units long, the successor numbered two on), which the parser now keeps whole and the repair splits into
+two. Left declined: deletions with no fill (4) and signal disruption at play start. The Shuttle also loses its input
+mid-unit (no-signal 0x0800 units, their own numbering, after a stall or cut-short picture: 3:04, 19:13, 19:31, 24:53), and
+once framed by field (16:17: half-frame units on the audio clock); every picture marker of those passages arrived with the
+last audio resync at its counter or one before, which is what confirms the units around them.
+
 The audio endpoint is also transport-complete, but device audio samples and resync metadata
 have localized deficits (audio census below). Unwrap counters and look anchors up by value,
 not audio-row ordinal. Review apertures, renderer and deinterlacer policy are in §7.
