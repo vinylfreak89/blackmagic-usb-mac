@@ -10,6 +10,10 @@ extern _Atomic uint64_t stub_blank_calls;
 extern _Atomic uint64_t stub_frame_errors;   /* frames handed to OBS not in the expected I210 layout/values */
 extern int stub_verbose;
 void stub_usb_backend(const char *v);          /* the "usb_backend" setting (NULL: unset)*/
+void stub_registration(int on);   /* the "registration" setting (default on) */
+extern _Atomic int stub_plain_content;   /* 1 (default): frames must carry fixture_plain's Y16/C128 codes */
+extern _Atomic int stub_stop_lines;          /* "[shuttle-source] stopped:" lines logged so far */
+void stub_last_stop_line(char *out, size_t n);   /* the last of them */
 extern int shuttle_test_usb_backend;          /* cfg.capture.usb_backend of the last session start (shuttle_source.c) */
 extern _Atomic int stub_late_reports;   /* late-handoff WARNINGs the plugin logged */
 void stub_expect(const char *text);       /* lines containing text are counted, not printed, until stub_expect_end */

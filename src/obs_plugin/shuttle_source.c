@@ -940,10 +940,12 @@ static void shuttle_stop(shuttle_src *s){
         if (st.log_last_file_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write/close errors in this file); left unpublished at %s", (unsigned long long)st.log_last_file_errors, s->sidecar_partial);
         else sidecar_publish(s);
     }
-    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, counter-against-audio steps seen (none applied) %llu, search frames shown %llu (not shown, no free slot: %llu), frames timed without an audio time %llu",
+    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, counter-against-audio steps seen (none applied) %llu, search frames shown %llu (not shown, no free slot: %llu), units put back %llu (declined %llu, not tried or not published %llu, refused by the publisher %llu), frames timed without an audio time %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
-         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)st.partial_not_shown, (unsigned long long)atomic_load(&s->video_estimated));
+         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)st.partial_not_shown,
+         (unsigned long long)st.repaired_units, (unsigned long long)st.repair_declined, (unsigned long long)st.repair_skipped, (unsigned long long)st.repair_publisher_dropped,
+         (unsigned long long)atomic_load(&s->video_estimated));
     if (!s->replaying && s->usb_iousbhost)
         blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO,
              "[shuttle-source] USB (IOUSBHost): %llu unread-slot events, exact (gaps and too-old runs; %llu video / %llu audio packets never read)",
@@ -1008,6 +1010,9 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
     cfg.registration_off = obs_data_get_bool(settings, S_REGISTRATION) ? 0 : 1;   /* per-tape: off publishes the nominal (0,0) placement */
     cfg.show_partial = obs_data_get_bool(settings, S_PARTIAL) ? 1 : 0;            /* search and unlocked picture: units that are not whole, stretched */
+    cfg.repair_units = cfg.registration_off;   /* always with registration off (the frameserver refuses it with registration on): a unit
+                                                * the Shuttle sent at the wrong length is put back to a whole frame; one it cannot put
+                                                * back is shown or not as "Search picture" says. Output only: the sidecar is unchanged. */
     cfg.pool_units = 0; cfg.surface_pool = 6;   /* pool sized from the capture ring (frameserver default) */
     cfg.sink.on_frame = on_frame; cfg.sink.ctx = s;
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
@@ -1054,8 +1059,8 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         fs_close(s->fs); s->fs = NULL; return -1;
     }
     latency_begin(s);
-    blog(LOG_INFO, "[shuttle-source] started (%s%s), registration %s, H-retiming %s", cfg.capture.replay_path ? "replay" : "device",
-         start_offset ? ", from a seek" : "", cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
+    blog(LOG_INFO, "[shuttle-source] started (%s%s), registration %s, H-retiming %s, unit repair %s", cfg.capture.replay_path ? "replay" : "device",
+         start_offset ? ", from a seek" : "", cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off", cfg.repair_units ? "ON" : "off");
     if (start_offset) blog(LOG_INFO, "[shuttle-source] replay starts at byte %llu (unit %llu, %.1f s)", (unsigned long long)start_offset, (unsigned long long)start_unit, rt_ms(start_unit) / 1000.0);
     /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
     s->tpc_enabled = obs_data_get_bool(settings, S_TPC) && !s->replaying;
@@ -1393,7 +1398,7 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(usb, "libusb (default)", "libusb");
     obs_property_list_add_string(usb, "Apple IOUSBHost (opt-in, under test): skipped USB frames counted exactly", "iousbhost");
     obs_properties_add_bool(p, S_SETUP, "7.5 IRE setup: on = NTSC-M, US tapes (black at code 16); off = 0 IRE, NTSC-J (black lifted). Applied at start-up: a change restarts the capture");
-    obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
+    obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position, and puts back units the Shuttle sent at the wrong length)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
     obs_properties_add_bool(p, S_PARTIAL, "Search picture: also show units that are not whole (fast-forward, rewind, unlocked signal), stretched to the frame");
     obs_properties_add_bool(p, S_TPC, "Raw capture: save a .tpc beside each recording (about 85 GB per hour)");

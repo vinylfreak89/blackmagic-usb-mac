@@ -920,7 +920,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
         fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
     if(cfg->offline_backpressure && !cfg->capture.replay_path) return -1;   // a live device cannot wait for its consumer
-    if(cfg->repair_units && !cfg->registration_off){fprintf(stderr,"unit repair: only with registration off (rebuilt rows are not geometry evidence)\n");return -1;}
+    if(cfg->repair_units && !cfg->registration_off){fprintf(stderr,"unit repair: only with registration off (a repaired frame is published at the fixed first-line placement, not the engine's)\n");return -1;}
     if(cfg->first_line_f1 || cfg->first_line_f2) {
         if(!cfg->registration_off){fprintf(stderr,"first line: only with registration off (the engine places the fields)\n");return -1;}
         if(cfg->first_line_f1<19 || cfg->first_line_f1>27 || cfg->first_line_f2<282 || cfg->first_line_f2>290) {

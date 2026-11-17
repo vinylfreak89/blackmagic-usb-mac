@@ -89,7 +89,9 @@ typedef struct {
                                // overwrote (confirmed by a successor two on) gives two frames (counters c and c + 1), or the
                                // one the bytes put back. Only units the parser confirmed (counter_confirmed) are tried; a
                                // unit the evidence does not settle keeps its own output, counted in repair_declined.
-                               // Registration off only (fs_open refuses it with registration on).
+                               // Registration off only (fs_open refuses it with registration on): a repaired frame is
+                               // published at the fixed first-line placement, not the engine's. The OBS plugin turns it
+                               // on whenever registration is off.
     void (*on_repair)(void *ctx, const unit_video_observation *unit, const ur_result *result);
     void *repair_ctx;          // optional; every repair attempt and its outcome (video worker, never blocks: print and return)
 } fs_config;

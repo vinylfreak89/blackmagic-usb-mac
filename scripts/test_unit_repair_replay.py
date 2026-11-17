@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory(prefix='unit-repair-', dir='/private/tmp') as d
         _, dec_s_off, _ = replay(cap, 'sched%d_off' % k, False, '--pairing-schedule', str(sp))
         put = {c for c, t in frs if t == 3 and c in (16, 17)}
         assert put == want and dec_s_on == dec_s_off, (sched, frs)
-    # with registration on the frameserver refuses to repair: rebuilt rows are not geometry evidence
+    # with registration on the frameserver refuses to repair: a repaired frame is published at the fixed first-line placement, not the engine's
     env2 = dict(env); env2.pop('FS_REGISTRATION_OFF')
     r2 = subprocess.run([str(binary), str(cap), '--offline'], env=env2, capture_output=True, text=True, timeout=60)
     assert r2.returncode != 0 and 'only with registration off' in r2.stderr, (r2.returncode, r2.stderr[-500:])

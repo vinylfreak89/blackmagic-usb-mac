@@ -39,7 +39,7 @@ static const char *const L_WOKE = "the Mac woke";
 #define WAIT(cond, secs, what) do{ double t0_ = now(); while(!(cond) && now() - t0_ < (secs)) usleep(2000); CHECK((cond), "timed out after %g s waiting for %s", (double)(secs), what); }while(0)
 
 int main(int argc, char **argv){
-    if (argc < 2){ fprintf(stderr, "usage: %s fixture_plain.tpc\n", argv[0]); return 9; }
+    if (argc < 2){ fprintf(stderr, "usage: %s fixture_plain.tpc [repair_many.tpc]\n", argv[0]); return 9; }
     stub_verbose = getenv("VERBOSE") != NULL;
     setenv("SHUTTLE_SOURCE_NO_SPILL_RECOVERY", "1", 1);   /* the load starts spill recovery: not on this user's scratch */
     obs_module_load();
@@ -351,6 +351,42 @@ int main(int argc, char **argv){
       CHECK(n == 1 && o == 0, "unopenable replay: %d file errors (want 1), %d open failures (want 0: it stops before opening)", n, o); }
     CHECK(I->media_get_duration(d) == 0 && stub_ended_signals == ended + 1, "after a failed replay start: duration %lld, ended signals +%d",
           (long long)I->media_get_duration(d), stub_ended_signals - ended);
+
+    /* 6c. unit repair follows registration: off -> on. The repair fixture has 121 picture units, every 4th 224 bytes
+     * short; "Search picture" is off here, so with repair off only the 91 whole units reach OBS and with it on the 30
+     * short ones come back as whole frames too. */
+    if (argc > 2){
+        static const char *L_REP_ON = "unit repair ON", *L_REP_OFF = "unit repair off";
+        stub_plain_content = 0;   /* this fixture carries picture: format and planes are still checked */
+        for (int reg = 1; reg >= 0; reg--){
+            stub_registration(reg);
+            stub_expect(reg ? L_REP_OFF : L_REP_ON);
+            ended = stub_ended_signals; f0 = stub_video_frames;
+            st = stub_settings(argv[2], 1); I->update(d, st);
+            int stops = stub_stop_lines;   /* after the update: it stopped the previous session */
+            WAIT(stub_ended_signals > ended, 20, "the repair fixture to play to its end");
+            I->media_stop(d);   /* the session's stats line */
+            WAIT(stub_stop_lines > stops, 10, "the repair fixture's session to log its stats");
+            uint64_t got = stub_video_frames - f0;
+            char line[2048]; stub_last_stop_line(line, sizeof line);
+            unsigned long long put = 0, dec = 0, skip = 0, refused = 0; const char *p = strstr(line, "units put back ");
+            int parsed = p && sscanf(p, "units put back %llu (declined %llu, not tried or not published %llu, refused by the publisher %llu)", &put, &dec, &skip, &refused) == 4;
+            /* every short unit is accounted for, and every frame put back reached OBS */
+            CHECK(parsed && got == 91u + put && (reg ? put + dec + skip + refused == 0 : put + dec + skip + refused == 30),
+                  "registration %s: stats %s put back %llu declined %llu skipped %llu refused %llu, %llu frames to OBS",
+                  reg ? "on" : "off", parsed ? "parsed:" : "NOT PARSED", put, dec, skip, refused, (unsigned long long)got);
+            int n = stub_expect_end(reg ? L_REP_OFF : L_REP_ON);
+#if defined(__has_feature) && __has_feature(thread_sanitizer)
+            /* Live, a repair waits for nothing: TSan's slow worker keeps the four raw slots busy and some are skipped (counted). */
+            int frames_ok = reg ? got == 91u : got > 91u && got <= 121u;
+#else
+            int frames_ok = got == (reg ? 91u : 121u);
+#endif
+            CHECK(n == 1 && frames_ok, "registration %s: %d \"%s\" start lines (want 1), %llu frames to OBS (want %s)",
+                  reg ? "on" : "off", n, reg ? L_REP_OFF : L_REP_ON, (unsigned long long)got, reg ? "91" : "121; under TSan 92-121");
+        }
+        stub_registration(1); stub_plain_content = 1;
+    }
 
     /* 7. back to replay, then destroy while it plays: prompt, no hang */
     st = stub_settings(argv[1], 1);

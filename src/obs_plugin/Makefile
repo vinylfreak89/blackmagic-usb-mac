@@ -54,9 +54,10 @@ test: test-tracking-meter test-audio test-frame-levels test-timing-report test-r
 .PHONY: test-tracking-meter test-audio test-frame-levels test-replay-timeline test-media-controls
 # The plugin's media controls in a test process: libobs replaced by stubs, the real frameserver
 # replaying the plain synthetic fixture. Plain and ThreadSanitizer builds.
-MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc
+MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc ../frameserver/tests/repair_many.tpc
 test-media-controls: shuttle_source.c tracking_meter.c tracking_meter_tap.c frame_levels.h tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
+	$(MAKE) -C ../frameserver tests/repair_many.tpc
 	$(CC) $(CPPFLAGS) -DSHUTTLE_TEST_HOOKS -DRECONNECT_INTERVAL_NS=20000000ull -O1 -g -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c tracking_meter.c tracking_meter_tap.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls $(MEDIA_FIXTURE)
 	$(CC) $(CPPFLAGS) -DSHUTTLE_TEST_HOOKS -DRECONNECT_INTERVAL_NS=20000000ull -O1 -g -fsanitize=thread -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c tracking_meter.c tracking_meter_tap.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls_tsan -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls_tsan $(MEDIA_FIXTURE)
 
