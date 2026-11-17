@@ -150,8 +150,13 @@ def main():
     print('run-ahead: units %s broken in place, counters after them raised by 5, a host loss at 60%%' % broken)
     run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)))
     S = os.path.join(S0, 'run-ahead-placed'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
-    run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
-    c = clip(src, S, 'clipQ'); at = '0:%02d' % (broken[1] / 29.97)
+    run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
+    # the time into the capture of the damaged row nearest the middle (run_ahead breaks units at 50%; the capture's first
+    # rows are damaged too, at play start), as capture_patch reads a placed time: sidecar row / 29.97. The broken unit's
+    # counter is not a time (it read 3:44 on a capture whose counters start near 6600)
+    rows = [l.split(',')[31] for l in open(csv) if not l.startswith(('#', 'ordinal'))]
+    hit = min((i for i, r in enumerate(rows) if r != 'None'), key=lambda i: abs(i - len(rows) / 2))
+    c = clip(src, S, 'clipQ'); at = '0:%05.2f' % (hit / 29.97)
     run_case('run-ahead-placed', S, T, [c], good, gL, gR, dict(os.environ), args=['--placed', at, c, 'same', '1000:995'])
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
