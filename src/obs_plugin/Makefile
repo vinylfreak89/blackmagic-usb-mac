@@ -7,7 +7,7 @@
 #   make uninstall
 CC ?= clang
 OBS_APP ?= /Applications/OBS.app
-OBS_HEADERS ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/obs-headers-32.2.2/libobs
+OBS_HEADERS ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/obs-headers-33.0.1/libobs
 # frontend/obs-frontend-api.h sits beside libobs/ in OBS_HEADERS's parent (same obs-studio tag)
 # SIMDe (header-only SSE emulation): the libobs headers need it on arm64
 SIMDE_DIR ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/simde-0.8.2
