@@ -591,7 +591,11 @@ def swap(W):
         step = 'rename the patched capture'; os.rename(P['tpc'], O['tpc']); log('renamed the patched capture to %s' % O['tpc'])
         step = 'rename the patched render'; os.rename(P['mov'], O['mov']); log('renamed the patched render to %s' % O['mov'])
         step = 'write the new sidecar'
-        fd = os.open(O['csv'], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644); o = 0
+        sys.path.insert(0, os.path.join(REPO, 'scripts', 'juicefs')); import fresh_file
+        try: fd, stale = fresh_file.create(O['csv'])       # the original sidecar was just deleted at this path: clear its size mark
+        except fresh_file.StaleSize as e: fail(str(e))
+        if stale: log('the share reported %d bytes for the new sidecar (the deleted one\'s size); truncated to 0 first' % stale)
+        o = 0
         while o < len(sc): o += os.write(fd, sc[o:o + (1 << 20)])
         os.fsync(fd); os.close(fd); log('wrote the new sidecar (%d bytes)' % len(sc))
         step = 'read back'

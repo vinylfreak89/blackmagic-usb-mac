@@ -60,7 +60,14 @@ if resume:
     assert dst != '-', '--resume needs a file'
     fd = os.open(dst, os.O_WRONLY); resume_len = os.fstat(fd).st_size; os.lseek(fd, resume_len, os.SEEK_SET); vfd = None if defer else os.open(dst, os.O_RDONLY)
     print('resume: %s the first %d bytes of %s, then appending' % ('regenerating (comparison deferred to the read-back hash)' if defer else 'verifying', resume_len, dst), file=sys.stderr, flush=True)
-else: fd = 1 if dst == '-' else os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+elif dst == '-': fd = 1
+else:      # a new file the share reports as empty: a deleted file's size mark at this path would otherwise make every write a
+           # read-modify-write (~2 MB/s) and leave the share reporting the old size (scripts/juicefs/fresh_file.py)
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'scripts', 'juicefs'))
+    import fresh_file
+    try: fd, stale = fresh_file.create(dst)
+    except fresh_file.StaleSize as e: print('assemble: %s' % e, file=sys.stderr); sys.exit(3)
+    if stale: print('assemble: the share reported %d bytes for the new %s (a deleted file\'s size); truncated to 0 first' % (stale, dst), file=sys.stderr, flush=True)
 proof = None
 if os.environ.get('ASSEMBLE_WRITE_PROOF'):
     assert dst != '-', 'a write proof needs a file'
