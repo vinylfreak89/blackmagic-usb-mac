@@ -250,6 +250,27 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         tab, cs_un, bad = interval_table(S)
         rep['cadence_table'] = tab; rep['cadence_conflicts'] = bad
         res_un = {R.resyncs[j][0]: cs_un[j] for j in range(len(cs_un))}
+        if jump:
+            # While the Shuttle loses lock its resyncs can drift a few samples before the glitch: an interval short, normal ones,
+            # then the glitch's long by as much (2026-11-18: 6400 samples for 4 units, three normal intervals, 3210 for 2).
+            # Every sample is the tape's; only the resyncs moved. The glitch is taken together with the gaps before it when
+            # the whole span then holds its units' samples on the cadence, and its own samples are kept.
+            last = (jump['c1'] + jump['k']) % 65536
+            within = lambda g: 0 < (jump['c2'] - g['c1']) % 65536 <= (g['c2'] - g['c1']) % 65536
+            fits = lambda a, b: 1601 * ((last - a['c1']) % 65536 + 1) <= b['sB'] - a['sA'] <= 1602 * ((last - a['c1']) % 65536 + 1)
+            js = [i for i, g in enumerate(ags) if within(g)]
+            if len(js) == 1 and not fits(ags[js[0]], ags[js[0]]):
+                j = js[0]
+                for a in range(j - 1, -1, -1):
+                    if (last - ags[a]['c1']) % 65536 > 16: break
+                    if fits(ags[a], ags[j]):
+                        g, h = ags[a], ags[j]
+                        rep['audio_gaps_taken_with_the_glitch'] = [(x['c1'], x['c2'], x['n']) for x in ags[a:j + 1]]
+                        g.update(c2=h['c2'], n=h['sB'] - g['sA'], kc=(h['c2'] - g['c1']) % 65536, r2=h['r2'], sB=h['sB'])
+                        del ags[a + 1:j + 1]
+                        S.log('  %s: the resyncs before the glitch drifted (%s): its sound is kept whole from unit %d' % (
+                            name, ', '.join('%d samples for %d units' % (x[2], (x[1] - x[0]) % 65536) for x in rep['audio_gaps_taken_with_the_glitch']), g['c1']))
+                        break
         r_first = ags[0]['r1']; r_last = ags[-1]['r2']
         p0 = S.aseq_of_rec(r_first) - 1; p1 = S.aseq_of_rec(r_last) + 1
         while (0x84, p0) not in R.tx and p0 > S.aseqs[0]: p0 -= 1     # window edges on transfers that delivered something

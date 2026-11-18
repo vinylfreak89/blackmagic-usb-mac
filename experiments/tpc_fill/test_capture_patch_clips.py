@@ -21,6 +21,8 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            beside a +512 unit): the clip's sound replaces it
   run-ahead-excess  the run-ahead glitch with 7 samples too many in its sound (2026-11-18: 3210 for 2 units), so its own
            samples cannot go back on the cadence: the clip's sound replaces them
+  run-ahead-drift  the run-ahead glitch with the seven resyncs before it 6 samples early (2026-11-18: 6400 samples for 4
+           units, three normal intervals, then 3210 for 2): no sample is missing, so the sound is kept whole
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -100,6 +102,21 @@ def add_samples(path, counter, n):
     a = b''.join(recs); o2 = 0
     for o, ln in slots: b[o:o + ln] = a[o2:o2 + ln]; o2 += ln
     open(path, 'wb').write(b); return c
+
+def move_resyncs(path, counters, by):
+    """the Shuttle placing resyncs `by` sample records off (negative: earlier) for the given counters, every sample kept and
+    every audio packet keeping its size, in place"""
+    b = bytearray(open(path, 'rb').read()); slots = [(p + 24, r[6]) for p, ln, r in records(b) if r[0] == 0 and r[1] == 0x84]
+    a = bytearray().join(bytes(b[o:o + ln]) for o, ln in slots); recs = [bytes(a[i:i + 24]) for i in range(0, len(a), 24)]
+    cnt = lambda x: x[20] | x[21] << 8; want = {c % 65536 for c in counters}
+    pos = [i for i, x in enumerate(recs) if x[:20] == SYNC and cnt(x) in want]
+    assert len(pos) == len(want), 'not every counter has a resync'
+    for i in (pos if by < 0 else reversed(pos)):
+        assert all(recs[k][:20] != SYNC for k in range(min(i, i + by), max(i, i + by) + 1) if k != i), 'a move would cross a resync'
+        r = recs.pop(i); recs.insert(i + by, r)
+    a = b''.join(recs); o2 = 0
+    for o, ln in slots: b[o:o + ln] = a[o2:o2 + ln]; o2 += ln
+    open(path, 'wb').write(b)
 
 def interval_of(c, k):
     """for run_case: the patched capture's samples from resync c to the next one, and the excess k"""
@@ -209,6 +226,11 @@ def main():
     broken = run_ahead(src, T); c = add_samples(T, broken[1], 7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     print('run-ahead-excess: units %s broken in place, counters after them raised by 5, 7 samples too many after resync %d' % (broken, c))
     run_case('run-ahead-excess', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ), audio_trim=7, moved_in=interval_of(c, 7))
+    # run-ahead-drift: the run-ahead glitch, the seven resyncs before it 6 samples early
+    S = os.path.join(S0, 'run-ahead-drift'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = run_ahead(src, T); move_resyncs(T, range(broken[1] - 4, broken[1] + 3), -6); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    print('run-ahead-drift: units %s broken in place, counters after them raised by 5, resyncs %d-%d 6 samples early' % (broken, broken[1] - 4, broken[1] + 2))
+    run_case('run-ahead-drift', S, T, [clip(src, S, 'clipD')], good, gL, gR, dict(os.environ))
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)
