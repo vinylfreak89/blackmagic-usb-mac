@@ -75,6 +75,8 @@ class Stretch:
             self.cache[('a', seq)] = (len(ls), sum(ls), sum(1 for x in ls if x not in (96, 192)))
         return self.cache[('a', seq)]
 
+AUDIO_EXCESS_MAX = 16      # samples: a stretch may hold this many too many (the Shuttle's own); a unit out is ~1600
+
 def find_gaps(S):
     R = S.R
     whole = [(off, c) for off, c, fm, ok in R.marks if ok and fm == 0xe801]
@@ -269,13 +271,19 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 # the run-ahead glitch: the capture's own samples are kept (the tape played on; only the Shuttle's counting
                 # broke), and its resyncs from c1+1 to the last unit filled go back on the cadence; c2's resync stays put
                 last = (jump['c1'] + jump['k']) % 65536; new_n = (last - g['c1']) % 65536; steps = new_n + 1; n = sB - sA
-                assert 1601 * steps <= n <= 1602 * steps, ('the glitch\'s %d samples do not fit %d unit intervals' % (n, steps), name)
-                ints = [1602 if b else 1601 for b in spread(n - 1601 * steps, steps)]
-                p = sA + shift
-                for j in range(steps - 1): p += ints[j]; new_res.append((p, (g['c1'] + j + 1) % 65536))
-                g.update(M=0, cp=sB, shift_before=shift, intervals=ints, kc=steps, jump=True)
-                seams.append(dict(counter_jump=True, kept_samples=n, resyncs_on_cadence=new_n, jump=[last, g['c2']]))
-                continue
+                if 1601 * steps <= n <= 1602 * steps:
+                    ints = [1602 if b else 1601 for b in spread(n - 1601 * steps, steps)]
+                    p = sA + shift
+                    for j in range(steps - 1): p += ints[j]; new_res.append((p, (g['c1'] + j + 1) % 65536))
+                    g.update(M=0, cp=sB, shift_before=shift, intervals=ints, kc=steps, jump=True)
+                    seams.append(dict(counter_jump=True, kept_samples=n, resyncs_on_cadence=new_n, jump=[last, g['c2']]))
+                    continue
+                # its own samples do not fit the units the tape played (2026-11-18: 3210 for 2, the Shuttle's sound a few
+                # samples long while it lost lock): the stretch's sound comes from the clip, as at any audio gap, over the
+                # units the tape played; c2's resync and every counter after it are lowered with the rest
+                assert abs(n - 1601.6 * steps) <= AUDIO_EXCESS_MAX, ('the glitch\'s %d samples are far from %d unit intervals' % (n, steps), name)
+                g.update(kc=steps, jump=True); span = steps
+                seams.append(dict(counter_jump=True, sound_from_clip=True, own_samples=n, jump=[last, g['c2']]))
             c1u = res_un[g['r1']]; exp = sum(tab[(c1u + j) % 5] for j in range(g['kc'])) if all((c1u + j) % 5 in tab for j in range(g['kc'])) else None
             # where the donor capture should be, from the two captures' unit clocks: the target's resync c sits 800 samples after the donor's resync c+OFF-1
             dres = {c: s for _, s, c in D.resyncs}
@@ -332,7 +340,9 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 assert max(lv1 if r1 <= 0.9 else -200, lv2 if r2 <= 0.9 else -200) < -50, ('audio present but it does not line up with the donor capture', name, r1, r2, lv1, lv2)
             else: raise AssertionError(('audio does not line up and the cadence is unknown here', name, r1, r2))
             g.update(d1=d1, d2=d2, r1c=r1, r2c=r2, M=M, expected=exp)
-            assert M > 0, ('no missing audio', M)
+            # M < 0: the Shuttle sent a few samples too many (2026-11-18: a 1603-sample interval beside a +512 unit, and a run-ahead
+            # glitch 7 long); the clip's sound replaces the stretch with the right count. More than a few is a misplaced clip.
+            assert M > -AUDIO_EXCESS_MAX, ('the stretch has %d samples more than the clip\'s sound: the clip is not placed here' % -M, name)
             # the device's cadence may restart at a gap; the missing samples come from the line-up, the intervals must then fit
             n1602 = g['n'] + M - 1601 * g['kc']
             if not ga: assert 0 <= n1602 <= g['kc'], ('intervals cannot hold the samples', g['n'], M, g['kc'])

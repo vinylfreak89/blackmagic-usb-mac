@@ -17,12 +17,16 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            smaller offset after it and at the gap with that offset, the three filled by the sound, every later counter
            lowered by 5 again; the assembler's writes split into 1 MB runs
   run-ahead-placed  the same, the clip's placement given (--placed TIME CLIP same 1000:995) instead of found
+  glitch-excess  the glitch with one sample too many in the sound of a broken unit (2026-11-18: a 1603-sample interval
+           beside a +512 unit): the clip's sound replaces it
+  run-ahead-excess  the run-ahead glitch with 7 samples too many in its sound (2026-11-18: 3210 for 2 units), so its own
+           samples cannot go back on the cadence: the clip's sound replaces them
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE)
-from test_capture_patch import records, raise_counters, units, punch
+from test_capture_patch import records, raise_counters, units, punch, H, MAGIC, SYNC
 from test_capture_patch_joins import split, wait_free, stand_in_log
 
 def cut(src, dst, frac, base=0):
@@ -80,6 +84,31 @@ def run_ahead(src, dst, at_frac=0.5, ahead=5):
     assert all(c < c3 for p, c, _ in renum.items(bytes(b)) if p < at), 'a counter of the units after the glitch comes before its first'
     open(dst, 'wb').write(renum.renumber(b, [(at, -ahead)])); return [whole[i + j][1] for j in range(-1, 4)]
 
+def add_samples(path, counter, n):
+    """the Shuttle sending n samples too many: n copies of a sample record inserted in the audio stream after the resync of
+    the first unit from `counter` on whose interval is 1602 samples (so it reads 1602 + n, as the device sent it), the
+    stream's last n sample records dropped (after its last resync, where no interval is checked), and every audio packet
+    keeping its size, in place. Returns the counter used."""
+    b = bytearray(open(path, 'rb').read()); slots = [(p + 24, r[6]) for p, ln, r in records(b) if r[0] == 0 and r[1] == 0x84]
+    a = bytearray().join(bytes(b[o:o + ln]) for o, ln in slots); recs = [bytes(a[i:i + 24]) for i in range(0, len(a), 24)]
+    pos = [i for i, x in enumerate(recs) if x[:20] == SYNC]
+    cnt = lambda i: recs[i][20] | recs[i][21] << 8
+    j = next(k for k in range(len(pos) - 1) if (cnt(pos[k]) - counter) % 65536 < 32768 and pos[k + 1] - pos[k] - 1 == 1602)
+    at = pos[j] + 1; c = cnt(pos[j])
+    assert len(recs) - 1 - pos[-1] > n, 'too few samples after the last resync to drop'
+    recs = recs[:at] + [recs[at]] * n + recs[at:len(recs) - n]
+    a = b''.join(recs); o2 = 0
+    for o, ln in slots: b[o:o + ln] = a[o2:o2 + ln]; o2 += ln
+    open(path, 'wb').write(b); return c
+
+def interval_of(c, k):
+    """for run_case: the patched capture's samples from resync c to the next one, and the excess k"""
+    def f(path):
+        from region import load
+        R = load(path, 0, os.path.getsize(path)); rs = [(s, cc) for _, s, cc in R.resyncs]
+        j = next(i for i, (_, cc) in enumerate(rs) if cc == c % 65536); return rs[j][0], rs[j + 1][0], k
+    return f
+
 def clip(src, S, name, by=1000, frac=None, audio_shift=0):
     """a recapture: SOURCE (or its first frac) with its counters raised by `by` (and its resyncs moved audio_shift samples),
     named and with a sidecar as OBS leaves one"""
@@ -89,7 +118,7 @@ def clip(src, S, name, by=1000, frac=None, audio_shift=0):
     if audio_shift: shift_resyncs(tp, audio_shift)
     sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
 
-def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None):
+def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None, audio_trim=0, moved_in=None):
     W = os.path.join(S, 'work-' + label)
     r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W] + (args or [x for c in clips for x in ('--donor', c)]),
                        capture_output=True, text=True, env=env)
@@ -100,10 +129,22 @@ def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None)
     assert r.returncode == 0, (label, r.stdout[-3000:], r.stderr[-3000:])
     res = json.load(open(os.path.join(W, 'result.json')))
     got, pL, pR = units(res['patched']['tpc'])
+    if audio_trim: gL, gR = gL[:-audio_trim], gR[:-audio_trim]       # samples the case dropped from the stream's very end
     bad = [c for c in good if got.get(c) != good[c]]
     assert not bad, (label, 'units differ from the source', bad[:8], len(bad))
-    assert len(pL) == len(gL) and (pL == gL).all() and (pR == gR).all(), (label, 'audio differs from the source (%d vs %d samples)' % (len(pL), len(gL)))
-    print('%s: all %d units and %d audio samples equal the source' % (label, len(good), len(pL)))
+    assert len(pL) == len(gL), (label, 'audio differs from the source (%d vs %d samples)' % (len(pL), len(gL)))
+    import numpy as np
+    d = np.nonzero((pL != gL) | (pR != gR))[0]
+    if moved_in and len(d):
+        # samples the Shuttle sent too many: where in its interval one repeated sample was is not measurable (the sound
+        # either side matches the clip equally well), so the patch may take it out a little later. Every difference must
+        # lie inside that interval and be the source's own sample, moved by at most the excess.
+        lo, hi, k = moved_in(res['patched']['tpc'])
+        ok = all(lo <= i < hi and any(0 <= i + j < len(gL) and pL[i] == gL[i + j] and pR[i] == gR[i + j] for j in range(-k, k + 1)) for i in d)
+        assert ok, (label, 'audio differs from the source outside the interval with the excess', d[:5], d[-5:], lo, hi)
+        print('%s: %d samples inside the excess interval sit up to %d off (where a repeated sample was is not measurable)' % (label, len(d), k))
+    else: assert not len(d), (label, 'audio differs from the source at %d samples' % len(d), d[:5])
+    print('%s: all %d units equal the source, and %s' % (label, len(good), 'all %d audio samples' % len(pL) if not len(d) else 'its audio as above'))
     wait_free([res['patched']['tpc'], res['patched']['mov']])
     r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'swap', W], capture_output=True, text=True)
     assert r.returncode == 0, (label, r.stdout[-1500:], r.stderr[-2000:])
@@ -158,6 +199,16 @@ def main():
     hit = min((i for i, r in enumerate(rows) if r != 'None'), key=lambda i: abs(i - len(rows) / 2))
     c = clip(src, S, 'clipQ'); at = '0:%05.2f' % (hit / 29.97)
     run_case('run-ahead-placed', S, T, [c], good, gL, gR, dict(os.environ), args=['--placed', at, c, 'same', '1000:995'])
+    # glitch-excess: the glitch, and one sample too many in its sound
+    S = os.path.join(S0, 'glitch-excess'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = glitch(src, T); c = add_samples(T, broken[2], 1); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    print('glitch-excess: units %s broken in place, one sample too many after resync %d' % (broken, c))
+    run_case('glitch-excess', S, T, [clip(src, S, 'clipE')], good, gL, gR, dict(os.environ), audio_trim=1, moved_in=interval_of(c, 1))
+    # run-ahead-excess: the run-ahead glitch with 7 samples too many in its sound
+    S = os.path.join(S0, 'run-ahead-excess'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = run_ahead(src, T); c = add_samples(T, broken[1], 7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    print('run-ahead-excess: units %s broken in place, counters after them raised by 5, 7 samples too many after resync %d' % (broken, c))
+    run_case('run-ahead-excess', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ), audio_trim=7, moved_in=interval_of(c, 7))
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)
