@@ -4,6 +4,8 @@
 From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR, each case's target and clips:
   end      the capture stopped early (cut cleanly at 70%), one clip (SOURCE with its counters raised): placed as an append
   end-pass the same, with the clip's resyncs 372 samples later in its sound, as another pass of the tape has them
+  end-far  the same, the clip's resyncs 1112 samples earlier (2026-11-18: a clip sat +1112 off its capture, another clip
+           of that morning -390): the picture places the unit, so the seam takes up the passes' offset
   split    a disconnect at 50% losing 6 s (a real disconnect's size: the rebuilder once capped a hole near 18 units) and
            the second part stopped early at 80% of it, one clip: placed at the disconnect AND as the append
   gap      a host loss punched in at 50% (as test_capture_patch.py makes one), one clip: placed at the gap
@@ -50,7 +52,7 @@ def shift_resyncs(path, by):
     a = bytearray().join(bytes(b[o:o + n]) for o, n in slots); recs = [bytes(a[i:i + 24]) for i in range(0, len(a), 24)]
     pos = [i for i, x in enumerate(recs) if x[:20] == b'DeckLinkAudioResyncT']
     for i in reversed(pos):
-        if i + by < len(recs): r = recs.pop(i); recs.insert(i + by, r)
+        if 0 < i + by < len(recs): r = recs.pop(i); recs.insert(i + by, r)
     a = b''.join(recs); o2 = 0
     for o, n in slots: b[o:o + n] = a[o2:o2 + n]; o2 += n
     open(path, 'wb').write(b)
@@ -182,6 +184,10 @@ def main():
     S = os.path.join(S0, 'end-pass'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     run_case('end-pass', S, T, [clip(src, S, 'clipP', audio_shift=372)], good, gL, gR, dict(os.environ))
+    # end-far: the same, its resyncs 1112 samples earlier, more than half a unit
+    S = os.path.join(S0, 'end-far'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('end-far', S, T, [clip(src, S, 'clipW', audio_shift=-1112)], good, gL, gR, dict(os.environ))
     # none: a clip that covers only the start
     S = os.path.join(S0, 'none'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     cut(src, T, 0.7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)

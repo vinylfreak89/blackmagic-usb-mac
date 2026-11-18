@@ -454,6 +454,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         log('%s: the event at %d:%02d, donor %s placed beforehand: pairing %s, FILL_OFF %d%s' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), pairing, off,
             ', FILL_OFF_AFTER %d (a glitch whose counters ran ahead)' % off_after if off_after is not None else ''))
         events.append((g, D, pairing, off, None, None, off_after))
+    by_picture = set()
     for k, D in enumerate(joins_d + ([append_d] if append_d else [])):
         r0 = part_rows[k + 1]
         g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] + 400 else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
@@ -463,6 +464,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         rng = (max(0, part_at[k + 1] - 40_000_000), min(size, part_at[k + 1] + 120_000_000))
         log('%s: the event at sidecar rows %d-%d, donor %s: pairing %s, FILL_OFF %d, read from byte %d' % ('append' if j.get('append') else 'join %d' % (k + 1), groups[g][0], groups[g][-1], os.path.basename(D), j['pairing'], off, rng[0]))
         events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None, None))   # an append: where its seam is
+        if j.get('append') and str(j['basis']).startswith('picture'): by_picture.add(g)   # its unit is the picture's, not the sound's
     for gp in auto_gaps:                                 # gaps inside a part, placed by locate.py (offsets in the part's numbering)
         k = gp['part']; r0 = part_rows[k] + gp['rows'][0]
         g = min(range(len(groups)), key=lambda i: 0 if groups[i][0] <= r0 <= groups[i][-1] else min(abs(groups[i][0] - r0), abs(groups[i][-1] - r0)))
@@ -498,8 +500,9 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
         for g, D, pairing, off, rng, app_at, off_after in events:
             env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
-            env.pop('FILL_OFF_AFTER', None); env.pop('FILL_APPEND_AT', None)
+            env.pop('FILL_OFF_AFTER', None); env.pop('FILL_APPEND_AT', None); env.pop('FILL_APPEND_BY_PICTURE', None)
             if app_at is not None: env['FILL_APPEND_AT'] = str(app_at)
+            if app_at is not None and g in by_picture: env['FILL_APPEND_BY_PICTURE'] = '1'
             if off_after is not None: env['FILL_OFF_AFTER'] = str(off_after)
             r = subprocess.run([sys.executable, 'plan.py', VT, LIVE, work, str(g), str(g)] + ([str(rng[0]), str(rng[1])] if rng else []), cwd=HERE, env=env)
             if r.returncode != 0: fail('plan.py failed on the event at row %d (exit %d)' % (groups[g][0], r.returncode))

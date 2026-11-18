@@ -14,6 +14,7 @@ PAIRING = os.environ.get('FILL_PAIRING', 'shifted'); assert PAIRING in ('shifted
 # after it the sound is the donor's own pass, not the target's, so both sides are lined up by ear and nothing is split as
 # drift; the resync intervals inside it absorb the two passes' different audio offsets (hundreds of samples, a few ms)
 APPEND_AT = int(os.environ['FILL_APPEND_AT']) if os.environ.get('FILL_APPEND_AT') else None
+APPEND_BY_PICTURE = os.environ.get('FILL_APPEND_BY_PICTURE') == '1'   # the append's unit was placed by the picture, not the sound alone
 # FILL_OFF_AFTER=<n>: the offset after a glitch whose counters ran ahead of the tape (the Shuttle losing lock counts its
 # no-signal and other-format units: 2026-10-26, 44 counters across 16 units of sound). The gap whose counters say more units
 # than its sound is that glitch: it is filled with the units its sound says, from the donor at FILL_OFF, numbered on from
@@ -341,9 +342,13 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
                 assert r1 > 0.9 and r2 > 0.9, ('the sound either side of the append seam does not line up with the donor', name, r1, r2, rep.get('audio_coarse'), pr1, pr2)
                 M = d2 - d1
                 # how far the donor's sound sits off the capture's against the units: two passes measured +372 and -205; half
-                # a unit or more means the donor is placed a unit out (sound alone can do that), not a pass offset
-                av = M + g['n'] - 1601.6 * g['kc']; rep['append_av_shift_samples'] = round(av)
-                assert abs(av) <= 800, ('the append seam would take up %d samples: the donor is placed a unit out' % av, name)
+                # a unit or more means the donor is placed a unit out when the sound alone placed it. Where the picture placed
+                # it, the unit is known and the offset is the passes' own (2026-11-18: +1112, a hard cut on the unit with 12
+                # times the margin, while the other clip of that morning sat -390 off the same capture): only a whole unit or
+                # more is refused, the intervals would then hide a unit the picture did not place.
+                av = M + g['n'] - 1601.6 * g['kc']; rep['append_av_shift_samples'] = round(av); rep['append_placed_by_picture'] = APPEND_BY_PICTURE
+                if APPEND_BY_PICTURE: assert abs(av) < 1601, ('the append seam would take up %d samples, a unit or more, though the picture placed the donor' % av, name)
+                else: assert abs(av) <= 800, ('the append seam would take up %d samples: the donor is placed a unit out' % av, name)
             elif r1 > 0.9 and r2 > 0.9 and exp is not None:     # any pairing: drift between two plays has nothing to do with it
                 # two plays differ in tape speed, so the line-up on each side also carries the drift between them; the device's
                 # clock gives the count, and the difference is split between the two seams
