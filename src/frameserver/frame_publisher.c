@@ -8,7 +8,22 @@ struct fp_publisher {
     unsigned n;
     IOSurfaceRef *pool;
     fp_stats st;
+    /* The last frame published, row by row as on the surface: rows a partial frame does not carry are taken from it, as a
+     * deck in search leaves the rest of the picture standing (2026-11-18, owner: fill past the 00 bytes, never reject).
+     * Allocated at open; have_last is 0 until a frame has been published. */
+    uint8_t *last;
+    int have_last;
 };
+
+static void keep_last(fp_publisher *p, const uint8_t *base, size_t bpr){
+    for (unsigned r = 0; r < FP_FRAME_HEIGHT; r++) memcpy(p->last + (size_t)r * FP_LINE_BYTES, base + (size_t)r * bpr, FP_LINE_BYTES);
+    p->have_last = 1;
+}
+/* A row the partial frame lacks: the last frame's row, or black before any frame has been shown. */
+static void fill_row(const fp_publisher *p, uint8_t *out, unsigned row){
+    if (p->have_last){ memcpy(out, p->last + (size_t)row * FP_LINE_BYTES, FP_LINE_BYTES); return; }
+    for (unsigned x = 0; x < FP_LINE_BYTES; x += 2){ out[x] = 128; out[x + 1] = 16; }
+}
 
 static int clamp_offset(int start, int d){
     // keep start+d .. start+d+239 inside 0..524
@@ -63,7 +78,8 @@ int fp_open(fp_publisher **out, unsigned pool_size, const fp_sink *sink){
     if (!p) return -1;
     p->sink = *sink; p->n = pool_size;
     p->pool = calloc(pool_size, sizeof(IOSurfaceRef));
-    if (!p->pool){ free(p); return -1; }
+    p->last = malloc((size_t)FP_FRAME_HEIGHT * FP_LINE_BYTES);
+    if (!p->pool || !p->last){ free(p->pool); free(p->last); free(p); return -1; }
     for (unsigned i = 0; i < pool_size; i++){
         p->pool[i] = make_surface();
         if (!p->pool[i]){ fp_close(p); return -1; }
@@ -88,6 +104,7 @@ static int publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
     unsigned missing=0;
     if(placed)missing=fp_assemble_placed((uint8_t *)IOSurfaceGetBaseAddress(s),unit,d1,d2);
     else fp_assemble((uint8_t *)IOSurfaceGetBaseAddress(s), unit, d1, d2);
+    keep_last(p, (const uint8_t *)IOSurfaceGetBaseAddress(s), FP_LINE_BYTES);
     IOSurfaceUnlock(s, 0, NULL);
     fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext,
                    (int8_t)(placed?d1:clamp_offset(FP_FIELD1_START,d1)), (int8_t)(placed?d2:clamp_offset(FP_FIELD2_START,d2)), transport,
@@ -115,24 +132,25 @@ int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, i
                 uint8_t *out = dst + (size_t)(2 * k + f) * bpr;
                 int r = f ? (v2 ? r2 : v1 ? r1 : -1) : (v1 ? r1 : v2 ? r2 : -1);   /* a line it lacks: the other field's */
                 if (r >= 0) memcpy(out, rows + (size_t)r * FP_LINE_BYTES, FP_LINE_BYTES);
-                else for (unsigned x = 0; x < FP_LINE_BYTES; x += 2){ out[x] = 128; out[x + 1] = 16; }
+                else fill_row(p, out, 2 * (unsigned)k + (unsigned)f);         /* lacked by both: the last frame's */
             }
         }
     } else {
         /* One field (a unit framed at field rate, or one cut short): its rows in field 1's aperture, as a whole unit's
          * field 1 is placed, each line shown twice, the line between two of its lines their average (a bob). Stretching
-         * its whole raster over 480 rows showed its padding and vertical interval as picture (2026-11-15). A line it
-         * lacks is black. Units the Shuttle framed by field can carry fewer vertical-interval rows than a whole unit (0
+         * its whole raster over 480 rows showed its padding and vertical interval as picture (2026-11-15). Rows past
+         * the lines it carries are the last frame's. Units the Shuttle framed by field can carry fewer vertical-interval rows than a whole unit (0
          * to 11 measured, against 10), so their picture may sit a few lines off; only their picture would say how far. */
         for (int k = 0; k < FP_FIELD_LINES; k++){
             int r = FP_FIELD1_START + d1 + k, v = r >= 0 && (unsigned)r < n_lines, vn = v && (unsigned)(r + 1) < n_lines && k + 1 < FP_FIELD_LINES;
             uint8_t *o0 = dst + (size_t)(2 * k) * bpr, *o1 = dst + (size_t)(2 * k + 1) * bpr;
-            if (!v){ for (unsigned x = 0; x < FP_LINE_BYTES; x += 2){ o0[x] = o1[x] = 128; o0[x + 1] = o1[x + 1] = 16; } continue; }
+            if (!v){ fill_row(p, o0, 2 * (unsigned)k); fill_row(p, o1, 2 * (unsigned)k + 1); continue; }
             const uint8_t *a = rows + (size_t)r * FP_LINE_BYTES, *b = vn ? a + FP_LINE_BYTES : a;
             memcpy(o0, a, FP_LINE_BYTES);
             for (unsigned x = 0; x < FP_LINE_BYTES; x++) o1[x] = (uint8_t)((a[x] + b[x] + 1) / 2);
         }
     }
+    keep_last(p, dst, bpr);
     IOSurfaceUnlock(s, 0, NULL);
     fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext, 0, 0, FP_TRANSPORT_SHORT, (uint8_t)(audio_pts_known != 0), audio_pts_num, 0 };
     p->st.published++;
@@ -151,5 +169,5 @@ void fp_get_stats(const fp_publisher *p, fp_stats *o){ *o = p->st; }
 void fp_close(fp_publisher *p){
     if (!p) return;
     for (unsigned i = 0; i < p->n; i++) if (p->pool[i]) CFRelease(p->pool[i]);
-    free(p->pool); free(p);
+    free(p->pool); free(p->last); free(p);
 }
