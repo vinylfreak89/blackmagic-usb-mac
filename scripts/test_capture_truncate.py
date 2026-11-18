@@ -9,7 +9,11 @@ resync and 1602,1601,1602,1601,1602... samples. Its 'live' sidecar is its own re
 Checked: the unit kept last is the last picture unit whose audio time (samples from the first published unit, counted from
 the generator, not from the sidecar) is at or before TIME; the shortened capture is a prefix of the original; its replay
 is the new sidecar byte for byte; a dry run, a TIME past the last picture unit, a file held open and a split capture
-change nothing; a TIME inside the no-signal stretch keeps everything to the last picture unit before it.
+change nothing; a TIME inside the no-signal stretch keeps everything to the last picture unit before it. A live sidecar
+written with H-retiming on, or registration on, is cut so that a replay of the cut capture with those settings is the new
+sidecar byte for byte; one with reversed pairing is cut that way or refused, never given a row of another setting. A
+failure between the two cuts, or after them, is reported as FAILED AFTER CUTTING with the files' state and dates put back,
+and running the same TIME again finishes the job exactly as an uninterrupted cut.
     test_capture_truncate.py [path/to/frameserver_replay]   (default: src/frameserver/frameserver_replay)"""
 import hashlib, importlib.util, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
@@ -41,16 +45,17 @@ def write_capture(path):
         for _, ep, payload in recs:
             out.write(fx.record(fx.DATA, ep, 0, seq[ep], 0, len(payload) if ep == fx.AUDIO else 15360, payload)); seq[ep] += 1
 
-def replay(cap, dlog):
-    r = subprocess.run([str(binary), str(cap), str(dlog), '--offline', '--pool', '32'], env=ENV, capture_output=True, text=True, timeout=600)
+def replay(cap, dlog, env=ENV, extra=()):
+    r = subprocess.run([str(binary), str(cap), str(dlog), '--offline', '--pool', '32', *extra], env=env, capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, (r.stdout[-1500:], r.stderr[-1500:])
 
 def rows(csvp):
     import csv
     return list(csv.DictReader(l for l in open(csvp, newline='') if not l.startswith('#')))
 
-def truncate(tpc, *args):
-    return subprocess.run([sys.executable, str(TOOL), str(tpc)] + list(args), capture_output=True, text=True, timeout=1800)
+def truncate(tpc, *args, fail=None):
+    env = dict(os.environ, **({'CAPTURE_TRUNCATE_TEST_FAIL': fail} if fail else {}))
+    return subprocess.run([sys.executable, str(TOOL), str(tpc)] + list(args), capture_output=True, text=True, timeout=1800, env=env)
 
 def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
@@ -70,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='truncate-test-', dir='/private/tmp') as
     # a cut at 5.000 s
     t, c = fresh('a'); s0, c0 = sha(t), sha(c)
     r = truncate(t, '--at', '0:05.000', '--dry-run')
-    assert r.returncode == 0 and 'dry run: nothing changed' in r.stdout, r.stdout + r.stderr
+    assert r.returncode == 0 and 'dry run, nothing changed' in r.stdout, r.stdout + r.stderr
     assert sha(t) == s0 and sha(c) == c0, 'a dry run changed a file'
     r = truncate(t, '--at', '0:05.000')
     assert r.returncode == 0 and 'TRUNCATED' in r.stdout, r.stdout + r.stderr
@@ -101,10 +106,14 @@ with tempfile.TemporaryDirectory(prefix='truncate-test-', dir='/private/tmp') as
     replay(t, d / 'e.re.csv')
     assert (d / 'e.re.csv').read_bytes() == c.read_bytes(), 'the shortened capture\'s replay is not the new sidecar (after the stretch)'
 
+    # past the last picture unit: only what follows that unit's confirmation goes, no picture
+    t, c = fresh('g')
+    r = truncate(t, '--at', '1:00:00')
+    assert r.returncode == 0 and '0:00:00.000 of picture removed' in r.stdout and [x for x in rows(c) if x['published'] == '1'][-1]['counter_extended'] == str(N - 1), r.stdout
+    r = truncate(t, '--at', '1:00:00')
+    assert r.returncode == 0 and 'already ends' in r.stdout, r.stdout
     # refusals change nothing
     t, c = fresh('c'); s0, c0 = sha(t), sha(c)
-    r = truncate(t, '--at', '1:00:00')
-    assert r.returncode == 2 and 'nothing to cut' in r.stdout, r.stdout
     with open(c, 'rb'):
         hold = subprocess.Popen(['/bin/sleep', '60'], stdin=open(c, 'rb'))
         try: r = truncate(t, '--at', '5')
@@ -114,6 +123,42 @@ with tempfile.TemporaryDirectory(prefix='truncate-test-', dir='/private/tmp') as
     r = truncate(t, '--at', '5')
     assert r.returncode == 2 and 'split into parts' in r.stdout, r.stdout
     assert sha(t) == s0 and sha(c) == c0, 'a refusal changed a file'
+    os.remove(d / 'c.mov.raw.part2.tpc')
     r = truncate(t, '--at', '5:xx')
     assert r.returncode == 2 and 'TIME is' in r.stdout, r.stdout
+    r = truncate(t, '--at', '1.5')
+    assert r.returncode == 2 and 'too near the start' in r.stdout and 'reading' not in r.stdout, r.stdout
+    os.chmod(c, 0o444)
+    r = truncate(t, '--at', '5')
+    assert r.returncode == 2 and 'not writable' in r.stdout, r.stdout
+    os.chmod(c, 0o644)
+    assert sha(t) == s0 and sha(c) == c0, 'a refusal changed a file'
+
+    # live sidecars written with other settings: cut to what a replay with those settings writes, or refused untouched
+    for name, env, extra in (('hretime', dict(ENV, FS_HRETIME='1'), ()),
+                             ('registration', dict({k: v for k, v in ENV.items() if k != 'FS_REGISTRATION_OFF'}, FS_REPAIR='0'), ()),
+                             ('reversed', ENV, ('--pair-next',))):
+        t = d / (name + '.mov.raw.tpc'); c = d / (name + '.mov.registration.csv')
+        shutil.copyfile(orig, t); replay(t, c, env, extra); s0, c0 = sha(t), sha(c)
+        r = truncate(t, '--at', '0:05.000')
+        if r.returncode == 2 and 'other settings' in r.stdout:
+            assert sha(t) == s0 and sha(c) == c0, name + ': a refusal changed a file'
+            print('  %s: refused (%s)' % (name, r.stdout.strip().splitlines()[-1].split('REFUSED (nothing changed): ')[-1])); continue
+        assert r.returncode == 0, (name, r.stdout + r.stderr)
+        replay(t, d / (name + '.re.csv'), env, extra)
+        assert (d / (name + '.re.csv')).read_bytes() == c.read_bytes(), name + ': the cut capture\'s replay with its settings is not the new sidecar'
+        print('  %s: cut, its replay with those settings is the new sidecar' % name)
+
+    # a failure between the cuts, or after both: named, dates back, and the same TIME again finishes the job
+    ref, refc = d / 'a.mov.raw.tpc', d / 'a.mov.registration.csv'          # the uninterrupted cut at 5.000 s above
+    for where, state in (('between', 'the capture is cut, the sidecar is not'), ('after', 'both files are cut')):
+        t, c = fresh('f' + where); old = 1_000_000_000
+        for x in (t, c): os.utime(x, (old, old))
+        r = truncate(t, '--at', '0:05.000', fail=where)
+        assert r.returncode == 1 and 'FAILED AFTER CUTTING' in r.stdout and state in r.stdout, r.stdout
+        assert all(int(x.stat().st_mtime) == old for x in (t, c)), 'dates not put back after a failure'
+        r = truncate(t, '--at', '0:05.000')
+        assert r.returncode == 0 and ('TRUNCATED' in r.stdout or 'CHECKED, already ends there' in r.stdout), (where, r.stdout)
+        assert sha(t) == sha(ref) and sha(c) == sha(refc), where + ': finishing after a failure differs from an uninterrupted cut'
+        assert all(int(x.stat().st_mtime) == old for x in (t, c)), 'dates not the originals after finishing'
 print('capture_truncate: all tests passed')

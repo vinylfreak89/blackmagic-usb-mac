@@ -6,21 +6,24 @@ shortened in place so they end with the last picture unit at or before TIME, exa
 there; with --render an existing NAME.mov is then rendered again from the shortened capture (plain_render.sh --replace: the
 old render stays until the new one has passed its checks).
 
-TIME is H:MM:SS(.fff), MM:SS(.fff) or seconds, fractions allowed: real time from the recording's first picture unit,
-the same zero as its render. It is read on the device's audio clock (the sidecar's counter_extended x 8008 ticks less its
+TIME is H:MM:SS(.fff), MM:SS(.fff) or seconds, fractions allowed: real time from the first picture unit in the live
+sidecar (within a few frames of its render's 0:00, which starts at the first frame the replay places). It is read on the device's audio clock (the sidecar's counter_extended x 8008 ticks less its
 audio_residual_ticks), which is real time; the unit counter is not (it runs ahead or behind across no-signal stretches:
 24 s over the hour of 2026-11-17 19-47-57). A time read off the VCR's counter is placed as well as that counter matches
 the recording's start, so give a little slack.
 
 How the cut point is found and proven (no rule of the parser is copied here; the replay decides):
-  1. The sidecar names the unit: the last published picture row whose audio time is at or before TIME.
+  1. The sidecar names the unit: the last picture row (published, or dropped by live delivery, or a short unit shown) whose
+     audio time is at or before TIME.
   2. A window of the capture around it is copied to DIR (a few hundred MB, from an estimate by row; re-aimed if the unit
      is not inside with lead-in).
   3. The shortest record-aligned prefix of the window whose replay (frameserver_replay, the settings plain_render uses)
      reports that unit, as the sidecar has it and after the same 32 observations, is found by bisection. That prefix
      ends where a recording stopped there would end: the unit is confirmed by the start of the next one, which stays as a
      trailing fragment. The rows the replay writes after the unit (that fragment, 'Unframed') are the sidecar's new last
-     rows, numbered on from the unit's row.
+     rows, numbered on from the unit's row. The replay runs with the recording's H-retiming setting (the sidecar's
+     fs_hretime column), so those rows have its columns and schema; they must also match the unit's row in field count,
+     schema, pairing and every ge_/fs_ setting column, or the tool refuses rather than write a row of another setting.
   4. Nothing is changed before 1-3 succeed. Then the capture is truncated at that byte and the sidecar truncated after the
      unit's row with those rows appended (through the share path, as every write to the share), and both read back from
      JuiceMount's own directory: the capture's size, its last 4 MiB against the window, its records ending exactly at its
@@ -28,11 +31,15 @@ How the cut point is found and proven (no rule of the parser is copied here; the
      report the sidecar's new last rows. Both files get their original dates back; on the share the Mac's view must show
      the new sizes before a render starts.
 Refuses, changing nothing, when: the files are in use (or JuiceMount still holds a write handle: written in the last few
-minutes); the capture is split into parts; TIME is at or after the last picture unit, or before the second; the sidecar's
-audio times run backwards before the unit; or the replay cannot find the unit.
+minutes) or not writable; the capture is split into parts; TIME is at or after the last picture unit, or within the first
+~3 s (the replay needs lead-in); the sidecar's audio times run backwards before the unit; or the replay cannot find the
+unit. Any error before the cut is a refusal. From the capture's cut on, an error, or a stop from the dashboard, is reported
+as FAILED AFTER CUTTING with the state each file was left in (the two cuts themselves are not interrupted by a stop: the
+sidecar's always follows the capture's), and the original dates are put back where possible; running the same TIME
+again finishes the job.
 --dry-run does 1-3 and prints the plan. Nothing removed is kept: the share keeps deleted data about a day.
 """
-import csv, hashlib, os, re, shutil, subprocess, sys, tempfile, time
+import csv, hashlib, os, re, shutil, signal, subprocess, sys, tempfile, time
 from fractions import Fraction
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(HERE)
@@ -58,7 +65,9 @@ def on_share(p): return os.path.realpath(p).startswith(SHARE + '/')
 def truth(p):
     """where a file is read and checked: on the share, JuiceMount's own directory (the Mac's view can lag)"""
     p = os.path.realpath(p)
-    return FUSE + p[len(SHARE):] if p.startswith(SHARE + '/') and os.path.isdir(FUSE) else p
+    if not p.startswith(SHARE + '/'): return p
+    if not os.path.isdir(FUSE): refuse('JuiceMount\'s own directory %s is missing: the share cannot be checked' % FUSE)
+    return FUSE + p[len(SHARE):]
 
 def parse_time(s):
     if not re.fullmatch(r'\d+(:\d+){0,2}(\.\d+)?', s.strip()): raise ValueError('TIME is H:MM:SS(.fff), MM:SS(.fff) or seconds: %r' % s)
@@ -83,7 +92,7 @@ class Sidecar:
         hdr = next(csv.reader([lines[i].decode()])); off += len(lines[i]) + 1
         miss = [c for c in self.COLS if c not in hdr]
         if miss: refuse('the sidecar has no %s column' % ', '.join(miss))
-        ix = [hdr.index(c) for c in self.COLS]
+        ix = [hdr.index(c) for c in self.COLS]; self.hdr = hdr
         self.lines, self.ends, self.f = [], [], []
         for ln in lines[i + 1:]:
             r = next(csv.reader([ln.decode()]))
@@ -93,7 +102,7 @@ class Sidecar:
 
 def kind(published, drop_reason):
     """what an observation was, as the replay of the capture reports it whatever live delivery did with it"""
-    if drop_reason in ('None', 'PoolFull', 'PublisherFull', 'RingFullTail'): return 'picture'
+    if drop_reason in ('None', 'PoolFull', 'PublisherFull'): return 'picture'
     if drop_reason in ('Short', 'ShortShown'): return 'short'
     return drop_reason
 def obs(sc_or_rows, i):
@@ -102,10 +111,10 @@ def obs(sc_or_rows, i):
     return (int(f[2] or 0) % 65536, kind(f[4], f[5]))
 
 def audio_times(sc):
-    """[(row, ticks on the audio clock)] of the published picture rows that have one"""
+    """[(row, ticks on the audio clock)] of the picture rows (whole or short, published or dropped live) that have one"""
     out = []
     for i, f in enumerate(sc.f):
-        if f[4] == '1' and f[3] != '' and f[6] != '': out.append((i, int(f[3]) * UNIT_TICKS - int(f[6])))
+        if kind(f[4], f[5]) in ('picture', 'short') and f[3] != '' and f[6] != '': out.append((i, int(f[3]) * UNIT_TICKS - int(f[6])))
     return out
 
 # ------------------------------------------------------------------ the replay
@@ -119,6 +128,7 @@ def read_rows(path):
         r = next(csv.reader([ln.decode()])); out.append((tuple(r[k] for k in ix), ln))
     return out
 
+REPLAY_ENV = dict(ENV)
 def replay(src, nbytes, W, tag):
     """replay the first nbytes of src (an APFS clone cut to length: no copy) and return its rows"""
     cand = os.path.join(W, tag + '.tpc'); dlog = os.path.join(W, tag + '.csv')
@@ -127,7 +137,7 @@ def replay(src, nbytes, W, tag):
     r = subprocess.run(['cp', '-c', src, cand], capture_output=True, text=True)
     if r.returncode: refuse('could not clone the window: %s' % r.stderr.strip())
     os.truncate(cand, nbytes)
-    r = subprocess.run([REPLAY, cand, dlog, '--offline', '--pool', '32'], env=dict(os.environ, **ENV), capture_output=True, text=True, timeout=1800)
+    r = subprocess.run([REPLAY, cand, dlog, '--offline', '--pool', '32'], env=dict(os.environ, **REPLAY_ENV), capture_output=True, text=True, timeout=1800)
     os.remove(cand)
     if r.returncode != 0: refuse('the replay of %d bytes failed (exit %d): %s' % (nbytes, r.returncode, (r.stdout + r.stderr).strip()[-600:]))
     rows = read_rows(dlog); os.remove(dlog)
@@ -173,6 +183,7 @@ def copy_window(src, a, b, dst):
 # ------------------------------------------------------------------ plan
 def plan(tpc, csvp, T, W):
     sc = Sidecar(truth(csvp)); n = len(sc.f)
+    REPLAY_ENV['FS_HRETIME'] = '1' if 'fs_hretime' in sc.hdr else '0'
     at = audio_times(sc)
     if len(at) < 2: refuse('the sidecar has fewer than two picture units with an audio time')
     a0 = at[0][1]; target = a0 + T * TICKS
@@ -180,11 +191,11 @@ def plan(tpc, csvp, T, W):
         if t2 <= t1 and t1 <= target: refuse('the sidecar\'s audio clock runs backwards at rows %d-%d (ordinal %s-%s)' % (i1, i2, sc.get(i1, 'ordinal'), sc.get(i2, 'ordinal')))
     keep = [x for x in at if x[1] <= target]
     if len(keep) < 2: refuse('%s is before the recording\'s second picture unit' % hms(T))
-    if keep[-1] == at[-1]: refuse('%s is at or after the last picture unit (%s): nothing to cut' % (hms(T), hms(Fraction(at[-1][1] - a0, TICKS))))
-    k, tk = keep[-1]; nxt = at[len(keep)]
-    if k < CONTEXT + 1: refuse('the unit at %s is too near the start to place' % hms(T))
-    say('sidecar: %d rows; %s is unit %s (row ordinal %s, at %s); the next picture unit (%s) is at %s' % (
-        n, hms(T), sc.get(k, 'counter_extended'), sc.get(k, 'ordinal'), hms(Fraction(tk - a0, TICKS)), sc.get(nxt[0], 'counter_extended'), hms(Fraction(nxt[1] - a0, TICKS))))
+    k, tk = keep[-1]; nxt = at[len(keep)] if len(keep) < len(at) else None
+    if k < CONTEXT + LEAD: refuse('the unit at %s is too near the start to place (the replay needs %d rows before it)' % (hms(T), CONTEXT + LEAD))
+    say('sidecar: %d rows; %s is unit %s (row ordinal %s, at %s); %s' % (
+        n, hms(T), sc.get(k, 'counter_extended'), sc.get(k, 'ordinal'), hms(Fraction(tk - a0, TICKS)),
+        'the next picture unit (%s) is at %s' % (sc.get(nxt[0], 'counter_extended'), hms(Fraction(nxt[1] - a0, TICKS))) if nxt else 'the last picture unit'))
     size = os.path.getsize(truth(tpc)); per = size / n
     want_lo, want_hi = k - CONTEXT - LEAD, k + AFTER          # sidecar rows the window must cover
     a = int(want_lo * per)
@@ -216,6 +227,13 @@ def plan(tpc, csvp, T, W):
     for f, ln in tail:
         if f[4] != '0' or f[3] != '': refuse('the replay reports more than the unit\'s trailing fragment after it: %s' % ln[:120].decode())
     if rows[j][0][1] != sc.get(k, 'epoch'): refuse('the replay\'s epoch %s is not the sidecar\'s %s' % (rows[j][0][1], sc.get(k, 'epoch')))
+    live = dict(zip(sc.hdr, next(csv.reader([sc.lines[k].decode()]))))
+    for t, (_, ln) in enumerate([rows[j]] + tail):
+        r = next(csv.reader([ln.decode()]))
+        if len(r) != len(sc.hdr): refuse('the replay writes %d fields a row, the sidecar %d (recorded with other settings)' % (len(r), len(sc.hdr)))
+        r = dict(zip(sc.hdr, r))
+        for col in ['schema_version', 'pairing'] + [c for c in sc.hdr if c.startswith(('ge_', 'fs_'))]:
+            if r[col] != live[col]: refuse('the replay\'s %s is %r where the sidecar\'s unit row has %r: it was recorded with other settings' % (col, r[col], live[col]))
     o = int(sc.get(k, 'ordinal'))
     newtail = b''.join(str(o + 1 + t).encode() + ln[ln.index(b','):] + b'\n' for t, (_, ln) in enumerate(tail))
     newcsv = sc.raw[:sc.ends[k]] + newtail
@@ -224,7 +242,9 @@ def plan(tpc, csvp, T, W):
     say('PLAN: the capture ends at byte %d of %d (%.2f GB removed), after unit %s; the sidecar keeps rows to ordinal %s (%d of %d) and ends with %d row%s for the next unit\'s fragment (%s); %s of picture removed' % (
         cut, size, (size - cut) / 1e9, sc.get(k, 'counter_extended'), sc.get(k, 'ordinal'), k + 1, n, len(tail), '' if len(tail) == 1 else 's',
         ', '.join(f[5] for f, _ in tail) or 'none', hms(gone_s)))
-    return dict(sc=sc, k=k, a=a, cut=cut, size=size, win=win, newcsv=newcsv, ntail=len(tail), j=j, rows=rows)
+    same = cut == size and newcsv == sc.raw
+    if same: say('the recording already ends after this unit: nothing to cut (a run that finishes an interrupted one still reads back, proves and sets dates)')
+    return dict(sc=sc, k=k, a=a, cut=cut, size=size, win=win, newcsv=newcsv, ntail=len(tail), j=j, rows=rows, same=same)
 
 # ------------------------------------------------------------------ cut
 def sha(b): return hashlib.sha256(b).hexdigest()
@@ -235,21 +255,43 @@ def cut(tpc, csvp, P, W):
     if sha(open(truth(csvp), 'rb').read()) != sha(P['sc'].raw): refuse('the sidecar changed while the cut was planned')
     b = open_by_programs([tpc, csvp])
     if b: refuse('in use: ' + '; '.join(b))
+    for x in (tpc, csvp):
+        if not os.access(x, os.W_OK): refuse('not writable: %s' % x)
     a, c = P['a'], P['cut']
     with open(P['win'], 'rb') as w: w.seek(c - a - (4 << 20)); last4 = w.read(4 << 20)
     with open(truth(tpc), 'rb') as f: f.seek(c - (4 << 20)); here = f.read(4 << 20)
     if here != last4: refuse('the capture\'s bytes before the cut are not the window\'s')
     say('cutting: %s to %d bytes, %s to %d bytes' % (tpc, c, csvp, len(P['newcsv'])))
-    os.truncate(tpc, c)                                   # writes go through the share path
-    try: after_cut(tpc, csvp, P, W, st0, last4)
-    except Refused as e: raise CutFailed(str(e))
+    state = 'the capture is not cut'
+    sigs = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+    signal.pthread_sigmask(signal.SIG_BLOCK, sigs)      # a stop waits until both files are cut
+    try:
+        os.truncate(tpc, c)                               # writes go through the share path
+        state = 'the capture is cut, the sidecar is not'
+        if os.environ.get('CAPTURE_TRUNCATE_TEST_FAIL') == 'between': raise OSError('test: failure between the two cuts')
+        k_end = P['sc'].ends[P['k']]
+        with open(csvp, 'r+b') as f:
+            f.truncate(k_end); state = 'the capture is cut, the sidecar is cut short of its new last rows'
+            f.seek(k_end); f.write(P['newcsv'][k_end:]); f.flush(); os.fsync(f.fileno())
+        state = 'both files are cut; the read-back, proof and dates are not done'
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, sigs)
+        if os.environ.get('CAPTURE_TRUNCATE_TEST_FAIL') == 'after': raise OSError('test: failure after both cuts')
+        after_cut(tpc, csvp, P, W, st0, last4)
+    except BaseException as e:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, sigs)
+        why = str(e) if isinstance(e, (Refused, CutFailed)) else 'stopped' if isinstance(e, Stop) else '%s: %s' % (type(e).__name__, e)
+        dates = []
+        for x in (tpc, csvp):
+            try: os.utime(truth(x), ns=(st0[x].st_atime_ns, st0[x].st_mtime_ns)); dates.append(os.path.basename(x))
+            except BaseException: pass
+        raise CutFailed('%s; %s (original dates put back on: %s). Run the same TIME again to finish.' % (why, state, ', '.join(dates) or 'neither'))
+
+class Stop(BaseException): pass
+def on_stop(sig, frame): raise Stop()
 
 def after_cut(tpc, csvp, P, W, st0, last4):
-    """everything from the sidecar's cut on: a failure here leaves the capture already cut"""
+    """the read-back, proof and dates, both files cut"""
     a, c = P['a'], P['cut']
-    k_end = P['sc'].ends[P['k']]
-    with open(csvp, 'r+b') as f:
-        f.truncate(k_end); f.seek(k_end); f.write(P['newcsv'][k_end:]); f.flush(); os.fsync(f.fileno())
     # read back from JuiceMount's own directory
     for i in range(60):
         if os.path.getsize(truth(tpc)) == c and os.path.getsize(truth(csvp)) == len(P['newcsv']): break
@@ -306,6 +348,7 @@ def main():
     if not tpc.endswith('.mov.raw.tpc'): print('REFUSED: the capture is NAME.mov.raw.tpc: %s' % tpc); sys.exit(2)
     stem = tpc[:-len('.raw.tpc')]; csvp = stem + '.registration.csv'; mov = stem
     temp = W is None; W = W or tempfile.mkdtemp(prefix='capture_truncate.'); os.makedirs(W, exist_ok=True)
+    for sg in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP): signal.signal(sg, on_stop)
     try:
         for x in (tpc, csvp):
             if not os.path.isfile(truth(x)): refuse('missing: %s' % x)
@@ -314,11 +357,16 @@ def main():
         if b: refuse('in use: ' + '; '.join(b))
         for x in (REPLAY,):
             if not os.access(x, os.X_OK): refuse('build %s first (make -C src/frameserver frameserver_replay)' % x)
-        P = plan(tpc, csvp, T, W)
-        if dry: say('dry run: nothing changed'); return
-        cut(tpc, csvp, P, W)
-        say('TRUNCATED: %s and its sidecar end after unit %s' % (os.path.basename(tpc), P['sc'].get(P['k'], 'counter_extended')))
+        try: P = plan(tpc, csvp, T, W)
+        except (Refused, Stop): raise
+        except BaseException as e: refuse('%s: %s' % (type(e).__name__, e))
+        if dry: say('dry run, nothing changed: the cut would fall after unit %s' % P['sc'].get(P['k'], 'counter_extended')); return
+        try: cut(tpc, csvp, P, W)
+        except (Refused, CutFailed, Stop): raise
+        except BaseException as e: refuse('%s: %s' % (type(e).__name__, e))     # before the capture's cut: cut() turns later ones into CutFailed
+        say('%s: %s and its sidecar end after unit %s' % ('CHECKED, already ends there' if P['same'] else 'TRUNCATED', os.path.basename(tpc), P['sc'].get(P['k'], 'counter_extended')))
     except Refused as e: say('REFUSED (nothing changed): %s' % e); sys.exit(2)
+    except Stop: say('STOPPED before cutting (nothing changed)'); sys.exit(2)
     except CutFailed as e: say('FAILED AFTER CUTTING (check the files): %s' % e); sys.exit(1)
     finally:
         for x in ('window.tpc',):
