@@ -20,7 +20,9 @@ companions are left alone and checked in JuiceMount's own directory. Elsewhere a
 On the JuiceFS share a rename is a metadata change: blocks still waiting to upload are unaffected. Do not create a new file
 at an OLD name for about 3 minutes afterwards: JuiceMount 0.4 keys a lingering write handle by name, so writes to a file
 recreated there can reach the renamed one."""
-import os, subprocess, sys
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'juicefs'))
+from in_use import open_by_programs
 
 KINDS = ['.mov', '.mov.raw.tpc', '.mov.registration.csv', '.mov.render.log', '.mov.status.json']
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
@@ -39,23 +41,6 @@ def members(d, stem):
         for name in (stem + k, '._' + stem + k):
             if os.path.lexists(os.path.join(d, name)): out.append(name)
     return out
-
-def open_by_programs(paths):
-    """Paths some process has open (lsof), plus, on the share, files JuiceMount still holds open for writing."""
-    busy = []
-    p = subprocess.run(['lsof', '-Fn', '--'] + paths, capture_output=True, text=True)
-    busy += sorted({l[1:] for l in p.stdout.splitlines() if l.startswith('n')})
-    fuse_paths = {FUSE + q[len(SHARE):]: q for q in paths if q.startswith(SHARE + '/')}
-    if fuse_paths:
-        jm = subprocess.run(['pgrep', '-x', 'JuiceMount'], capture_output=True, text=True).stdout.split()
-        for pid in jm:
-            lines = subprocess.run(['lsof', '-a', '-p', pid, '-Fan'], capture_output=True, text=True).stdout.splitlines()
-            mode = None
-            for l in lines:
-                if l.startswith('a'): mode = l[1:]
-                elif l.startswith('n') and l[1:] in fuse_paths and mode in ('w', 'u'):
-                    busy.append(fuse_paths[l[1:]] + ' (JuiceMount write handle: written in the last few minutes)')
-    return busy
 
 def main():
     a = sys.argv[1:]; dry = '--dry-run' in a; a = [x for x in a if x != '--dry-run']
