@@ -313,7 +313,8 @@ def report_after_cut(why):
         except BaseException: pass
     advice = ('Run the same TIME again to finish.' if CUT['rerun'] else
               'Do not run it again before checking the capture (Check, reading the whole capture): its stored bytes did not read back as they were read before the cut.')
-    say('FAILED AFTER CUTTING (check the files): %s; %s (original dates put back on: %s). %s' % (why, CUT['state'], ', '.join(dates) or 'neither', advice))
+    say('FAILED %s: %s; %s (original dates put back on: %s). %s' % ('WHILE CUTTING (the capture\'s truncation did not take)' if CUT['state'] == 'the capture is not cut' else 'AFTER CUTTING (check the files)',
+        why, CUT['state'], ', '.join(dates) or 'neither', advice))
     sys.exit(1)
 
 def after_cut(tpc, csvp, P, W, st0, last4):
@@ -406,10 +407,14 @@ def main():
         if temp: shutil.rmtree(W, ignore_errors=True)
     if render and os.path.exists(truth(mov)):
         say('rendering %s again from the shortened capture' % mov)
-        try: r = subprocess.run(['/bin/bash', os.path.join(HERE, 'plain_render', 'plain_render.sh'), '--replace', tpc, mov] + ([] if temp else [os.path.join(W, 'render')]))
-        except Stop:
+        try:
+            r = subprocess.run(['/bin/bash', os.path.join(HERE, 'plain_render', 'plain_render.sh'), '--replace', tpc, mov] + ([] if temp else [os.path.join(W, 'render')]))
+            rc = r.returncode
+            signal.pthread_sigmask(signal.SIG_BLOCK, SIGS)      # a stop the render's exit raced is delivered here or held
+        except Stop: rc = None
+        if rc is None or set(SIGS) & signal.sigpending():
             say('STOPPED during the render: the truncation is done and verified; the old render stays until a new one passes its checks (render again from the dashboard)'); sys.exit(1)
-        sys.exit(r.returncode)
+        sys.exit(rc)
     elif render: say('no render of this recording yet: nothing to render again')
 
 if __name__ == '__main__': main()
