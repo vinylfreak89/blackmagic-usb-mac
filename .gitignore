@@ -37,6 +37,7 @@ src/capture_core/fixture.expect
 
 # frameserver build outputs
 src/frameserver/frameserver_replay
+src/frameserver/tpc_play
 src/frameserver/tests/audio_publisher_test
 src/frameserver/tests/audio_publisher_asan
 src/frameserver/tests/audio_publisher_tsan

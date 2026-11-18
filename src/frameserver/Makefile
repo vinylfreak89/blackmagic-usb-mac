@@ -16,6 +16,9 @@ frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
 # Diagnostic-only: timestamp failed correlation lookups without replacing them.
+tpc_play: $(SRCS) tpc_play.c frameserver.h frame_publisher.h audio_publisher.h replay_probe.h ../obs_plugin/audio_timing.h ../obs_plugin/replay_timeline.h ../capture_core/capture_core.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tpc_play.c -o $@ $(LIBS)
+
 tests/audio_lookup_probe: $(SRCS) frameserver_replay.c frameserver.h audio_publisher.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -DAP_LOOKUP_DIAGNOSTICS $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
