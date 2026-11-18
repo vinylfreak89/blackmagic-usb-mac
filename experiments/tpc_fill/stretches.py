@@ -16,6 +16,6 @@ def event_groups(sidecar):
         if groups and i - groups[-1][-1] <= 400: groups[-1].append(i)
         else: groups.append([i])
     return groups, nrows
-def stretch_range(grp, per, size):
-    """[lo, hi) of the capture read for one group (lo is then aligned forward to a record boundary)"""
-    return max(0, int(grp[0] * per) - 45_000_000), min(size, int(grp[-1] * per) + 300_000_000)
+def stretch_range(grp, per, size, lead=45_000_000):
+    """[lo, hi) of the capture read for one group (lo is then aligned forward to a record boundary); lead: bytes before it"""
+    return max(0, int(grp[0] * per) - lead), min(size, int(grp[-1] * per) + 300_000_000)

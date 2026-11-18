@@ -25,6 +25,10 @@ from stretches import event_groups, stretch_range
 
 JOIN_EDGE_ROWS = 600          # a Hole this close to a part's end is the loss before its disconnect
 RUN_AHEAD_MAX = 2000          # counts a glitch may run ahead (a lock loss of about a minute)
+LINEUP_LEAD = 120_000_000     # bytes read before a gap or glitch: the picture compares units 10-130 before it (joins.picture),
+                              # ~105 MB at ~0.81 MB a unit. With the 45 MB the planner reads (~55 units) only 10 fields could
+                              # be compared, so the 10 agreeing best matches a dim or low-contrast passage needs were out of reach:
+                              # 2026-11-18, 9 of 10 agreed with the sound at r 0.97; 21 of 26 with this lead
 DAMAGE = {'Short', 'ShortShown', 'Unframed', 'OtherShown', 'Complete'}   # the Shuttle's own: sent, but not a whole NTSC picture
 
 def hole_groups(csv, damage=False, flagged=False):
@@ -56,7 +60,7 @@ def places(parts, log):
         for (a, b), glitch, flagged in [((x[0], x[1]), False, x[2]) for x in hg] + [(x, True, True) for x in dg]:
             if k < len(parts) - 1 and nrows - b <= JOIN_EDGE_ROWS: continue
             def gap(tp=tp, size=size, a=a, b=b, nrows=nrows):
-                lo, hi = stretch_range([a, b], size / nrows, size); R = load(tp, lo, hi - lo)
+                lo, hi = stretch_range([a, b], size / nrows, size, LINEUP_LEAD); R = load(tp, lo, hi - lo)
                 w = [c for o, c, fm, ok in R.marks if ok and fm == 0xe801]; seq = [w[0]]
                 for c in w[1:]: seq.append(seq[-1] + ((c - seq[-1]) % 65536))
                 hs = [(x, y) for x, y in zip(seq, seq[1:]) if y - x > 1]
