@@ -107,11 +107,14 @@ with tempfile.TemporaryDirectory(prefix='truncate-test-', dir='/private/tmp') as
     assert (d / 'e.re.csv').read_bytes() == c.read_bytes(), 'the shortened capture\'s replay is not the new sidecar (after the stretch)'
 
     # past the last picture unit: only what follows that unit's confirmation goes, no picture
-    t, c = fresh('g')
-    r = truncate(t, '--at', '1:00:00')
-    assert r.returncode == 0 and '0:00:00.000 of picture removed' in r.stdout and [x for x in rows(c) if x['published'] == '1'][-1]['counter_extended'] == str(N - 1), r.stdout
-    r = truncate(t, '--at', '1:00:00')
+    t, c = fresh('g'); last = (START[N - 1] - START[u0]) / 48000
+    r = truncate(t, '--at', '%.3f' % (last + 1))
+    assert r.returncode == 0 and '0:00:00.000 of timed picture removed' in r.stdout and [x for x in rows(c) if x['published'] == '1'][-1]['counter_extended'] == str(N - 1), r.stdout
+    r = truncate(t, '--at', '%.3f' % (last + 1))
     assert r.returncode == 0 and 'already ends' in r.stdout, r.stdout
+    t, c = fresh('h'); s1, c1 = sha(t), sha(c)
+    r = truncate(t, '--at', '1:00:00')                     # a typo past the end: refused, not a trim
+    assert r.returncode == 2 and 'past the recording\'s end' in r.stdout and sha(t) == s1 and sha(c) == c1, r.stdout
     # refusals change nothing
     t, c = fresh('c'); s0, c0 = sha(t), sha(c)
     with open(c, 'rb'):
@@ -151,11 +154,15 @@ with tempfile.TemporaryDirectory(prefix='truncate-test-', dir='/private/tmp') as
 
     # a failure between the cuts, or after both: named, dates back, and the same TIME again finishes the job
     ref, refc = d / 'a.mov.raw.tpc', d / 'a.mov.registration.csv'          # the uninterrupted cut at 5.000 s above
-    for where, state in (('between', 'the capture is cut, the sidecar is not'), ('after', 'both files are cut')):
+    for where, state in (('between', 'the capture is cut, the sidecar is not'), ('after', 'both files are cut'),
+                         ('stop-between', 'the capture is cut, the sidecar is not'), ('stop-after', 'both files are cut'),
+                         ('badbytes', 'both files are cut')):
         t, c = fresh('f' + where); old = 1_000_000_000
         for x in (t, c): os.utime(x, (old, old))
         r = truncate(t, '--at', '0:05.000', fail=where)
-        assert r.returncode == 1 and 'FAILED AFTER CUTTING' in r.stdout and state in r.stdout, r.stdout
+        assert r.returncode == 1 and 'FAILED AFTER CUTTING' in r.stdout and state in r.stdout and 'nothing changed' not in r.stdout, (where, r.stdout)
+        assert ('stopped' in r.stdout) == where.startswith('stop'), (where, r.stdout)
+        assert ('Do not run it again' in r.stdout) == (where == 'badbytes'), (where, r.stdout)
         assert all(int(x.stat().st_mtime) == old for x in (t, c)), 'dates not put back after a failure'
         r = truncate(t, '--at', '0:05.000')
         assert r.returncode == 0 and ('TRUNCATED' in r.stdout or 'CHECKED, already ends there' in r.stdout), (where, r.stdout)
