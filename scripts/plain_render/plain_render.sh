@@ -79,9 +79,12 @@ mkfifo "$D/v.fifo" "$D/a.fifo"; date
 # clears the mark; ffmpeg then writes into that same file (-y).
 empty_in_place(){ : > "$1" && truncate -s 0 "$1" && [ "$(stat -f %z "$1")" = 0 ] || { echo "REFUSE: could not empty $1 in place"; exit 2; }; }
 empty_in_place "$PART"
-# Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc): the relay
-# never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off.
-SC="${SRC%.raw.tpc}.registration.csv"; LOST=none
+# Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc, or
+# PLAIN_RENDER_SIDECAR when the source is a stream with no sidecar beside it, as capture_patch's render is): the relay
+# never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off
+# (a patched render without one showed a seam's one-slot step as a blue flash, 2026-11-18 at 58:27).
+SC="${PLAIN_RENDER_SIDECAR:-${SRC%.raw.tpc}.registration.csv}"; LOST=none
+[ -n "${PLAIN_RENDER_SIDECAR:-}" ] && [ ! -f "$SC" ] && { echo "REFUSE: PLAIN_RENDER_SIDECAR names no file: $SC"; exit 2; }
 if [ "$SC" != "$SRC" ] && [ -f "$SC" ]; then
   python3 - "$SC" "$D/lost_counters.txt" <<'PY' || { echo "REFUSE: could not read lost units from $SC"; exit 2; }
 import sys
