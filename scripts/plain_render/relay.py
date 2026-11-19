@@ -3,7 +3,11 @@
 [a0 + s*8008, a0 + (s+1)*8008) ticks of 1/240000 s (one NTSC frame, 1001/30000 s), a0 being the first frame's audio time.
 Each published frame is placed by its unit's audio-clock time (the V line's audio_pts_num), never by its counter: a unit
 counter is not time (in the Shuttle's other-format modes it steps ~50-70 times a second, 2026-10-21), the audio clock is.
-A slot gets the frame nearest its start; a frame whose slot holds a nearer one is dropped. A single empty slot between two
+A slot gets the frame nearest its start; a frame whose slot holds a nearer one is dropped. A frame continues the slot sequence
+of the frame before it (that slot plus the units between them) unless that puts it more than 3/4 of a slot from its own
+time, where it takes its nearest slot: after a field-framed unit every later frame can sit half a slot off the grid, and
+nearest-slot rounding then flipped with a few ticks of jitter, dropping one frame and leaving two slots to the no-signal
+fill, a blue flash at a wrong-length unit (2026-11-19, 12 in one render). A single empty slot between two
 frames repeats the frame before it (counted as held), as a TBC would: a deck in search or unlocked sends each field as a
 ~257-line unit followed by a 5-line stub that is not picture, and a fill there flashes every other frame (2026-10-21, owner's
 choice). Never across lost data: LOST_COUNTERS lists the 16-bit counters of units the host lost (from the capture's sidecar);
@@ -23,7 +27,9 @@ lostarg = sys.argv[3] if len(sys.argv) > 3 else "none"; holds_on = lostarg != "n
 lost = sorted({int(x) % 65536 for x in open(lostarg).read().split()}) if holds_on else []
 log = None; partial = b""; vlines = []; queue = []; eof = False
 a0 = None; prev = None; nxt = 0; pending = None
-st = dict(placed=0, dropped=0, estimated=0, filled=0, held=0, not_held_lost=0, max_dev_ticks=0, holds_on=holds_on); last = None
+SNAP = 0.75     # slots: a frame further than this from its sequence slot takes its nearest slot instead (inclusive)
+seq = None      # (slot, ticks) of the last frame given a slot
+st = dict(snapped=0, placed=0, dropped=0, estimated=0, filled=0, held=0, not_held_lost=0, max_dev_ticks=0, holds_on=holds_on); last = None
 fill_runs = []   # [first slot, slots] of every run of no-signal fill, in output order
 def lost_between(c1, c2):
     """a lost unit's 16-bit counter lies strictly between frame counters c1 < c2"""
@@ -57,13 +63,18 @@ def emit(slot, frame, counter):
     while nxt < slot: out.write(fill); st["filled"] += 1; nxt += 1
     out.write(frame); nxt += 1; last = (frame, counter)
 def place():
-    global a0, pending
+    global a0, pending, seq
     while queue and vlines:
         v = vlines.pop(0); frame = queue.pop(0); t = audio_time(v)
         if a0 is None:
             a0 = t; p = os.path.join(os.path.dirname(logp) or ".", "a0.json")
             json.dump(dict(a0_ticks=a0), open(p + ".new", "w")); os.replace(p + ".new", p)   # published whole, never half-written
-        s = max(0, round((t - a0) / SLOT)); dev = abs(t - (a0 + s * SLOT))
+        x = (t - a0) / SLOT; s = round(x)
+        if seq is not None:
+            k = seq[0] + round((t - seq[1]) / SLOT)
+            if abs(k - x) <= SNAP: s = k
+            else: st["snapped"] += 1
+        s = max(0, s); seq = (s, t); dev = abs(t - (a0 + s * SLOT))
         if pending is None or s > pending[0]:
             if pending is not None: emit(pending[0], pending[1], pending[3]); st["placed"] += 1; st["max_dev_ticks"] = max(st["max_dev_ticks"], pending[2])
             if s < nxt: st["dropped"] += 1; pending = None; continue      # the slot was already written
@@ -94,8 +105,10 @@ out.flush()
 st.update(a0_ticks=a0, slots=nxt, fill_runs=fill_runs)
 json.dump(st, open(os.path.join(os.path.dirname(logp) or ".", "schedule.json"), "w"))
 print("relay: %d slots on the audio clock: %d frames placed, %d dropped (another frame was nearer the slot), %d estimated (no audio time), "
-      "%d held (one empty slot: previous frame repeated%s), %d not held (lost data in the gap), %d filled; largest placement error %.2f ms" % (
-      nxt, st["placed"], st["dropped"], st["estimated"], st["held"], "" if holds_on else "; OFF: no sidecar lists lost units", st["not_held_lost"], st["filled"], st["max_dev_ticks"] / 240), file=sys.stderr)
+      "%d held (one empty slot: previous frame repeated%s), %d not held (lost data in the gap), %d filled; %d re-placed off the sequence "
+      "(more than 3/4 slot from it); largest placement error %.2f ms" % (
+      nxt, st["placed"], st["dropped"], st["estimated"], st["held"], "" if holds_on else "; OFF: no sidecar lists lost units", st["not_held_lost"], st["filled"],
+      st["snapped"], st["max_dev_ticks"] / 240), file=sys.stderr)
 def at(slot): t = slot * 1001 / 30000; return "%d:%05.2f" % (t // 60, t % 60)
 for s0, n in fill_runs:     # each slot is two frames of the 59.94 fps render
     print("relay: no-signal fill at %s for %d slot%s (%d frames, %.2f s)" % (at(s0), n, "" if n == 1 else "s", 2 * n, n * 1001 / 30000), file=sys.stderr)
