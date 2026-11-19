@@ -6,6 +6,7 @@ sys.path.insert(0, '.')
 from region import *
 from donor import load_donor
 from synth import synth_rows, unit_bytes, PAD
+from gaps import unwrap, cluster_gaps, find_gaps as _find_gaps
 OFF = int(os.environ['FILL_OFF'])  # donor counter = target counter + OFF for the unit holding the target's second-slot field (measured per capture pair)
 # FILL_PAIRING=same: the donor pairs fields as the target does, so target unit c is donor unit c + OFF row for row (measured per capture pair);
 # the default, shifted, is the one-field-apart pairing of synth.py.
@@ -29,10 +30,6 @@ F_LONG = 0.5124                   # usual share of 2848-byte video packets
 F_EIGHT = 0.50094                 # usual share of 8-record audio packets
 VREQ, AREQ = 15360, 192
 
-def unwrap(cs):
-    out = [cs[0]]
-    for c in cs[1:]: out.append(out[-1] + ((c - out[-1] + 32768) % 65536) - 32768)
-    return out
 def rec24(arr):   # (n,24) uint8 -> list of bytes
     return [bytes(r) for r in arr]
 def npk_of(blocks, ep):
@@ -78,21 +75,7 @@ class Stretch:
 
 AUDIO_EXCESS_MAX = 16      # samples: a stretch may hold this many too many (the Shuttle's own); a unit out is ~1600
 
-def find_gaps(S):
-    R = S.R
-    whole = [(off, c) for off, c, fm, ok in R.marks if ok and fm == 0xe801]
-    vg = []
-    for (o1, c1), (o2, c2) in zip(whole, whole[1:]):
-        if o2 - o1 != UNIT or (c2 - c1) % 65536 != 1:
-            vg.append(dict(c1=c1, c2=c2, s_from=o1 + UNIT, s_to=o2, n=(c2 - c1) % 65536 - 1, k=R.vpk[R.vrec_of(o1 + UNIT)][1]))
-    ag = []
-    for (i1, s1, c1), (i2, s2, c2) in zip(R.resyncs, R.resyncs[1:]):
-        n = s2 - s1; k = (c2 - c1) % 65536
-        if k != 1 or n not in (1601, 1602):
-            if ag and i1 - ag[-1]['r2'] <= 3 * 1603:      # gaps a few intervals apart are rebuilt as one span, resyncs between them included
-                g = ag[-1]; g.update(c2=c2, n=s2 - g['sA'], kc=(c2 - g['c1']) % 65536, r2=i2, sB=s2)
-            else: ag.append(dict(c1=c1, c2=c2, n=n, kc=k, r1=i1, r2=i2, sA=s1, sB=s2, k=R.apk[R.arec_of(i1)][1]))
-    return vg, ag
+def find_gaps(S): return _find_gaps(S.R)
 
 def interval_table(S):
     """samples between resync c and c+1, by (unwrapped counter mod 5), learned from the normal intervals of the stretch"""
@@ -526,13 +509,6 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         assert post and (not pre or max(pre) < min(post)), ('the units and resyncs either side of the glitch interleave in the file', name)
         cshift = dict(at=min(post), counts=jump['ahead']); rep['counter_shift'] = cshift; JUMP_DONE = True
     return dict(file_from=f_lo, file_to=f_hi, data=bytes(out), kv=kv, ka=ka, rep=rep, counter_shift=cshift)
-
-def cluster_gaps(vg, ag, span=24000):
-    items = sorted([(g['k'], 'v', g) for g in vg] + [(g['k'], 'a', g) for g in ag], key=lambda x: x[0]); cl = []
-    for k, kind, g in items:
-        if cl and k - cl[-1]['last'] < span: cl[-1][kind].append(g); cl[-1]['last'] = k
-        else: cl.append(dict(v=[], a=[], last=k)); cl[-1][kind].append(g)
-    return cl
 
 def apply(R, mods):
     """the stretch with every modification applied and later sequence numbers shifted"""
