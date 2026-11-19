@@ -102,13 +102,19 @@ int main(void){
     {
         static uint8_t rows[520*FP_LINE_BYTES];
         for(unsigned l=0;l<520;l++) memset(rows+(size_t)l*FP_LINE_BYTES,(int)(l&0xff),FP_LINE_BYTES);   /* every byte of a line is its number */
+        /* the frame before it: every byte 77, so rows the partial frame lacks are recognisable as the last frame's */
+        uint8_t *u77=malloc(FP_UNIT_BYTES); memset(u77,77,FP_UNIT_BYTES);
+        CHECK(fp_publish(p,u77,FP_UNIT_BYTES,6999,0,0,FP_TRANSPORT_COMPLETE,0,0)==0,"the frame before the partial one"); free(u77);
         int before=c.frames; c.hold=1; c.held=NULL;
         CHECK(fp_publish_partial(p,rows,245,0,0,7000,0,0)==0 && c.frames==before+1 && c.last_counter==7000 && c.held,"a 245-line unit is shown");
         if(c.held){
             IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(c.held); size_t bpr=IOSurfaceGetBytesPerRow(c.held);
-            /* row 2k = line 19+k; row 2k+1 = the mean of lines 19+k and 20+k (each byte its line number); past line 244, black */
-            CHECK(b[0]==19 && b[bpr]==20 && b[2*bpr]==20 && b[450*bpr]==244 && b[451*bpr]==244 && b[452*bpr]==128 && b[452*bpr+1]==16 && b[479*bpr]==128,
-                  "245 lines as a bob: rows 0/1/2 %u/%u/%u, 450/451/452 %u/%u/%u",b[0],b[bpr],b[2*bpr],b[450*bpr],b[451*bpr],b[452*bpr]);
+            /* row 2k = line 19+k; row 2k+1 = the mean of lines 19+k and 20+k (each byte its line number); past line 244,
+             * the last frame's rows (77), never black */
+            CHECK(b[0]==19 && b[bpr]==20 && b[2*bpr]==20 && b[450*bpr]==244 && b[451*bpr]==244 && b[452*bpr]==77 && b[452*bpr+1]==77 &&
+                  b[479*bpr]==77 && b[479*bpr+FP_LINE_BYTES-1]==77,
+                  "245 lines as a bob, the rest the last frame's: rows 0/1/2 %u/%u/%u, 450/451/452 %u/%u/%u, 479 %u",
+                  b[0],b[bpr],b[2*bpr],b[450*bpr],b[451*bpr],b[452*bpr],b[479*bpr]);
             IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
         }
         CHECK(fp_publish_partial(p,rows,504,0,0,7001,0,0)==0 && c.held,"a 504-line unit is shown");
@@ -127,7 +133,27 @@ int main(void){
             IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
         }
         CHECK(fp_publish_partial(p,rows,0,0,0,7002,0,0)==-1 && fp_publish_partial(p,NULL,10,0,0,7002,0,0)==-1,"no lines or no rows is refused");
+        /* a partial frame keeps standing for the next: 40 lines over the last one (504 lines, first lines 17/285) leave rows
+         * 80.. as that frame had them: row 2k is its line 17+k */
+        CHECK(fp_publish_partial(p,rows+(size_t)100*FP_LINE_BYTES,59,0,0,7003,0,0)==0 && c.held,"a 59-line unit is shown");
+        if(c.held){   /* its lines 19..58 are rows 119..158 of rows[]: row 0 = 119, row 78 = 158; row 80 = line 57, row 452 = line 243 */
+            IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(c.held); size_t bpr=IOSurfaceGetBytesPerRow(c.held);
+            CHECK(b[0]==119 && b[78*bpr]==158 && b[80*bpr]==57 && b[452*bpr]==243,"rows past it from the frame before: 0 %u, 78 %u, 80 %u, 452 %u",
+                  b[0],b[78*bpr],b[80*bpr],b[452*bpr]);
+            IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(c.held); c.held=NULL;
+        }
         c.hold=0;
+        /* before any frame has been published there is nothing to stand: the rows it lacks are black */
+        {
+            fp_publisher *q=NULL; sink_ctx d={0}; d.pts_monotonic=1; d.hold=1; fp_sink qs={on_frame,&d};
+            CHECK(fp_open(&q,2,&qs)==0 && fp_publish_partial(q,rows,245,0,0,1,0,0)==0 && d.held,"a first frame that is partial is shown");
+            if(d.held){
+                IOSurfaceLock(d.held,kIOSurfaceLockReadOnly,NULL); const uint8_t *b=IOSurfaceGetBaseAddress(d.held); size_t bpr=IOSurfaceGetBytesPerRow(d.held);
+                CHECK(b[0]==19 && b[452*bpr]==128 && b[452*bpr+1]==16 && b[479*bpr]==128,"first frame: rows it lacks are black (452: %u/%u)",b[452*bpr],b[452*bpr+1]);
+                IOSurfaceUnlock(d.held,kIOSurfaceLockReadOnly,NULL); IOSurfaceDecrementUseCount(d.held);
+            }
+            fp_close(q);
+        }
     }
     // honest exhaustion: consumer holds both surfaces -> third publish is DROPPED and counted
     c.hold = 1;

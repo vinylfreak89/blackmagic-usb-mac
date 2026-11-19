@@ -122,3 +122,10 @@ Local baseline observed for §7 **[local]**: macOS 26.6.2 (25G83), SIP **enabled
 7. **Privileged step:** HAL plug-in install into root-owned `/Library/Audio/Plug-Ins/HAL` — will go through `sudo_run.sh` with a pinned install script; needs your approval per the global rules.
 8. **Unverified items you may want settled before P4 starts:** (a) Tahoe 26.6 approval-pane location (open System Settings now; OBS's extension is pending there); (b) whether `systemextensionsctl developer on` is accepted with SIP enabled (reversible, sudo — your call whether to try); (c) whether field-count attachments survive CMIO (needs Milestone 1 code).
 9. **Contingency, not a decision yet:** running libusb inside the extension is sandbox-permitted but conflicts with §8/§10; only revisit if sink-stream timing proves unworkable.
+10. **The paid team also gates a QuickTime `.tpc` reader (measured 2026-11-18, macOS 27.2.1, Xcode 27.2).** A MediaExtension
+    format reader would let QuickTime Player (which calls `MTRegisterProfessionalVideoWorkflowFormatReaders`) open a `.tpc`
+    directly. All three routes on the free Personal Team fail: Xcode refuses the profile ("Personal development teams … do not
+    support the Media Extension Format Reader capability"); ad-hoc signed with `com.apple.developer.mediaextension.formatreader`,
+    the extension registers and can be switched on, but AMFI kills it at launch ("Unsatisfied Entitlements"); ad-hoc signed
+    without it, it launches and receives QuickTime's connection, but CoreMedia's remote reader fails with -16504 before the
+    factory is called. The capability itself is public (no Apple review), so a paid team unlocks it along with CMIO.

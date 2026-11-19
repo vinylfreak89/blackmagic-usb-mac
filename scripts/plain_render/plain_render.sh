@@ -38,7 +38,10 @@
 # CAPTURE.tpc may be a FIFO (the replay reads it as a stream). PLAIN_RENDER_DECISION_LOG=FILE also writes the replay's
 # decision log (the sidecar's schema) from the same pass; it is not overwritten if it exists.
 # PLAIN_RENDER_STALL_S=N: the replay's no-delivery deadline (default 120 s); raise it when the input can pause for longer,
-# e.g. a FIFO fed from a cloud volume whose reader waits out dropouts.
+# e.g. a FIFO fed from a cloud volume whose reader waits out dropouts. Reading through checked_read.py it defaults to the
+# reader's own give-up time plus an hour: the reader waits out a store that refuses downloads (B2's daily cap) or a network
+# dropout and carries on from the same piece, so the replay and the encoder wait with it instead of ending the render
+# (2026-11-18: a render stopped at 81 of 86.5 GB on B2's cap and had to be redone).
 # PLAIN_RENDER_FILTER='COMMAND': a picture filter between the replay and the relay (bash -c, frames on stdin and stdout, 720x480
 # UYVY, one frame out per frame in, so the audio-clock placement and the frame-count check hold); it fails the render if it
 # exits non-zero. PLAIN_RENDER_DEINTERLACE replaces the yadif step (default yadif=mode=send_field:parity=tff): a filter whose
@@ -120,6 +123,7 @@ case "$SRC" in /Volumes/zpool/*) ;; *)
   fi;; esac
 case "$CHK" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; then
   mkfifo "$D/cap.fifo"; RSRC="$D/cap.fifo"
+  [ -z "${PLAIN_RENDER_STALL_S:-}" ] && PLAIN_RENDER_STALL_S=$(python3 -c 'import os; print(int(float(os.environ.get("CHECKED_READ_GIVE_UP_S", 90000)) + 3600))')
   { python3 "$REPO/scripts/juicefs/checked_read.py" "$CHK" ${CRARGS[@]+"${CRARGS[@]}"} --out "$D/cap.fifo" --report "$D/checked_read.json" 2>"$D/checked_read.log"
     echo $? > "$D/checked_read.rc"
     python3 -c 'import os, sys

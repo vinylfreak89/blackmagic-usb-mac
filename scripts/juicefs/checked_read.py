@@ -21,6 +21,13 @@ So the proof is made at read time, against the store:
     of the chunk is proven from the new slices (the bytes are the same; only where they are stored moved). A layout that
     did not change, or keeps changing, fails as before. (2026-10-26: a 108 GB render stopped at 88 GB on a slice JuiceFS
     had compacted 20 seconds earlier, during the read; the merged slice was stored and listed.)
+  - The volume or the store not answering is not a mismatch: a read that fails (EIO: B2 refusing downloads, e.g. its daily
+    cap, or the network down) or a listing/download that fails waits and retries the same piece, the file closed while it
+    waits. JuiceFS hands the same error back on every later read of a handle that saw one, and JuiceMount keeps that handle
+    until it has been idle 2 minutes, so a retry waits CHECKED_READ_RETRY_WAIT_S (180 s) untouched, then reopens; after
+    three tries it waits CHECKED_READ_RETRY_LONG_WAIT_S (600 s) between tries. It gives up (exit 3) after
+    CHECKED_READ_GIVE_UP_S (25 h, past B2's daily reset at 00:00 UTC) without a piece going through. Whoever reads --out
+    simply waits. (2026-11-18: a render stopped at 81 of 86.5 GB when B2's daily download cap answered 403.)
 FILE is read through JuiceFS's own FUSE mount, so the bytes checked are exactly what JuiceFS returned.
 --bytes-from COPY reads the bytes from a local copy of FILE instead (same size), still proving each piece against FILE's layout
 and the store's listing: a render from the copy needs no downloads, and the copy itself is proven identical to the stored file.
@@ -38,9 +45,57 @@ FLIP = tuple(int(x) for x in os.environ['CHECKED_READ_TEST_FLIP'].split(',')) if
 # layout taken just before JuiceFS compacted that chunk does; with ",always" every re-read of it does too (a lost slice).
 GONE = os.environ.get('CHECKED_READ_TEST_GONE', '').split(',') if os.environ.get('CHECKED_READ_TEST_GONE') else None
 RELAYOUTS = 3                                               # re-reads of one chunk's layout before its missing object fails it
+# Test hook: CHECKED_READ_TEST_EIO=PIECE,COUNT makes the first COUNT reads of piece PIECE fail with EIO, as JuiceFS does when the
+# store refuses a download; CHECKED_READ_TEST_EIO_LOG=FILE records the descriptor of each failed read. Never set outside a test.
+EIO_HOOK = [int(x) for x in os.environ['CHECKED_READ_TEST_EIO'].split(',')] if os.environ.get('CHECKED_READ_TEST_EIO') else None
+WAIT_S = float(os.environ.get('CHECKED_READ_RETRY_WAIT_S', 180))
+LONG_WAIT_S = max(WAIT_S, float(os.environ.get('CHECKED_READ_RETRY_LONG_WAIT_S', 600)))
+GIVE_UP_S = float(os.environ.get('CHECKED_READ_GIVE_UP_S', 25 * 3600))
 MOUNT = os.environ.get('CHECKED_READ_MOUNT', os.path.expanduser('~/.juicemount/fuse-internal'))
 
 def die(msg, code=2): print('checked_read: ' + msg, file=sys.stderr, flush=True); sys.exit(code)
+
+class Stalled(Exception):
+    """The volume or the object store did not answer (a read, a listing or a download failed): not a mismatch. The same
+    piece is tried again after a wait."""
+
+class Patience:
+    """Waits between tries while nothing goes through; gives up after GIVE_UP_S without a piece proven."""
+    def __init__(self, stats, sleep=time.sleep, clock=time.time):
+        self.stats, self.sleep, self.clock, self.since, self.tries = stats, sleep, clock, None, 0
+    def went_through(self): self.since = None; self.tries = 0
+    def wait(self, offset, why):
+        """False once GIVE_UP_S has passed since the first failed try; otherwise sleeps and returns True"""
+        now = self.clock()
+        if self.since is None: self.since = now
+        if now - self.since >= GIVE_UP_S: return False
+        d = WAIT_S if self.tries < 3 else LONG_WAIT_S; self.tries += 1
+        self.stats['waits'].append(dict(offset=offset, reason=why, at=time.strftime('%F %T'), seconds=d))
+        print('checked_read: WAITING at offset %d: %s; trying again in %.0f s (%s)' % (offset, why, d, likely_cause()), file=sys.stderr, flush=True)
+        self.sleep(d); return True
+
+def likely_cause():
+    """what JuiceFS logged in the last few minutes about failed downloads: the read error itself carries no reason"""
+    try:
+        with open(os.path.expanduser('~/.juicefs/juicefs.log'), 'rb') as f:
+            f.seek(0, 2); n = f.tell(); f.seek(max(0, n - (1 << 20))); tail = f.read().decode(errors='replace').splitlines()
+    except OSError: return 'no JuiceFS log to say why'
+    cut = time.strftime('%Y/%m/%d %H:%M:%S', time.localtime(time.time() - 300))
+    recent = [l for l in tail if l[:19] >= cut and 'fail to read' in l]
+    if any('StatusCode: 403' in l for l in recent): return 'JuiceFS logs 403 Forbidden from the store: B2 refusing downloads, likely its daily cap, which resets at 00:00 UTC'
+    if recent: return 'JuiceFS logs failed downloads: ' + recent[-1].split('fail to read', 1)[1][:160].strip()
+    return 'JuiceFS logged no failed download in the last 5 min'
+
+def pread_checked(fd, n, off, piece_no):
+    """os.pread with a failure raised as Stalled (only the read: a failed write to --out is not the store's)"""
+    try:
+        if EIO_HOOK and EIO_HOOK[0] == piece_no and EIO_HOOK[1] > 0:                          # test hook only
+            EIO_HOOK[1] -= 1
+            if os.environ.get('CHECKED_READ_TEST_EIO_LOG'):
+                with open(os.environ['CHECKED_READ_TEST_EIO_LOG'], 'a') as f: f.write('%d\n' % fd)
+            raise OSError(5, 'Input/output error (test hook)')
+        return os.pread(fd, n, off)
+    except OSError as e: raise Stalled('read failed: %s' % e)
 
 class Redis:
     def __init__(self, url):
@@ -121,9 +176,11 @@ class Truth:
         d, name = key.rsplit('/', 1)
         if d not in self.listed:
             t = time.time()
-            p = subprocess.run(['rclone', 'lsjson', '--hash', '--hash-type', 'sha1', '--files-only', '--max-depth', '1', self.remote + d + '/'],
-                               capture_output=True, text=True, timeout=300)
-            if p.returncode != 0: die('listing %s failed: %s' % (d, p.stderr.strip()[-300:]))
+            try:
+                p = subprocess.run(['rclone', 'lsjson', '--hash', '--hash-type', 'sha1', '--files-only', '--max-depth', '1', self.remote + d + '/'],
+                                   capture_output=True, text=True, timeout=300)
+            except subprocess.TimeoutExpired: raise Stalled('listing %s did not finish in 300 s' % d)
+            if p.returncode != 0: raise Stalled('listing %s failed: %s' % (d, p.stderr.strip()[-300:]))
             self.listed[d] = {x['Name']: (x.get('Hashes') or {}).get('sha1') for x in json.loads(p.stdout or '[]')}
             self.seconds += time.time() - t
         return self.listed[d].get(name)
@@ -133,9 +190,13 @@ class Truth:
         if key in self.fetched: return self.fetched[key]
         want = self.sha1(key)
         if not want: return None
-        t = time.time(); p = subprocess.run(['rclone', 'cat', self.remote + key], capture_output=True, timeout=600); self.seconds += time.time() - t
-        data = p.stdout if p.returncode == 0 else None
-        if data is None or len(data) != osz or hashlib.sha1(data).hexdigest() != want: return None
+        t = time.time()
+        try: p = subprocess.run(['rclone', 'cat', self.remote + key], capture_output=True, timeout=600)
+        except subprocess.TimeoutExpired: raise Stalled('downloading %s did not finish in 600 s' % key)
+        self.seconds += time.time() - t
+        if p.returncode != 0: raise Stalled('downloading %s failed: %s' % (key, p.stderr.decode(errors='replace').strip()[-300:]))
+        data = p.stdout
+        if len(data) != osz or hashlib.sha1(data).hexdigest() != want: return None
         self.fetched[key] = data; self.fetched_bytes += osz
         if len(self.fetched) > 16: self.fetched.pop(next(iter(self.fetched)))
         return data
@@ -166,63 +227,76 @@ def main():
     if sum(p[1] for p in plan) != size: die('layout covers %d of %d bytes' % (sum(p[1] for p in plan), size))
     data_src = opt.get('--bytes-from', src)
     if data_src != src and os.path.getsize(data_src) != size: die('%s is %d bytes, %s is %d' % (data_src, os.path.getsize(data_src), a[0], size))
-    fd = os.open(data_src, os.O_RDONLY); fcntl.fcntl(fd, F_NOCACHE, 1)
+    def reopen():
+        f = os.open(data_src, os.O_RDONLY); fcntl.fcntl(f, F_NOCACHE, 1); return f
+    fd = reopen()
     out = open(opt['--out'], 'wb', buffering=0) if '--out' in opt else sys.stdout.buffer
     stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0, proven_by_download=0,
-                 holes=0, retried=0, relayouts=[], mismatches=[], bytes_written=0, started=time.strftime('%F %T'))
-    t0 = time.time(); last = t0; piece_no = -1; relaid = {}
+                 holes=0, retried=0, relayouts=[], mismatches=[], waits=[], bytes_written=0, started=time.strftime('%F %T'))
+    t0 = time.time(); last = t0; piece_no = -1; relaid = {}; patience = Patience(stats)
     try:
         while piece_no + 1 < len(plan):
             piece_no += 1; foff, ln, key, boff, osz = plan[piece_no]
-            if key is None:
-                data = os.pread(fd, ln, foff)
-                if data != bytes(len(data)): stats['mismatches'].append(dict(offset=foff, length=ln, reason='hole not zero')); break
-                out.write(data); stats['holes'] += 1; stats['bytes_written'] += ln; continue
-            whole = boff == 0 and ln == osz
-            want = truth.sha1(key) if whole else None; ref = None; how = 'listing'
-            if want is None:
-                ref = truth.local('raw', key, osz); how = 'cache'
-                if ref is not None and truth.sha1(key) not in (None, hashlib.sha1(ref).hexdigest()): ref = None
-                if ref is None and truth.sha1(key) is None: ref = truth.local('rawstaging', key, osz); how = 'staging'
-                if ref is None and truth.sha1(key): ref = truth.fetch(key, osz); how = 'download'
-                if ref is None:
-                    # the layout may be older than the chunk: JuiceFS compacts a chunk when it is read. Read this chunk's
-                    # layout again; if it changed, prove the rest of the chunk from it.
-                    ci = foff // CHUNK; cend = min(size, (ci + 1) * CHUNK)
-                    rest = [p for p in pieces(from_offset(layout(r, ino, size, [ci]), foff), bs)]
-                    old = [p for p in plan[piece_no:] if p[0] < cend]
-                    if relaid.get(ci, 0) < RELAYOUTS and rest != old and sum(p[1] for p in rest) == cend - foff:
-                        relaid[ci] = relaid.get(ci, 0) + 1
-                        stats['relayouts'].append(dict(offset=foff, chunk=ci, gone=key, now=rest[0][2], at=time.strftime('%F %T')))
-                        print('checked_read: %s is gone; chunk %d was rewritten (compacted) since its layout was read: proving the rest of it from %s' % (
-                            key, ci, rest[0][2]), file=sys.stderr, flush=True)
-                        for p in rest:
-                            if p[2]: truth.forget(p[2])
-                        plan[piece_no:piece_no + len(old)] = rest; piece_no -= 1; continue
-                    stats['mismatches'].append(dict(offset=foff, length=ln, key=key, reason='no listed SHA-1 and no local copy to compare with' + (
-                        ' (the chunk\'s layout, read again, still names it)' if rest == old else ' (the chunk\'s layout kept changing)')))
+            try:
+                if key is None:
+                    data = pread_checked(fd, ln, foff, piece_no)
+                    if data != bytes(len(data)): stats['mismatches'].append(dict(offset=foff, length=ln, reason='hole not zero')); break
+                    out.write(data); stats['holes'] += 1; stats['bytes_written'] += ln; patience.went_through(); continue
+                whole = boff == 0 and ln == osz
+                want = truth.sha1(key) if whole else None; ref = None; how = 'listing'
+                if want is None:
+                    ref = truth.local('raw', key, osz); how = 'cache'
+                    if ref is not None and truth.sha1(key) not in (None, hashlib.sha1(ref).hexdigest()): ref = None
+                    if ref is None and truth.sha1(key) is None: ref = truth.local('rawstaging', key, osz); how = 'staging'
+                    if ref is None and truth.sha1(key): ref = truth.fetch(key, osz); how = 'download'
+                    if ref is None:
+                        # the layout may be older than the chunk: JuiceFS compacts a chunk when it is read. Read this chunk's
+                        # layout again; if it changed, prove the rest of the chunk from it.
+                        ci = foff // CHUNK; cend = min(size, (ci + 1) * CHUNK)
+                        rest = [p for p in pieces(from_offset(layout(r, ino, size, [ci]), foff), bs)]
+                        old = [p for p in plan[piece_no:] if p[0] < cend]
+                        if relaid.get(ci, 0) < RELAYOUTS and rest != old and sum(p[1] for p in rest) == cend - foff:
+                            relaid[ci] = relaid.get(ci, 0) + 1
+                            stats['relayouts'].append(dict(offset=foff, chunk=ci, gone=key, now=rest[0][2], at=time.strftime('%F %T')))
+                            print('checked_read: %s is gone; chunk %d was rewritten (compacted) since its layout was read: proving the rest of it from %s' % (
+                                key, ci, rest[0][2]), file=sys.stderr, flush=True)
+                            for p in rest:
+                                if p[2]: truth.forget(p[2])
+                            plan[piece_no:piece_no + len(old)] = rest; piece_no -= 1; continue
+                        stats['mismatches'].append(dict(offset=foff, length=ln, key=key, reason='no listed SHA-1 and no local copy to compare with' + (
+                            ' (the chunk\'s layout, read again, still names it)' if rest == old else ' (the chunk\'s layout kept changing)')))
+                        break
+                ok = False
+                for attempt in range(4):
+                    data = pread_checked(fd, ln, foff, piece_no)
+                    if FLIP and FLIP[0] == piece_no and attempt < FLIP[1]: data = bytes([data[0] ^ 0xFF]) + data[1:]   # test hook only
+                    good = len(data) == ln and (hashlib.sha1(data).hexdigest() == want if want else data == ref[boff:boff + ln])
+                    if good: ok = True; break
+                    stats['mismatches'].append(dict(offset=foff, length=ln, key=key, attempt=attempt + 1, got_sha1=hashlib.sha1(data).hexdigest(),
+                                                    want_sha1=want, at=time.strftime('%F %T')))
+                    print('checked_read: MISMATCH at offset %d (%s), attempt %d' % (foff, key, attempt + 1), file=sys.stderr, flush=True)
+                    stats['retried'] += 1; time.sleep(1)
+                if not ok: break
+                stats['proven_by_' + how] += 1
+                out.write(data); stats['bytes_written'] += ln; patience.went_through()
+                if time.time() - last >= 30:
+                    last = time.time(); print('checked_read: %.1f of %.1f GB proven, %.1f MB/s' % (stats['bytes_written'] / 1e9, size / 1e9, stats['bytes_written'] / 1e6 / (last - t0)), file=sys.stderr, flush=True)
+            except Stalled as e:
+                # the volume or the store did not answer: close the file (JuiceFS repeats a handle's error until the handle
+                # has been idle), wait, reopen, and try the same piece again; give up after GIVE_UP_S without progress
+                if fd is not None: os.close(fd); fd = None
+                while True:
+                    if not patience.wait(foff, str(e)): break
+                    try: fd = reopen(); break
+                    except OSError as oe: e = Stalled('reopening failed: %s' % oe)
+                if fd is None:
+                    stats['mismatches'].append(dict(offset=foff, reason='%s; nothing went through for %.0f s' % (e, GIVE_UP_S)))
+                    print('checked_read: READ FAILED at offset %d: %s; gave up after %.0f s without progress' % (foff, e, GIVE_UP_S), file=sys.stderr, flush=True)
                     break
-            ok = False
-            for attempt in range(4):
-                data = os.pread(fd, ln, foff)
-                if FLIP and FLIP[0] == piece_no and attempt < FLIP[1]: data = bytes([data[0] ^ 0xFF]) + data[1:]   # test hook only
-                good = len(data) == ln and (hashlib.sha1(data).hexdigest() == want if want else data == ref[boff:boff + ln])
-                if good: ok = True; break
-                stats['mismatches'].append(dict(offset=foff, length=ln, key=key, attempt=attempt + 1, got_sha1=hashlib.sha1(data).hexdigest(),
-                                                want_sha1=want, at=time.strftime('%F %T')))
-                print('checked_read: MISMATCH at offset %d (%s), attempt %d' % (foff, key, attempt + 1), file=sys.stderr, flush=True)
-                stats['retried'] += 1; time.sleep(1)
-            if not ok: break
-            stats['proven_by_' + how] += 1
-            out.write(data); stats['bytes_written'] += ln
-            if time.time() - last >= 30:
-                last = time.time(); print('checked_read: %.1f of %.1f GB proven, %.1f MB/s' % (stats['bytes_written'] / 1e9, size / 1e9, stats['bytes_written'] / 1e6 / (last - t0)), file=sys.stderr, flush=True)
+                piece_no -= 1; continue
     except BrokenPipeError: stats['reader_closed'] = True
-    except OSError as e:                                     # the source went away (a disk unplugged, the volume unreachable)
-        stats['mismatches'].append(dict(offset=stats['bytes_written'], reason='read failed: %s' % e))
-        print('checked_read: READ FAILED at offset %d: %s' % (stats['bytes_written'], e), file=sys.stderr, flush=True)
     finally:
-        os.close(fd)
+        if fd is not None: os.close(fd)
         try: out.close()
         except BrokenPipeError: pass
     stats['complete'] = stats['bytes_written'] == size and not any(m.get('attempt') == 4 or 'reason' in m for m in stats['mismatches'])
