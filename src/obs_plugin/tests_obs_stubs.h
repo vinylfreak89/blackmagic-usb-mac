@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 extern const struct obs_source_info *stub_info;       /* registered by obs_module_load */
 extern _Atomic int stub_started_signals, stub_ended_signals;
+extern _Atomic uint64_t stub_frames_at_start;   /* stub_video_frames when the last media_started signal came */
 extern _Atomic uint64_t stub_video_frames;
 extern _Atomic uint64_t stub_blank_calls;
 extern _Atomic uint64_t stub_frame_errors;   /* frames handed to OBS not in the expected I210 layout/values */

@@ -72,6 +72,39 @@ int main(void){
             check(what, r.noise[0][k], cases[c][0][k], 0.08);
         }
     }
+    // A noisy off-air tape: 8 codes of luma noise (over the 6 that alone mean snow), fresh in every frame, on a picture
+    // that persists. Given the frame before, it is programme and reads; without it, it is taken for snow as before.
+    {
+        const double noisy[2][3] = { {8.0, 4.0, 4.0}, {8.0, 4.0, 4.0} };
+        uint8_t *g = malloc((size_t)FW * FH * 2);
+        tm_window w; tm_window_reset(&w); int refused = 0;
+        make_frame(g, noisy);
+        for (int i = 0; i < TM_WINDOW; i++){
+            make_frame(f, noisy);
+            tm_frame m; tm_measure_uyvy_pair(f, g, FW * 2, &m);
+            if (!m.valid){ printf("noisy programme frame %d: not valid (why %d, persist %.3f)\n", i, m.why, m.persist); fails++; }
+            tm_window_add(&w, &m); memcpy(g, f, (size_t)FW * FH * 2);
+            tm_frame alone; tm_measure_uyvy(f, FW * 2, &alone); refused += !alone.valid && alone.why == TM_SNOW;
+        }
+        tm_reading r; tm_window_read(&w, &r);
+        printf("noisy programme with the frame before (%u frames):\n", r.frames);
+        check("Y ratio field 2 / field 1", r.ratio[0], 1.0, 0.03);
+        check("Y noise field 1 (codes)", r.noise[0][0], 8.0, 0.08);
+        printf("  without the frame before: %d of %d refused as snow (want all)\n", refused, TM_WINDOW);
+        if (refused != TM_WINDOW) fails++;
+        // Snow: a new random picture every frame, given the frame before: refused as snow.
+        int snow = 0;
+        for (int i = 0; i < TM_WINDOW; i++){
+            for (size_t k = 0; k < (size_t)FW * FH * 2; k++) f[k] = clip(k & 1 ? 120 + 25 * gauss() : 128 + 12 * gauss());
+            tm_frame m; tm_measure_uyvy_pair(f, g, FW * 2, &m);
+            if (!m.valid && m.why == TM_SNOW) snow++;
+            else printf("  snow frame %d: valid=%d why=%d persist %.3f\n", i, m.valid, m.why, m.persist);
+            memcpy(g, f, (size_t)FW * FH * 2);
+        }
+        printf("snow with the frame before: %d of %d refused as snow (want all)\n", snow, TM_WINDOW);
+        if (snow != TM_WINDOW) fails++;
+        free(g);
+    }
     // An all-black frame (nothing between the clipping gates) must say "can't tell", not "balanced".
     memset(f, 16, (size_t)FW * FH * 2);
     tm_frame m; tm_measure_uyvy(f, FW * 2, &m);
