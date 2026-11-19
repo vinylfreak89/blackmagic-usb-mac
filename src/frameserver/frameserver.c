@@ -686,6 +686,8 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
      * adjacency, even though the extended numbers alone look consecutive. */
     if(it->obs.transport_flags&UNIT_FLAG_COUNTER_DISCONTINUITY)geometry_flush(f);
     f->geometry_epoch=it->obs.epoch;f->geometry_have_epoch=1;
+    /* after every flush above (an earlier unit's frame is out), before this unit's own frame */
+    if(f->cfg.on_unit)f->cfg.on_unit(f->cfg.unit_ctx,&it->obs,it->preceding_ring_drops!=0||it->drop==FS_DROP_POOL_FULL);
     if(!unit) {
         geometry_flush(f);
         if(it->drop==FS_DROP_POOL_FULL){atomic_fetch_add(&f->dropped_pool_full,1);f->st.exact_units++;f->st.discontinuity_calls++;}
@@ -835,6 +837,7 @@ static void repair_publish(frameserver *f, const fs_item *it, const repair_out *
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
         geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
+        if(f->cfg.on_unit)f->cfg.on_unit(f->cfg.unit_ctx,NULL,1);
         geometry_log(f,it,NULL,0,"RingFullTail",NULL,NULL);return;
     }
     repair_out ro; repair_prepare(f, (fs_item *)it, &ro);

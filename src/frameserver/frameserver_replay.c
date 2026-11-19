@@ -73,6 +73,15 @@ static void dump_audio(void *c, const ap_block *b){
     if (g_log) fprintf(g_log, "A,%llu,%llu,%u,%u,%u,%llu,%lld\n", (unsigned long long)b->sample_ordinal, (unsigned long long)b->pts_num, b->pts_den,
                        b->n_frames, b->flags, (unsigned long long)b->last_resync_counter_ext, (long long)b->correlation_residual);
 }
+/* The timing log's U lines: every unit the worker took (counter, format, kind 0 NTSC / 1 no-signal 0x0800 / 2 other format
+ * / 3 unframed / -1 units lost at the ring's end, transport 0 complete / 1 hole / 2 short / 3 unframed, host loss before or of
+ * it 0/1), each before that unit's own V line: the relay reads why no frame came between two frames. */
+static void log_unit(void *ctx, const unit_video_observation *u, int host_lost){
+    (void)ctx;
+    if (!g_log) return;
+    if (!u) fprintf(g_log, "U,0,0,-1,1,1\n");
+    else fprintf(g_log, "U,%llu,%u,%d,%d,%d\n", (unsigned long long)u->counter_extended, u->format, (int)u->kind, (int)u->transport, host_lost ? 1 : 0);
+}
 /* FS_REPAIR: one line per unit the Shuttle sent at the wrong length, put back or declined (unit_repair.h). */
 static void on_repair(void *ctx, const unit_video_observation *u, const ur_result *r){
     (void)ctx;
@@ -138,6 +147,7 @@ int main(int argc, char **argv){
     { const char *lim=getenv("FS_HANDOFF_LOG_MS"); if(lim&&*lim) g_handoff_limit_ns=(uint64_t)(atof(lim)*1e6); }
     if (g_vdump || g_log || g_limit || g_handoff_limit_ns) cfg.sink.on_frame = dump_frame;
     if (g_adump || g_log) cfg.audio_sink.on_block = dump_audio;
+    if (g_log) cfg.on_unit = log_unit;
     frameserver *f = NULL;
     { const char *dg=getenv("FS_REPLAY_DIAG"); cfg.capture.replay_diag=dg&&*dg&&strcmp(dg,"0"); }   /* capture-core stall diagnosis to stderr */
     if (fs_open(&f, &cfg) != 0){ fprintf(stderr, "open failed\n"); return 1; }
