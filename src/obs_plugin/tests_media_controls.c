@@ -100,11 +100,14 @@ int main(int argc, char **argv){
     I->media_set_time(d, 2500); I->media_set_time(d, 3000);
     WAIT(I->media_get_time(d) == 3000, 5, "the pending seek to show");
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_PAUSED, "a seek while paused unpaused the replay");
-    int started = stub_started_signals; f0 = stub_video_frames;
+    /* Counted from the new session's start signal: the paused session's frames still in its pipeline reach OBS
+     * while the play stops it (fs_stop drains them), before the signal. Counted from the press, a loaded machine
+     * added up to 17 of them to this run's 22 (2026-11-19). */
+    int started = stub_started_signals;
     I->media_play_pause(d, false);
     WAIT(stub_started_signals == started + 1, 10, "play to start at the pending seek");
     WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_ENDED, 20, "the run from 3,000 ms to end");
-    seeked = stub_video_frames - f0;
+    seeked = stub_video_frames - stub_frames_at_start;
     CHECK(seeked > 10 && seeked < 35, "the run from 3,000 ms published %llu frames (from about unit 89-95)", (unsigned long long)seeked);
 
     /* 4b. a record press whose output fails to start: RECORDING_STARTING stops the replay (actions in that
@@ -354,7 +357,9 @@ int main(int argc, char **argv){
 
     /* 6c. unit repair follows registration: off -> on. The repair fixture has 121 picture units, every 4th 224 bytes
      * short; "Search picture" is off here, so with repair off only the 91 whole units reach OBS and with it on the 30
-     * short ones come back as whole frames too. */
+     * short ones come back as whole frames too, except those skipped: live, a repair waits for nothing, so a unit that
+     * finds the four raw slots busy is not tried (counted). The replay runs faster than real time, so a slow worker
+     * (ThreadSanitizer, or a loaded machine: 11-17 of 30 skipped at load average 20-50, 2026-11-19) skips some. */
     if (argc > 2){
         static const char *L_REP_ON = "unit repair ON", *L_REP_OFF = "unit repair off";
         stub_plain_content = 0;   /* this fixture carries picture: format and planes are still checked */
@@ -376,14 +381,13 @@ int main(int argc, char **argv){
                   "registration %s: stats %s put back %llu declined %llu skipped %llu refused %llu, %llu frames to OBS",
                   reg ? "on" : "off", parsed ? "parsed:" : "NOT PARSED", put, dec, skip, refused, (unsigned long long)got);
             int n = stub_expect_end(reg ? L_REP_OFF : L_REP_ON);
-#if defined(__has_feature) && __has_feature(thread_sanitizer)
-            /* Live, a repair waits for nothing: TSan's slow worker keeps the four raw slots busy and some are skipped (counted). */
-            int frames_ok = reg ? got == 91u : got > 91u && got <= 121u;
-#else
-            int frames_ok = got == (reg ? 91u : 121u);
-#endif
-            CHECK(n == 1 && frames_ok, "registration %s: %d \"%s\" start lines (want 1), %llu frames to OBS (want %s)",
-                  reg ? "on" : "off", n, reg ? L_REP_OFF : L_REP_ON, (unsigned long long)got, reg ? "91" : "121; under TSan 92-121");
+            /* Only the split between put back and skipped depends on load. Declining is decided by the unit's bytes and its
+             * predecessor (this fixture's 121 units never fill the unit pool, so every predecessor is kept), and the
+             * publisher never refuses here (the plugin copies each frame and holds no surface): both stay 0. */
+            int frames_ok = reg ? got == 91u : got > 91u && dec == 0 && refused == 0;
+            CHECK(n == 1 && frames_ok, "registration %s: %d \"%s\" start lines (want 1), %llu frames to OBS, declined %llu, refused %llu (want %s)",
+                  reg ? "on" : "off", n, reg ? L_REP_OFF : L_REP_ON, (unsigned long long)got, dec, refused,
+                  reg ? "91 frames" : "92-121 frames, none declined or refused: every short unit put back or skipped");
         }
         stub_registration(1); stub_plain_content = 1;
     }
