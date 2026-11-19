@@ -5,6 +5,8 @@ slots (59.94p from 29.97 slots; one fewer when the last field has no partner), a
 takes OUT's name. An existing OUT (--replace) is deleted first; on the JuiceFS share the result is checked in JuiceMount's own
 directory, by inode and size, because JuiceMount keeps a deleted path's size mark (2026-10-21). Prints RESULT."""
 import json, os, subprocess, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'juicefs'))
+from share_refresh import wait_sizes
 D, PART, OUT = sys.argv[1:4]
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
 def truth(p):
@@ -13,8 +15,10 @@ def truth(p):
 def refuse(m): print('RESULT REFUSED: ' + m); sys.exit(1)
 
 # The share's size is JuiceMount's record; JuiceFS's is where the bytes are. They disagreed once for a whole render written to a
-# just-deleted path (2026-11-18: 37 GB listed, 0 held), and every read of it was an I/O error.
+# just-deleted path (2026-11-18: 37 GB listed, 0 held), and every read of it was an I/O error. A share that lists LESS than
+# JuiceFS holds is only behind (share_refresh.py), and is brought up to date first.
 held = os.stat(truth(PART)).st_size; listed = os.path.getsize(PART)
+if held != listed and PART != truth(PART): wait_sizes({PART: held}, timeout=60); listed = os.path.getsize(PART)
 if held != listed: refuse('the share lists %d bytes for %s but JuiceFS holds %d: the render did not reach the volume' % (listed, PART, held))
 slots = json.load(open(os.path.join(D, 'schedule.json')))['slots']
 au = json.load(open(os.path.join(D, 'audio.json')))
