@@ -49,6 +49,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(REPO, 'experiments')); sys.path.insert(0, os.path.join(HERE, 'juicefs'))
 import tpc_slice as ts
 from in_use import open_by_programs
+from share_refresh import wait_sizes
 
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
 REPLAY = os.path.join(REPO, 'src/frameserver/frameserver_replay')
@@ -351,13 +352,10 @@ def after_cut(tpc, csvp, P, W, st0, last4):
         if os.stat(truth(x)).st_mtime_ns != st0[x].st_mtime_ns: refuse_after('the date of %s did not take' % x)
     say('dates of the capture and sidecar set back to the originals\'')
     CUT['state'] = 'both files are cut, read back, proved and dated'
-    if on_share(tpc):          # the Mac's view of the share can show the old size for a while; a render must not read that
-        t0 = time.monotonic()
-        while time.monotonic() - t0 < 600:
-            if os.path.getsize(tpc) == c and os.path.getsize(csvp) == len(P['newcsv']): break
-            time.sleep(5)
-        else: refuse_after('the share still shows %d / %d bytes after 10 minutes (JuiceMount shows the new sizes); render later' % (os.path.getsize(tpc), os.path.getsize(csvp)))
-        say('the share shows the new sizes')
+    if on_share(tpc):          # the share keeps listing the old sizes (JuiceMount's cache and the Mac's); a render must not read that
+        t0 = time.monotonic(); bad = wait_sizes({tpc: c, csvp: len(P['newcsv'])}, timeout=120)
+        if bad: refuse_after('the share still shows %d / %d bytes after 2 minutes (JuiceMount shows the new sizes); render later' % (os.path.getsize(tpc), os.path.getsize(csvp)))
+        say('the share shows the new sizes (%.1f s)' % (time.monotonic() - t0))
 
 
 def main():

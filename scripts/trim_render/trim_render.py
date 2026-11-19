@@ -19,6 +19,8 @@ own index, and at every seam the first frames and audio of each stretch against 
 """
 import json, math, os, re, shutil, signal, subprocess, sys, tempfile, time
 from fractions import Fraction
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'juicefs'))
+from share_refresh import wait_sizes
 
 SHARE = '/Volumes/zpool'; FUSE = os.path.expanduser('~/.juicemount/fuse-internal')
 SR = 48000
@@ -174,8 +176,9 @@ def main():
                 mux.kill(); mux.wait(); die('reading the stretch %s-%s failed: %s' % (hms(fa, fd), hms(fb, fd), r.stderr.strip()[-400:]))
         if mux.wait() != 0: die('writing the copy failed: %s' % open(os.path.join(work, 'mux.log')).read()[-400:])
         check(master, part, keep, samples, fd, vstart, astart, total_f, total_s)
-        size = os.path.getsize(part); ino = os.stat(truth(part)).st_ino
         t = os.stat(truth(part))
+        if part != truth(part) and os.path.getsize(part) != t.st_size: wait_sizes({part: t.st_size}, timeout=60)   # a share only behind
+        size = os.path.getsize(part); ino = t.st_ino
         if t.st_size != size: die('the copy is %d bytes in JuiceMount\'s view, %d in the Mac\'s' % (t.st_size, size))
         if os.path.exists(out) or os.path.exists(truth(out)): die('%s appeared while the copy was being written; nothing was renamed' % out)
         os.rename(part, out); made = False                      # the name is checked just before; rename replaces nothing else
