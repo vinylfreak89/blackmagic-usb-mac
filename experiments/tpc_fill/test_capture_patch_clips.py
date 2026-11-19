@@ -32,6 +32,10 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            after the glitch does
   glitch-partial  two glitches 150 units apart (one stretch), a clip that ends 60 units after the first: the first is
            filled, the second left exactly as it was (the owner recaptures what he sees, not the tool's stretches)
+  glitch-step  the two glitches, a clip whose own counters step by one between them (2026-11-19: a clip at -23672 before
+           a point of a stretch and -23671 after it): each glitch filled from the clip at its own offset (clusters.py)
+  glitch-clip-damaged  the two glitches, a clip carrying the same damage at the second: the first is filled, the second
+           left exactly as it was (the clip has no whole units there to give)
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -157,6 +161,16 @@ def window(src, S, name, a_frac, b_frac=None, by=1000):
     raise_counters(tp + '.part', tp, by); os.remove(tp + '.part')
     sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
 
+def step_clip(src, S, name, at_unit, by=1000):
+    """a recapture whose own counters step by one at whole unit at_unit (index): raised by `by` before it, by+1 from it on"""
+    import renum
+    from region import load
+    b = open(src, 'rb').read(); whole = [c for o, c, fm, ok in load(src, 0, len(b)).marks if ok and fm == 0xe801]
+    at = min(p for p, c, _ in renum.items(b) if c == whole[at_unit])
+    tp = os.path.join(S, name + '.mov.raw.tpc'); open(tp + '.step', 'wb').write(renum.renumber(b, [(at, -1)])); del b
+    raise_counters(tp + '.step', tp, by); os.remove(tp + '.step')
+    sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
+
 def freeze(src, dst, i0, i1):
     """src with the picture of whole units i0+1..i1 replaced by unit i0's (headers and counters kept): a still passage"""
     from region import load, UNIT
@@ -264,6 +278,16 @@ def main():
     got_t, _, _ = units(T); left = {c: got_t.get(c) for c in good if got_t.get(c) != good[c] and ((c - second[0]) % 65536) < 10}
     assert left, 'the second glitch should damage units'
     run_case('glitch-partial', S, T, [window(src, S, 'clipQ', 0.0, 0.5 + 60 / nwhole)], good, gL, gR, dict(os.environ), left=left)
+    # glitch-step: the two glitches, a clip whose counters step by one half-way between them
+    S = os.path.join(S0, 'glitch-step'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc'); T1 = os.path.join(S, 'one.tpc')
+    glitch(src, T1); glitch(T1, T, 0.5 + 150 / nwhole); os.remove(T1); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('glitch-step', S, T, [step_clip(src, S, 'clipK', int(nwhole * 0.5) + 75)], good, gL, gR, dict(os.environ))
+    # glitch-clip-damaged: the two glitches, a clip with the same damage at the second
+    S = os.path.join(S0, 'glitch-clip-damaged'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc'); T1 = os.path.join(S, 'one.tpc')
+    glitch(src, T1); second = glitch(T1, T, 0.5 + 150 / nwhole); os.remove(T1); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    C1 = os.path.join(S, 'cd.tpc'); glitch(src, C1, 0.5 + 150 / nwhole)
+    got_t, _, _ = units(T); left = {c: got_t.get(c) for c in good if got_t.get(c) != good[c] and ((c - second[0]) % 65536) < 10}
+    run_case('glitch-clip-damaged', S, T, [clip(C1, S, 'clipZ')], good, gL, gR, dict(os.environ), left=left); os.remove(C1)
     # run-ahead: the Shuttle's counters run ahead across a glitch, one clip
     S = os.path.join(S0, 'run-ahead'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra')

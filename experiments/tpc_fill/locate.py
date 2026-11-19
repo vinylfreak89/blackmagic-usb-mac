@@ -15,12 +15,18 @@
 # glitch (or a gap whose stretch also holds units the Shuttle flagged) the offset after may be smaller, by at most
 # RUN_AHEAD_MAX: the Shuttle losing lock counts units the tape never had (2026-10-26: 28 counts ahead across 18 units), and
 # the builder checks the difference against the glitch's sound.
-# Every clip must land somewhere, no place may get two clips, and every disconnect and every gap needs one (a patched capture
-# with a hole left in it fails the replay check at the end, so a missing clip is named before any work is done); a glitch
-# does not.
-import os
+# Every clip must land somewhere, no place but a glitch may get two clips, and every disconnect and every gap needs one (a
+# patched capture with a hole left in it fails the replay check at the end, so a missing clip is named before any work is
+# done); a glitch does not.
+# A glitch is placed cluster by cluster (clusters.py): a stretch of glitches can hold dozens, and the capture and the clip
+# can each slip a field at glitches of their own, so one offset for the stretch placed none of a real one (2026-11-19). Every
+# clip whose sound is in the stretch is placed at each cluster from the picture either side of it, searching around the
+# offsets the stretch's line-ups and its sliding window found; the planner builds each cluster from the first clip, in the
+# order given (the tape's), that has it placed, and leaves the rest as they are.
+import hashlib, os
 import joins as J
 import slide as SL
+import clusters as CL
 from joined import FullFile
 from region import load, UNIT
 from stretches import event_groups, stretch_range
@@ -69,6 +75,8 @@ def places(parts, log):
                 if not hs:                                   # no picture unit missing: where the sound's resyncs break
                     rc = [c for _, _, c in R.resyncs]; hs = [(x, y) for x, y in zip(rc, rc[1:]) if (y - x) % 65536 != 1]
                 if not hs: raise ValueError('no missing picture unit or audio resync around sidecar rows %d-%d' % (a, b))
+                log('  rows %d-%d: bytes %d-%d of %d (%d rows), region from %d, %d bytes, sha1 %s, %d whole units, counters %d-%d' % (
+                    a, b, lo, hi, size, nrows, R.p0, len(R.b), hashlib.sha1(R.b).hexdigest()[:12], len(w), hs[0][0] % 65536, hs[-1][1] % 65536))
                 return R, hs[0][0] % 65536, hs[-1][1] % 65536
             out.append(dict(kind='gap', part=k, rows=[a, b], optional=glitch, run_ahead=flagged, load=gap,
                             label='the %s at %d:%02d of %s' % ('glitch' if glitch else 'gap', a / 29.97 // 60, a / 29.97 % 60, os.path.basename(tp))))
@@ -118,6 +126,28 @@ def locate(parts, donors, log):
         tf = None
         for D in donors:
             df, ch = feats[D]; quiet = []
+            if p.get('optional'):
+                centers = set(); decided = set()
+                for c_end, aft in ((before, False), (after, True)):
+                    if c_end is None: continue
+                    try: k, o, _ = J.line_up_before(R, c_end, df, ch, quiet.append, after=aft); centers.add(o); decided.add((k, o))
+                    except ValueError: pass
+                if SL.sounds_here(R, ch):
+                    if tf is None: tf = J.fields(R)
+                    offs = []; segs = SL.segments(R, df, ch, quiet.append, tf, sound_offsets=offs)
+                    centers |= set(offs) | {g['off'] for g in segs}; decided |= {(g['kind'], g['off']) for g in segs}
+                if not centers: log('%s: not %s (neither the line-up nor the sound places it here)' % (p['label'], os.path.basename(D))); continue
+                if tf is None: tf = J.fields(R)
+                cls = CL.place(R, tf, df, sorted(centers), decided); ok = [c for c in cls if c['before']]
+                if not ok:
+                    log('%s: not %s (offsets %s searched; %s)' % (p['label'], os.path.basename(D), sorted(centers),
+                        '; '.join('%d-%d: %s' % (c['lo'], c['hi'], c['why']) for c in cls[:4]) or 'it reaches none of the clusters')); continue
+                found.setdefault(i, []).append(dict(donor=D, clusters=cls, span=SL.donor_span(df)))
+                steps = sorted({(c['before'][1], c['after'][1]) for c in ok})
+                log('%s: %s placed at %d of the %d clusters it reaches (offsets %s)' % (p['label'], os.path.basename(D), len(ok), len(cls),
+                    ', '.join('%+d' % a if a == b else '%+d to %+d' % (a, b) for a, b in steps)))
+                for c in cls: quiet.append('  cluster %d-%d: %s' % (c['lo'], c['hi'], c['why']))
+                continue
             try:
                 kind, off, basis = J.line_up_before(R, before, df, ch, quiet.append, sound_alone=p['kind'] == 'end')
                 off_after = None
@@ -139,8 +169,8 @@ def locate(parts, donors, log):
                 '; after it %+d: the capture\'s counters ran %d ahead' % (off_after, (off - off_after) % 65536) if off_after is not None else ''))
         del R
     for i, ds in found.items():
-        if len(ds) > 1: raise ValueError('%s is covered by more than one clip: %s; give one' % (pl[i]['label'], ', '.join(os.path.basename(d[0]) for d in ds)))
-    used = {d[0] for ds in found.values() for d in ds}
+        if len(ds) > 1 and not pl[i].get('optional'): raise ValueError('%s is covered by more than one clip: %s; give one' % (pl[i]['label'], ', '.join(os.path.basename(d[0]) for d in ds)))
+    used = {d['donor'] if isinstance(d, dict) else d[0] for ds in found.values() for d in ds}
     for D in donors:
         if D not in used: raise ValueError('%s lines up with no disconnect, gap, glitch or the end of the capture' % os.path.basename(D))
     joins = []
@@ -151,9 +181,26 @@ def locate(parts, donors, log):
     end = [found[i][0][0] for i, p in enumerate(pl) if p['kind'] == 'end' and i in found]
     gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3], off_after=found[i][0][4],
                  donor_span=found[i][0][5])
+            if not p.get('optional') else cluster_map(found[i], p)
             for i, p in enumerate(pl) if p['kind'] == 'gap' and i in found]
     left = [p['label'] for i, p in enumerate(pl) if p['kind'] == 'gap' and not p.get('optional') and i not in found]
     if left: raise ValueError('%s %s no clip: the patched capture would still have %s; add a recapture across %s' % (
         '; '.join(left), 'has' if len(left) == 1 else 'have', 'that hole' if len(left) == 1 else 'those holes', 'it' if len(left) == 1 else 'each'))
-    return dict(joins=joins, append=end[0] if end else None, gaps=gaps,
-                placed={os.path.basename(d[0]): pl[i]['label'] for i, ds in found.items() for d in ds})
+    placed = {}
+    for i, ds in found.items():
+        for d in ds: placed.setdefault(os.path.basename(d['donor'] if isinstance(d, dict) else d[0]), []).append(pl[i]['label'])
+    return dict(joins=joins, append=end[0] if end else None, gaps=gaps, placed={k: '; '.join(v) for k, v in placed.items()})
+
+def cluster_map(ds, p):
+    """a glitch place's clips, placed cluster by cluster, as the planner takes them (plan.py FILL_CLUSTERS): one entry per
+    cluster with every clip's placement of it, in the clips' order"""
+    cmap = dict(clips=[dict(donor=d['donor'], span=list(d['span'])) for d in ds], clusters=[])
+    for k, d in enumerate(ds):
+        for c in d['clusters']:
+            m = [x for x in cmap['clusters'] if set(x['gaps']) & set(c['gaps'])]
+            if not m: m = [dict(lo=c['lo'], hi=c['hi'], gaps=list(c['gaps']), choices=[])]; cmap['clusters'].append(m[0])
+            m[0]['gaps'] = sorted(set(m[0]['gaps']) | set(c['gaps']))
+            m[0]['choices'].append(dict(clip=k, before=c['before'], after=c['after'], why=c['why']))
+    first = next((d, c) for d in ds for c in d['clusters'] if c['before'])
+    return dict(part=p['part'], rows=p['rows'], donor=first[0]['donor'], pairing=first[1]['before'][0], off=first[1]['before'][1],
+                basis='cluster by cluster', off_after=None, donor_span=first[0]['span'], cmap=cmap)

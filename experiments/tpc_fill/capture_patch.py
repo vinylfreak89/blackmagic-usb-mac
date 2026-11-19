@@ -450,13 +450,13 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
         lu = stage(W, 'lineup-%d' % g, dict(inputs, donor=D), lambda: lineup(VT, D, groups[g], per))
         log('%s: the event at %d:%02d, donor %s: pairing %s, FILL_OFF %d' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), lu['pairing'], lu['off']))
-        events.append((g, D, lu['pairing'], lu['off'], None, None, None, None))
+        events.append((g, D, lu['pairing'], lu['off'], None, None, None, None, None))
     for a, D, pairing, off, off_after in placed:
         t = parse_time(a); g = min(range(len(groups)), key=lambda i: abs(groups[i][0] / 29.97 - t)) if groups else None
         if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
         log('%s: the event at %d:%02d, donor %s placed beforehand: pairing %s, FILL_OFF %d%s' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), pairing, off,
             ', FILL_OFF_AFTER %d (a glitch whose counters ran ahead)' % off_after if off_after is not None else ''))
-        events.append((g, D, pairing, off, None, None, off_after, None))
+        events.append((g, D, pairing, off, None, None, off_after, None, None))
     by_picture = set()
     for k, D in enumerate(joins_d + ([append_d] if append_d else [])):
         r0 = part_rows[k + 1]
@@ -466,7 +466,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         # sound line-ups; 150/300 MB made the planner pass its 3 GB guard on a 195-unit hole (3.6 GB; 2.4 GB at 40/120)
         rng = (max(0, part_at[k + 1] - 40_000_000), min(size, part_at[k + 1] + 120_000_000))
         log('%s: the event at sidecar rows %d-%d, donor %s: pairing %s, FILL_OFF %d, read from byte %d' % ('append' if j.get('append') else 'join %d' % (k + 1), groups[g][0], groups[g][-1], os.path.basename(D), j['pairing'], off, rng[0]))
-        events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None, None, None))   # an append: where its seam is
+        events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None, None, None, None))   # an append: where its seam is
         if j.get('append') and str(j['basis']).startswith('picture'): by_picture.add(g)   # its unit is the picture's, not the sound's
     for gp in auto_gaps:                                 # gaps inside a part, placed by locate.py (offsets in the part's numbering)
         k = gp['part']; r0 = part_rows[k] + gp['rows'][0]
@@ -476,14 +476,25 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         off_after = ((gp['off_after'] - cd) + 32768) % 65536 - 32768 if gp.get('off_after') is not None else None
         log('gap at sidecar rows %d-%d, donor %s (lined up by %s): pairing %s, FILL_OFF %d%s' % (groups[g][0], groups[g][-1], os.path.basename(gp['donor']), gp['basis'], gp['pairing'], off,
             ', FILL_OFF_AFTER %d (a glitch whose counters ran ahead)' % off_after if off_after is not None else ''))
-        events.append((g, gp['donor'], gp['pairing'], off, None, None, off_after, gp.get('donor_span')))   # the clip's units: clusters outside them are left
+        cmap = None
+        if gp.get('cmap'):          # a glitch placed cluster by cluster: its counters and offsets moved into the joined numbering as above
+            cmap = dict(clips=gp['cmap']['clips'], clusters=[dict(x, lo=(x['lo'] + cd) % 65536, hi=(x['hi'] + cd) % 65536, gaps=[(c + cd) % 65536 for c in x['gaps']],
+                        choices=[dict(ch, before=[ch['before'][0], ch['before'][1] - cd] if ch['before'] else None, after=[ch['after'][0], ch['after'][1] - cd] if ch['after'] else None)
+                                 for ch in x['choices']]) for x in gp['cmap']['clusters']])
+        events.append((g, gp['donor'], gp['pairing'], off, None, None, off_after, gp.get('donor_span'), cmap))   # the clip's units: clusters outside them are left
     # events in one sidecar stretch are planned in one pass with one donor: merged when they share donor, pairing and offset
     # (a short part between a disconnect and the end), refused otherwise
-    merged = {}
-    for g, D, pairing, off, rng, app_at, off_after, span in events:
+    merged = {}; merged_gap = {}    # merged_gap: stretches whose glitches share the planner with a gap's (or join's) clip
+    for g, D, pairing, off, rng, app_at, off_after, span, cmap in events:
         if g in merged:
-            g0, D0, p0, o0, r0, a0, oa0, sp0 = merged[g]
+            g0, D0, p0, o0, r0, a0, oa0, sp0, cm0 = merged[g]
             span = span or sp0
+            if cmap and cm0: fail('two glitches placed cluster by cluster fall in one stretch of the sidecar (rows %d-%d)' % (groups[g][0], groups[g][-1]))
+            if cmap or cm0:          # a gap (or join) and glitches of one stretch: the gap's clip and offsets, the glitches' own clusters
+                if cmap: D, pairing, off, off_after = D0, p0, o0, oa0
+                cmap = cmap or cm0; span = sp0 if cmap is not cm0 else span; merged_gap[g] = True
+                merged[g] = (g, D, pairing, off, rng or r0, app_at if app_at is not None else a0, off_after, span, cmap)
+                log('the events at sidecar rows %d-%d: a gap and glitches placed cluster by cluster, planned together' % (groups[g][0], groups[g][-1])); continue
             # a gap and a run-ahead glitch of one clip: the gap at the glitch's offset before it or after it is planned with
             # the glitch (the builder takes the stretch's clusters in order: those after the glitch at the offset after)
             for (o1, x1), (o2, x2) in (((o0, oa0), (off, off_after)), ((off, off_after), (o0, oa0))):
@@ -495,16 +506,20 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             rng = (min(x[0] for x in rs), max(x[1] for x in rs))
             app_at = app_at if app_at is not None else a0
             log('the events at sidecar rows %d-%d share clip %s and its offset: planned together' % (groups[g][0], groups[g][-1], os.path.basename(D)))
-        merged[g] = (g, D, pairing, off, rng, app_at, off_after, span)
+        merged[g] = (g, D, pairing, off, rng, app_at, off_after, span, cmap)
     events = sorted(merged.values(), key=lambda e: e[0])          # in capture order: a run-ahead glitch renumbers what follows it
     FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
     # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
-        for g, D, pairing, off, rng, app_at, off_after, span in events:
+        for g, D, pairing, off, rng, app_at, off_after, span, cmap in events:
             env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
-            env.pop('FILL_OFF_AFTER', None); env.pop('FILL_APPEND_AT', None); env.pop('FILL_APPEND_BY_PICTURE', None); env.pop('FILL_DONOR_SPAN', None)
+            for k in ('FILL_OFF_AFTER', 'FILL_APPEND_AT', 'FILL_APPEND_BY_PICTURE', 'FILL_DONOR_SPAN', 'FILL_CLUSTERS', 'FILL_CLUSTERS_ONLY'): env.pop(k, None)
+            if cmap:
+                os.makedirs(work, exist_ok=True); cp = os.path.join(work, 'clusters-%d.json' % g); json.dump(cmap, open(cp, 'w'), indent=1)
+                env['FILL_CLUSTERS'] = cp
+                if not merged_gap.get(g): env['FILL_CLUSTERS_ONLY'] = '1'      # only glitches: a cluster no clip has placed is left
             if span: env['FILL_DONOR_SPAN'] = '%d,%d' % (span[0], span[1])
             if app_at is not None: env['FILL_APPEND_AT'] = str(app_at)
             if app_at is not None and g in by_picture: env['FILL_APPEND_BY_PICTURE'] = '1'
@@ -519,8 +534,22 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if not ents: fail('the planner found nothing to fill at the chosen events')
         bad = [e['name'] + ': ' + e.get('error', 'structure check failed') for e in ents if not e.get('filled') or not e.get('structure_ok')]
         if bad: fail('not every gap could be filled: %s' % '; '.join(bad))
-        return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=e['rep'].get('video_units_filled', []), counter_jump=e['rep'].get('counter_jump')) for e in ents])
+        for e in ents:
+            if e['rep'].get('clip'): log('%s: filled from %s (pairing %s, offset %+d%s), units %s' % (e['name'], e['rep']['clip'], e['rep']['offsets'][0], e['rep']['offsets'][1],
+                '' if e['rep']['offsets'][1] == e['rep']['offsets'][2] else ', %+d after it' % e['rep']['offsets'][2], e['rep'].get('video_units_filled')))
+        return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=e['rep'].get('video_units_filled', []), counter_jump=e['rep'].get('counter_jump'),
+                                                                                                             clip=e['rep'].get('clip')) for e in ents],
+                    left=[dict(name=e['name'], why=e['skipped']) for g, *_ in events for e in P.get(str(g), []) if e.get('skipped')])
     pl = stage(W, 'plan', dict(inputs, events=events), plan)
+    for x in pl.get('left', []): log('%s left as it is: %s' % (x['name'], x['why']))
+    # 2b. preview: each patched stretch rendered from a local copy, the plan in place; blue at a patched unit stops the patch
+    def preview():
+        out = os.path.join(W, 'preview_result.json')
+        r = subprocess.run([sys.executable, 'preview.py', VT, LIVE, W, FL, out], cwd=HERE, capture_output=True, text=True)
+        for ln in r.stdout.splitlines(): log('preview: ' + ln)
+        if r.returncode != 0: fail('preview: %s' % ((r.stderr.strip().splitlines() or ['exit %d' % r.returncode])[-1]))
+        return json.load(open(out))
+    stage(W, 'preview', dict(inputs, plan=pl), preview)
     expect = size + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in pl['entries'])
     log('plan: %d gaps filled, units %s; the patched capture will be %d bytes' % (len(pl['entries']), [u for e in pl['entries'] for u in e['units']], expect))
     # 3

@@ -16,13 +16,29 @@ RSS_LIMIT = 3 << 30
 # one it reaches only in part is not filled, by name (half a cluster cannot be rebuilt).
 SPAN = tuple(int(x) for x in os.environ['FILL_DONOR_SPAN'].split(',')) if os.environ.get('FILL_DONOR_SPAN') else None
 SPAN_MARGIN = 8            # units of the clip a cluster needs beyond its own: 3 either side in build_cluster, and the sound's reach
-def clip_reach(c):
-    """'all', 'none' or 'part': how much of what cluster c needs from the clip the clip has"""
-    cs = unwrap([g[k] for g in c['v'] + c['a'] for k in ('c1', 'c2')]); offs = [OFF] + ([OFF_AFTER] if OFF_AFTER is not None else [])
+def clip_reach(c, offs, span):
+    """'all', 'none' or 'part': how much of what cluster c needs from the clip (its whole units `span`, at offsets offs) the clip has"""
+    cs = unwrap([g[k] for g in c['v'] + c['a'] for k in ('c1', 'c2')])
     lo, hi = min(cs) + min(offs) - SPAN_MARGIN, max(cs) + max(offs) + SPAN_MARGIN
-    rel = lambda u: (u - SPAN[0]) % 65536
-    inside = [0 <= rel(u) < SPAN[1] for u in range(lo, hi + 1)]
+    rel = lambda u: (u - span[0]) % 65536
+    inside = [0 <= rel(u) < span[1] for u in range(lo, hi + 1)]
     return 'all' if all(inside) else 'none' if not any(inside) else 'part'
+# FILL_CLUSTERS=<json>: the clips placed cluster by cluster (locate.py, clusters.py) for a stretch of glitches:
+# {"clips": [{"donor", "span"}], "clusters": [{"lo", "hi", "gaps", "choices": [{"clip", "before", "after", "why"}]}]}, the
+# choices in the clips' tape order. Each cluster of the stretch is matched to a placed one by its gaps' first counters and
+# built from the first choice whose two sides are decided, take the same pairing, and either agree or differ by a run-ahead
+# the builder confirms by the sound; a choice the builder refuses passes to the next. A cluster no choice fills is left as it
+# is, its reasons named (a glitch needs no clip: what the owner did not recapture, or what the clip has damaged too).
+# Clusters with no placed match take FILL_OFF as before, unless FILL_CLUSTERS_ONLY=1 (a stretch that is only glitches).
+CMAP = json.load(open(os.environ['FILL_CLUSTERS'])) if os.environ.get('FILL_CLUSTERS') else None
+CLUSTERS_ONLY = os.environ.get('FILL_CLUSTERS_ONLY') == '1'
+import copy, donor as DONOR_MOD
+ENV = dict(donor=DONOR_MOD.AFT, off=OFF, off_after=OFF_AFTER, pairing=PAIRING)
+def use_clip(path, pairing, off, off_after):
+    """build.py's clip and offsets for the next build_cluster"""
+    import build as BB
+    DONOR_MOD.AFT = path; DONOR_MOD.A_SIZE = os.path.getsize(path)
+    BB.OFF, BB.OFF_AFTER, BB.PAIRING = off, off_after, pairing
 os.makedirs(WORK, exist_ok=True)
 def rss(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 def put_file(path, data):
@@ -34,6 +50,7 @@ from stretches import event_groups, stretch_range
 groups, nrows = event_groups(SIDECAR); marks = [i for g in groups for i in g]
 SIZE = capture_size(T); PER = SIZE / nrows
 print('%d event rows in %d stretches; %d rows' % (len(marks), len(groups), nrows), flush=True)
+ANY_JUMP = False
 plan_path = os.path.join(WORK, 'plan.json'); plan = json.load(open(plan_path)) if os.path.exists(plan_path) else {}
 for g, grp in enumerate(groups):
     if g < g_first or g > g_last: continue
@@ -41,10 +58,42 @@ for g, grp in enumerate(groups):
     lo, hi = RANGE or stretch_range(grp, PER, SIZE)
     p0, b = read_region(T, lo, hi - lo); R = Region(b, p0); S = Stretch(R, print)
     vg, ag = find_gaps(S); cl = cluster_gaps(vg, ag); mods = []; entries = []
+    import build as BB
+    jumped = False                     # a run-ahead glitch of this stretch has been built: clusters after it are renumbered
     for i, c in enumerate(cl):
         name = 'g%02d.%d' % (g, i)
+        nxt = min([x['k'] for x in cl[i + 1]['v'] + cl[i + 1]['a']]) - 6000 if i + 1 < len(cl) else 1 << 60
+        keys = {x['c1'] % 65536 for x in c['v'] + c['a']}
+        placed = [x for x in CMAP['clusters'] if keys & set(x['gaps'])] if CMAP else []
+        if placed or (CMAP and CLUSTERS_ONLY):
+            why = []; m = None
+            for ch in (placed[0]['choices'] if placed else []):
+                D = CMAP['clips'][ch['clip']]; dn = os.path.basename(D['donor'])
+                if not ch['before'] or not ch['after']: why.append('%s: not placed (%s)' % (dn, ch['why'])); continue
+                (kb, ob), (ka, oa) = ch['before'], ch['after']; ahead = ((ob - oa + 32768) % 65536) - 32768
+                if kb != ka: why.append('%s: its fields pair %s before and %s after' % (dn, kb, ka)); continue
+                if ahead < 0 or ahead > 2000: why.append('%s: its own counters step by %d across it (its own glitch)' % (dn, -ahead)); continue
+                reach = clip_reach(c, [ob, oa], D['span'])
+                if reach != 'all': why.append('%s: %s' % (dn, 'not recorded across it' if reach == 'none' else 'it ends inside it')); continue
+                use_clip(D['donor'], kb, ob, oa if ahead else None); BB.JUMP_DONE = False
+                try:
+                    m = build_cluster(S, copy.deepcopy(c['v']), copy.deepcopy(c['a']), R.recs[c['last']][0], name, nxt)
+                    if ahead and not BB.JUMP_DONE: m = None; why.append('%s: offsets %+d and %+d, but no gap\'s counters run ahead of its sound' % (dn, ob, oa)); continue
+                    if mods: assert mods[-1]['file_to'] <= m['file_from'], 'windows of two clusters overlap'
+                    jumped = jumped or BB.JUMP_DONE; m['rep']['clip'] = dn; m['rep']['offsets'] = [kb, ob, oa]; break
+                except (AssertionError, KeyError, SystemExit) as e:
+                    m = None; why.append('%s at %+d/%+d: %r' % (dn, ob, oa, e)); continue
+            if m is None:
+                r = '; '.join(why) or 'no clip was placed at it'
+                print('CLUSTER %s LEFT AS IT IS: %s' % (name, r), flush=True); entries.append(dict(name=name, filled=False, skipped=r)); continue
+            print('CLUSTER %s: %s, pairing %s, offset %+d%s' % (name, m['rep']['clip'], m['rep']['offsets'][0], m['rep']['offsets'][1],
+                  '' if m['rep']['offsets'][1] == m['rep']['offsets'][2] else ', %+d after it' % m['rep']['offsets'][2]), flush=True)
+            mods.append(m)
+            assert rss() < RSS_LIMIT, 'STOPPED: planning has used %d MB of memory' % (rss() >> 20)
+            continue
+        if CMAP: use_clip(ENV['donor'], ENV['pairing'], ENV['off'], ENV['off_after']); BB.JUMP_DONE = jumped
         if SPAN:
-            reach = clip_reach(c)
+            reach = clip_reach(c, [ENV['off']] + ([ENV['off_after']] if ENV['off_after'] is not None else []), SPAN)
             if reach == 'none':
                 print('CLUSTER %s SKIPPED: the clip has none of its units' % name, flush=True)
                 entries.append(dict(name=name, filled=False, skipped='the clip was not recorded across it')); continue
@@ -52,10 +101,9 @@ for g, grp in enumerate(groups):
                 print('CLUSTER %s NOT FILLED: the clip ends inside it' % name, flush=True)
                 entries.append(dict(name=name, filled=False, error='the clip covers only part of this cluster: record across all of it')); continue
         try:
-            nxt = min([x['k'] for x in cl[i + 1]['v'] + cl[i + 1]['a']]) - 6000 if i + 1 < len(cl) else 1 << 60
             m = build_cluster(S, c['v'], c['a'], R.recs[c['last']][0], name, nxt)
             if mods: assert mods[-1]['file_to'] <= m['file_from'], 'windows of two clusters overlap'
-            mods.append(m)
+            mods.append(m); jumped = jumped or BB.JUMP_DONE
         except (AssertionError, KeyError, SystemExit) as e:
             print('CLUSTER %s NOT FILLED: %r' % (name, e), flush=True); entries.append(dict(name=name, filled=False, error=repr(e)[:300]))
         assert rss() < RSS_LIMIT, 'STOPPED: planning has used %d MB of memory' % (rss() >> 20)
@@ -92,9 +140,9 @@ for g, grp in enumerate(groups):
         print('  %s: structure %s, %d -> %d bytes, +%d video +%d audio transfers, units %s, samples %s' % (m['rep']['name'], 'PASSED' if ok else 'FAILED', m['file_to'] - m['file_from'], len(m['data']),
               m['kv'], m['ka'], m['rep'].get('video_units_filled'), [s.get('M', 'kept') for s in m['rep'].get('seams', [])]), flush=True)
     del mods, minis; gc.collect()
+    ANY_JUMP = ANY_JUMP or jumped
     plan[str(g)] = entries; json.dump(plan, open(plan_path + '.tmp', 'w'), indent=1); os.replace(plan_path + '.tmp', plan_path)
     print('stretch %d (%d:%02d): %d of %d clusters filled, %.0f s, peak memory %d MB' % (g, grp[0] / 29.97 // 60, grp[0] / 29.97 % 60, sum(1 for e in entries if e['filled']), len(cl), time.time() - t0, rss() >> 20), flush=True)
-import build as B
-if B.OFF_AFTER is not None and not B.JUMP_DONE:
+if ENV['off_after'] is not None and not ANY_JUMP:
     sys.exit('STOPPED: FILL_OFF_AFTER was given, but no gap in the stretch has counters that run ahead of its sound')
 print('PLAN DONE')

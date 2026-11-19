@@ -28,9 +28,11 @@ def _whole(R):
     return [c for o, c, fm, ok in R.marks if ok and fm == 0xe801]
 
 
-def segments(R, df, ch, log, tf=None):
+def segments(R, df, ch, log, tf=None, sound_offsets=None):
     """[dict(kind, off, first, last, windows, votes, of, rival, r)]: where the clip lines up in region R, in capture order.
-    first/last: the target counters the segment's windows span. df, ch: joins.donor_fields / donor_audio of the clip."""
+    first/last: the target counters the segment's windows span. df, ch: joins.donor_fields / donor_audio of the clip.
+    sound_offsets: a list given here receives the sound's offset of every group of windows, decided by the picture or not
+    (clusters.py searches around them cluster by cluster)."""
     whole = _whole(R)
     if len(whole) < 90: return []
     sound = []                                         # (index of anchor in whole, anchor counter, offset, r)
@@ -51,6 +53,7 @@ def segments(R, df, ch, log, tf=None):
     for g in groups:
         i0, i1 = max(0, g[0][0] - 80), g[-1][0] - 10
         off_s = int(np.median([s[2] for s in g]))
+        if sound_offsets is not None: sound_offsets.append(off_s)
         votes = {}; m = 0
         for c in whole[i0:i1 + 1:PICTURE_STRIDE]:
             if c not in tf: continue
