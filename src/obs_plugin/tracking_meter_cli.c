@@ -22,17 +22,18 @@ static void print_reading(unsigned long long frames, const tm_window *w){
 int main(int argc, char **argv){
     unsigned every = argc > 1 ? (unsigned)atoi(argv[1]) : 1;
     if (every < 1) every = 1;
-    uint8_t *buf = malloc(FRAME_BYTES);
+    uint8_t *buf = malloc(FRAME_BYTES), *prev = malloc(FRAME_BYTES); int have_prev = 0;   /* the frame before: the snow test */
     tm_window w; tm_window_reset(&w);
     size_t cap = 1 << 16, nall = 0; double (*all)[2][TM_CHANNELS] = malloc(sizeof *all * cap);   /* every valid frame, for the overall median */
     unsigned long long frames = 0, measured = 0, invalid = 0;
     while (fread(buf, 1, FRAME_BYTES, stdin) == FRAME_BYTES){
         if (frames % every == 0){
-            tm_frame m; tm_measure_uyvy(buf, 720 * 2, &m);
+            tm_frame m; tm_measure_uyvy_pair(buf, have_prev ? prev : NULL, 720 * 2, &m);
             measured++; if (!m.valid) invalid++;
             tm_window_add(&w, &m);
             if (m.valid && nall < cap) memcpy(all[nall++], m.noise, sizeof m.noise);
         }
+        memcpy(prev, buf, FRAME_BYTES); have_prev = 1;
         frames++;
         if (frames % 30 == 0) print_reading(frames, &w);
     }
@@ -48,6 +49,6 @@ int main(int argc, char **argv){
     }
     free(all);
     fprintf(stderr, "frames %llu, measured %llu, no reading %llu\n", frames, measured, invalid);
-    free(buf);
+    free(buf); free(prev);
     return frames ? 0 : 1;
 }
