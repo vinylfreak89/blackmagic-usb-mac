@@ -20,6 +20,7 @@
 # does not.
 import os
 import joins as J
+from joined import FullFile
 from region import load, UNIT
 from stretches import event_groups, stretch_range
 
@@ -76,14 +77,18 @@ def locate(parts, donors, log):
     """{'joins': [donor per disconnect], 'append': donor or None, 'gaps': [dict(part, rows, donor, pairing, off)], 'placed': ...}"""
     feats = {}
     for D in donors:
-        log('reading donor %s' % os.path.basename(D)); feats[D] = (J.donor_fields(D), J.donor_audio(D))
+        log('reading donor %s' % os.path.basename(D)); c0, s0 = FullFile.calls, FullFile.short
+        feats[D] = (J.donor_fields(D), J.donor_audio(D))
+        log('  %d whole picture units; %d reads, %d returned short and were read on' % (len(feats[D][0]), FullFile.calls - c0, FullFile.short - s0))
     found = {}                                          # place index -> [(donor, pairing, off, basis)]
     pl = places(parts, log)
     for i, p in enumerate(pl):
+        c0, s0 = FullFile.calls, FullFile.short
         try: R, before, after = p['load']()
         except ValueError as e:
             if p.get('optional'): log('%s: not a place for a clip (%s)' % (p['label'], e)); continue   # e.g. damage at the capture's very start
             raise ValueError('%s cannot be read for placing clips: %s' % (p['label'], e))
+        if FullFile.short > s0: log('%s: %d of %d reads returned short and were read on' % (p['label'], FullFile.short - s0, FullFile.calls - c0))
         for D in donors:
             df, ch = feats[D]; quiet = []
             try:

@@ -16,7 +16,25 @@
 #   - every audio resync record's counter (bytes 20-21 of a 24-byte 'DeckLinkAudioResyncT' record) raised the same way.
 #   - every DATA, HostLoss and TransferError record's transfer number raised by that endpoint's seq_delta.
 # Nothing else changes: the parts' bytes are otherwise passed through as read.
-import json, os, struct
+import io, json, os, struct
+class FullFile(io.FileIO):
+    """an unbuffered capture file whose read(n) returns n bytes unless the file ends first. A plain FileIO.read(n) is one
+    read(2) call, which on the share may return fewer bytes than asked; callers that asked for a 258 MB region in one read
+    then parsed a silently shortened one (the patch line-up of 2026-11-19 lost clip units that way and placed 1 of 6 clips,
+    where a rerun with the cache warm placed 5)."""
+    calls = 0; short = 0          # every syscall read, and those that returned less than asked before the end: logged by the line-up
+    def read(self, n=-1):
+        if n is None or n < 0: return self.readall()
+        buf = bytearray(n); mv = memoryview(buf); got = 0
+        while got < n:
+            k = self.readinto(mv[got:])
+            FullFile.calls += 1
+            if not k: break
+            if k < n - got: FullFile.short += 1
+            got += k
+        mv.release()
+        if got < n: del buf[got:]
+        return bytes(buf) if n <= (8 << 20) else buf     # small reads as bytes (as before); big ones without a second copy
 H = struct.Struct('<IBBHIIII'); MAGIC = 0x31504143; REC_SESSION = 3
 SYNC = b'DeckLinkAudioResyncT'; MARK = b'\x00\x00\xff\xff'; ZEROS = bytes(40)
 BACK = 4 << 20            # a range is renumbered from a record boundary this far before it, so a split header is seen whole
@@ -36,7 +54,7 @@ def capture_size(path):
     j = load(path); return sum(p['size'] for p in j['parts']) + sum(len(note_record(n)) for n in j.get('notes', []))
 
 def open_capture(path):
-    return Joined(load(path)) if is_join(path) else open(path, 'rb', buffering=0)
+    return Joined(load(path)) if is_join(path) else FullFile(path, 'rb')
 
 def boundary(f, offset, depth=16):
     """first record boundary >= offset in a plain file (16 consecutive valid records), as tpc_slice.find_boundary"""
@@ -80,7 +98,7 @@ class Joined:
             out += nb[lo:hi] if k is None else self.part_bytes(k, lo, hi)
         self.pos = b; return bytes(out)
     def file(self, k):
-        if k not in self.files: self.files[k] = open(self.parts[k]['path'], 'rb', buffering=0)
+        if k not in self.files: self.files[k] = FullFile(self.parts[k]['path'], 'rb')
         return self.files[k]
     def part_bytes(self, k, a, b):
         """bytes [a, b) of part k, renumbered (offsets within the part, which begins at its file's byte p['start'])"""
