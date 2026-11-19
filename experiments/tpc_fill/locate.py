@@ -115,6 +115,7 @@ def locate(parts, donors, log):
         feats[D] = (J.donor_fields(D), J.donor_audio(D))
         log('  %d whole picture units; %d reads, %d returned short and were read on' % (len(feats[D][0]), FullFile.calls - c0, FullFile.short - s0))
     found = {}                                          # place index -> [(donor, pairing, off, basis)]
+    heard = {}                                          # clip -> glitch places whose stretch its sound or line-up is in
     pl = places(parts, log)
     for i, p in enumerate(pl):
         c0, s0 = FullFile.calls, FullFile.short
@@ -137,6 +138,7 @@ def locate(parts, donors, log):
                     offs = []; segs = SL.segments(R, df, ch, quiet.append, tf, sound_offsets=offs)
                     centers |= set(offs) | {g['off'] for g in segs}; decided |= {(g['kind'], g['off']) for g in segs}
                 if not centers: log('%s: not %s (neither the line-up nor the sound places it here)' % (p['label'], os.path.basename(D))); continue
+                heard.setdefault(D, []).append(p['label'])
                 if tf is None: tf = J.fields(R)
                 cls = CL.place(R, tf, df, sorted(centers), decided); ok = [c for c in cls if c['before']]
                 if not ok:
@@ -172,7 +174,12 @@ def locate(parts, donors, log):
         if len(ds) > 1 and not pl[i].get('optional'): raise ValueError('%s is covered by more than one clip: %s; give one' % (pl[i]['label'], ', '.join(os.path.basename(d[0]) for d in ds)))
     used = {d['donor'] if isinstance(d, dict) else d[0] for ds in found.values() for d in ds}
     for D in donors:
-        if D not in used: raise ValueError('%s lines up with no disconnect, gap, glitch or the end of the capture' % os.path.basename(D))
+        if D in used: continue
+        # heard at a glitch whose picture places it at none of the clusters (dark or still both sides, or the sides disagree):
+        # the clip is the right one, its glitches stay as they are (a glitch needs no clip); heard nowhere, it is a wrong clip
+        if D in heard: log('%s: its sound is at %s, but the picture there places it at none of the clusters: nothing is filled from it' % (
+            os.path.basename(D), '; '.join(heard[D]))); continue
+        raise ValueError('%s lines up with no disconnect, gap, glitch or the end of the capture' % os.path.basename(D))
     joins = []
     for i, p in enumerate(pl):
         if p['kind'] == 'join':
