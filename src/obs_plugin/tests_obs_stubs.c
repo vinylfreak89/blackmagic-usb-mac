@@ -122,7 +122,9 @@ obs_weak_source_t *obs_source_get_weak_source(obs_source_t *s){ return (obs_weak
 obs_source_t *obs_weak_source_get_source(obs_weak_source_t *w){ return (obs_source_t *)w; }        /* so restart_check finds the source alive */
 void obs_weak_source_release(obs_weak_source_t *w){ (void)w; }
 void obs_source_release(obs_source_t *s){ (void)s; }
-void obs_source_media_started(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_started_signals, 1); }
+/* frames handed to OBS when the last session started: set before the signal count, so a test that sees the count sees it */
+_Atomic uint64_t stub_frames_at_start;
+void obs_source_media_started(obs_source_t *s){ (void)s; atomic_store(&stub_frames_at_start, atomic_load(&stub_video_frames)); atomic_fetch_add(&stub_started_signals, 1); }
 void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_ended_signals, 1); }
 /* What the plugin hands OBS: I210, byte linesizes 1440/720/720, contiguous Y/U/V planes, codes as 4c
  * (fixture_plain is Y16/C128 everywhere -> 64/512), range clamp opened, limited range kept. */

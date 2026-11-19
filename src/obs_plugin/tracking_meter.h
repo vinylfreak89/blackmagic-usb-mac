@@ -25,10 +25,16 @@ typedef struct {
     int    why;                         // TM_* above
     double noise[2][TM_CHANNELS];       // [field 0 = field 1 (top), 1 = field 2][channel], 8-bit codes
     unsigned blocks[2];                 // usable blocks per field
+    double persist;                     // the lower of the two fields' luma correlation with the same field of the frame
+                                        // published just before (picture persists, snow does not); -2: not measured
 } tm_frame;
 
 // Measure one 720x480 TFF UYVY frame ('2vuy', row 0 = field 1). bytes_per_row >= 1440.
 void tm_measure_uyvy(const uint8_t *frame, size_t bytes_per_row, tm_frame *out);
+// The same, given the frame published just before it (same layout and row stride; NULL when not known). A noisy frame
+// (fine-grain luma noise over 6 codes) is snow only when its picture does not persist from that frame; without it, a
+// noisy frame is taken for snow, as tm_measure_uyvy does.
+void tm_measure_uyvy_pair(const uint8_t *frame, const uint8_t *prev, size_t bytes_per_row, tm_frame *out);
 
 // A running figure over the last TM_WINDOW measured frames: the median of each per-frame value.
 #define TM_WINDOW 15

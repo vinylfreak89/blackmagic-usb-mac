@@ -10,6 +10,10 @@
 // The frame callback and the measuring thread hand one buffer back and forth:
 // slot_state EMPTY -> (callback copies) FULL -> (thread takes) EMPTY. The callback never waits: if
 // the slot is still FULL it skips the frame. A condvar wakes the thread on FULL and on stop.
+// With each measured frame goes the frame offered just before it (the meter's snow test asks whether the picture
+// persists): the callback copies that one into its own buffer `before`, and at the measured frame swaps it into
+// slot_prev, which travels with slot. slot_prev_ok says whether it really is the frame just before (a frame that was not
+// whole came between, or none was copied: the meter then judges without it).
 enum { EMPTY = 0, FULL = 1 };
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;   // slot hand-off wake-up, reading and history
 static pthread_cond_t wake = PTHREAD_COND_INITIALIZER;
@@ -21,7 +25,11 @@ static _Atomic int slot_state;
 static _Atomic uint64_t offered, measured, skipped_busy, no_reading, last_offer_ns;
 static uint64_t last_valid_ns;                              // guarded by lock
 static int last_why, start_failed;                          // guarded by lock
-static uint8_t *slot, *work;
+static uint8_t *slot, *work, *slot_prev, *work_prev, *before;   // slot/slot_prev and work/work_prev travel in pairs
+static int slot_prev_ok, work_prev_ok;                      // with slot: guarded by slot_state, as slot is
+static int before_ok;                                       // the frame callback's own (only it touches `before` and this)
+static _Atomic unsigned generation;                         // bumped by tmt_start: the callback drops a `before` from an earlier opening
+static unsigned generation_seen;                            // the frame callback's own
 static tm_window window;
 static tm_reading reading;
 static double history[TMT_HISTORY][TM_CHANNELS];
@@ -37,9 +45,10 @@ static void *measure_loop(void *arg){
         while (!stopping && atomic_load(&slot_state) != FULL) pthread_cond_wait(&wake, &lock);
         if (stopping) break;
         uint8_t *t = slot; slot = work; work = t;          // take the full buffer, give back the spare
+        t = slot_prev; slot_prev = work_prev; work_prev = t; work_prev_ok = slot_prev_ok;
         atomic_store(&slot_state, EMPTY);
         pthread_mutex_unlock(&lock);
-        tm_frame m; tm_measure_uyvy(work, 720 * 2, &m);     // the measuring, outside the lock
+        tm_frame m; tm_measure_uyvy_pair(work, work_prev_ok ? work_prev : NULL, 720 * 2, &m);   // the measuring, outside the lock
         atomic_fetch_add(&measured, 1);
         if (!m.valid) atomic_fetch_add(&no_reading, 1);
         pthread_mutex_lock(&lock);
@@ -55,7 +64,11 @@ void tmt_start(void){
     if (!running){
         if (!slot) slot = malloc(FRAME_BYTES);
         if (!work) work = malloc(FRAME_BYTES);
-        if (slot && work){
+        if (!slot_prev) slot_prev = malloc(FRAME_BYTES);
+        if (!work_prev) work_prev = malloc(FRAME_BYTES);
+        if (!before) before = malloc(FRAME_BYTES);
+        if (slot && work && slot_prev && work_prev && before){
+            atomic_fetch_add(&generation, 1);
             tm_window_reset(&window); memset(&reading, 0, sizeof reading);
             history_n = 0; stopping = 0; last_valid_ns = 0; last_why = TM_OK; start_failed = 0;
             atomic_store(&slot_state, EMPTY);
@@ -80,13 +93,21 @@ void tmt_stop(void){
 }
 
 void tmt_offer(const uint8_t *uyvy, size_t bpr, int complete){
-    if (!atomic_load(&active) || !complete) return;
+    if (!atomic_load(&active)) return;
+    unsigned g = atomic_load(&generation);
+    if (g != generation_seen){ generation_seen = g; before_ok = 0; }   // the window was reopened: an old `before` is not the frame before
+    if (!complete){ before_ok = 0; return; }               // the next whole frame does not follow the copied one
     uint64_t n = atomic_fetch_add(&offered, 1);
     atomic_store(&last_offer_ns, now_ns());
-    if (n % TMT_EVERY) return;
-    if (atomic_load(&slot_state) != EMPTY){ atomic_fetch_add(&skipped_busy, 1); return; }
+    if ((n + 1) % TMT_EVERY == 0){                         // the frame just before the next measured one
+        for (int r = 0; r < 480; r++) memcpy(before + (size_t)r * 1440, uyvy + (size_t)r * bpr, 1440);
+        before_ok = 1; return;
+    }
+    if (n % TMT_EVERY){ before_ok = 0; return; }
+    if (atomic_load(&slot_state) != EMPTY){ atomic_fetch_add(&skipped_busy, 1); before_ok = 0; return; }
     // The slot is EMPTY, so the thread is not reading it: copy without the lock, then publish.
     for (int r = 0; r < 480; r++) memcpy(slot + (size_t)r * 1440, uyvy + (size_t)r * bpr, 1440);
+    uint8_t *t = slot_prev; slot_prev = before; before = t; slot_prev_ok = before_ok; before_ok = 0;
     pthread_mutex_lock(&lock);
     atomic_store(&slot_state, FULL);
     pthread_cond_signal(&wake);

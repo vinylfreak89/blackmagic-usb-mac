@@ -89,4 +89,26 @@ r = subprocess.run([sys.executable, os.path.join(HERE, 'audio_relay.py'), d, fif
 j = json.load(open(os.path.join(d, 'audio.json'))); shutil.rmtree(d)
 assert r.returncode == 0 and 'Broken pipe' not in r.stderr and 'Exception ignored' not in r.stderr, r.stderr
 assert j['ended_by_reader'] and j['samples'] >= 48000 and took == [6 * 48000], (j, took)
+# 11. the reader goes away before the relay's last bytes leave its buffer, so the broken pipe comes only when the relay
+#     closes its output (2026-11-19: the render of 16-31-48 failed on exactly this after its video had finished): the
+#     relay still ends cleanly and says the reader ended it. The reader closes before a0.json exists, so before the relay
+#     writes anything, and the audio (1200 bytes) fits in the relay's buffer.
+d = tempfile.mkdtemp(); ordinal = 0
+with open(os.path.join(d, 'timing.csv'), 'w') as log, open(os.path.join(d, 'a.s24'), 'wb') as pcm:
+    log.write('kind,...\n')
+    for c in range(2):
+        log.write('A,%d,%d,240000,100,0,%d,0\n' % (ordinal, c * 500, c)); ordinal += 100; pcm.write(b'\1' * 600)
+fifo = os.path.join(d, 'a.fifo'); os.mkfifo(fifo); closed = threading.Event()
+def reader_gone():
+    f = open(fifo, 'rb'); f.close(); closed.set()
+t = threading.Thread(target=reader_gone); t.start()
+p_ = subprocess.Popen([sys.executable, os.path.join(HERE, 'audio_relay.py'), d, fifo], stderr=subprocess.PIPE, text=True)
+assert closed.wait(30), 'the reader never opened the FIFO'
+json.dump(dict(a0_ticks=0), open(os.path.join(d, 'a0.json.new'), 'w')); os.replace(os.path.join(d, 'a0.json.new'), os.path.join(d, 'a0.json'))   # whole, as relay.py publishes it
+open(os.path.join(d, 'replay.done'), 'w').close()
+err = p_.communicate(timeout=60)[1]; t.join()
+j = json.load(open(os.path.join(d, 'audio.json'))) if os.path.exists(os.path.join(d, 'audio.json')) else None; shutil.rmtree(d)
+assert p_.returncode == 0 and 'Broken pipe' not in err and 'Exception ignored' not in err, (p_.returncode, err)
+assert j and j['ended_by_reader'], j
+print('11 ok: a reader gone before the last buffered bytes: ended cleanly, ended_by_reader')
 print('audio_relay: all tests passed')
