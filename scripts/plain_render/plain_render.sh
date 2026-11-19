@@ -58,7 +58,10 @@ SRC=${1:?usage: plain_render.sh [--replace] CAPTURE.tpc OUT.mov [WORKDIR]}; OUT=
 HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../.." && pwd)
 RP="$REPO/src/frameserver/frameserver_replay"
 D=${3:-$(mktemp -d "${TMPDIR:-/tmp}/plain_render.XXXXXX")}; mkdir -p "$D"
-PART="$(dirname "$OUT")/.$(basename "$OUT" .mov).partial.mov"
+# Each render writes a name no render has used before: a rerun given the old fixed name, two minutes after the previous
+# partial had been deleted, wrote 37 GB that never reached JuiceFS (2026-11-18: the share listed the size, JuiceFS held 0 bytes),
+# even though the file was emptied in place first (below).
+PART="$(dirname "$OUT")/.$(basename "$OUT" .mov).partial-$(date +%Y%m%d-%H%M%S)-$$.mov"
 # An existing output is never touched unless --replace is given; then it stays intact until the new render has passed its
 # checks and takes its name.
 [ -e "$OUT" ] && [ -z "$REPLACE" ] && { echo "REFUSE: output exists: $OUT (add --replace to overwrite it)"; exit 2; }
