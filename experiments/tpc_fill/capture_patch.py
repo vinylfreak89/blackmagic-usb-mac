@@ -162,9 +162,11 @@ def first_line(T, W):
     log(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'first picture line %s' % r.stdout.strip())
     return dict(first_line=r.stdout.strip())
 
-def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL, assembler=None):
+def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL, assembler=None, LIVE=None):
     """render PATCHED and rebuild its sidecar. assembler=(argv, cwd, env): the bytes come from that assembler's output stream
-    as it writes PATCHED (ASSEMBLE_TEE), instead of from the file; A is then None and the caller checks the assembly."""
+    as it writes PATCHED (ASSEMBLE_TEE), instead of from the file; A is then None and the caller checks the assembly.
+    LIVE: the target's live sidecar, which names the units the host lost, so the render (fed from a FIFO with no sidecar
+    beside it) holds a single empty slot instead of filling it (a seam's one-slot step showed as a blue flash, 2026-11-18)."""
     fa, fb = os.path.join(W, 'readback.fifo'), os.path.join(W, 'render.fifo')
     for f in (fa, fb):
         if os.path.exists(f): os.remove(f)
@@ -193,6 +195,7 @@ def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL, assembler=None):
         except Exception as e: rd['err'] = repr(e)
     th = threading.Thread(target=tee, daemon=True); th.start()
     env = dict(os.environ, PLAIN_RENDER_DECISION_LOG=NEWLOG, PLAIN_RENDER_STALL_S='5400', PLAIN_RENDER_FIRST_LINE=FL)
+    if LIVE: env['PLAIN_RENDER_SIDECAR'] = LIVE
     rout = os.path.join(W, 'render.out')
     rp = subprocess.Popen(['/bin/bash', os.path.join(REPO, 'scripts/plain_render/plain_render.sh'), fb, RENDER, os.path.join(W, 'render')],
                           env=env, stdout=open(rout, 'w'), stderr=subprocess.STDOUT, start_new_session=True)
@@ -525,7 +528,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if os.path.exists(aj): os.remove(aj)          # only this run's assembly may answer for the file
         rendered = None
         if on_share(PATCH['tpc']):       # 3 and 4 in one pass: the render reads the assembler's stream; the file is proven by its writer
-            try: rendered = read_back(PATCH['tpc'], expect, None, PATCH['mov'], NEWLOG, W, FL, assembler=(argv, HERE, dict(env, ASSEMBLE_WRITE_PROOF='1')))
+            try: rendered = read_back(PATCH['tpc'], expect, None, PATCH['mov'], NEWLOG, W, FL, assembler=(argv, HERE, dict(env, ASSEMBLE_WRITE_PROOF='1')), LIVE=LIVE)
             except Failed as e:
                 if not os.path.exists(aj) or not os.path.exists(PATCH['tpc']): raise
                 made['render_error'] = str(e)      # assembled and proven; only the render failed
@@ -555,7 +558,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     else:
         for x in (PATCH['mov'], NEWLOG):
             if os.path.exists(x): fail('left over from an earlier run, remove it first: %s' % x)
-        read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL)
+        read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL, LIVE=LIVE)
     hint = lambda e: row_counter(LIVE, int(e['file_from'] / per))            # the live row nearest the fill: which wrap it is in
     jumps = [(e['counter_jump']['after_unit'], e['counter_jump']['to'], e['counter_jump']['ahead'], hint(e)) for e in pl['entries'] if e.get('counter_jump')]
     sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e)) for e in pl['entries'] for u in e['units']], OUTCSV, FL, jumps)
