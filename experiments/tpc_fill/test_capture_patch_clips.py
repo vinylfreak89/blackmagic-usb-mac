@@ -25,6 +25,13 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            samples cannot go back on the cadence: the clip's sound replaces them
   run-ahead-drift  the run-ahead glitch with the seven resyncs before it 6 samples early (2026-11-18: 6400 samples for 4
            units, three normal intervals, then 3210 for 2): no sample is missing, so the sound is kept whole
+  glitch-late  the glitch, a clip that starts only 30 units (1 s) before it: the units just before the glitch, which the old
+           line-up compared, are mostly not in the clip; the sliding window places it from the units after (2026-11-19)
+  glitch-dim  the glitch with the 140 units before it frozen to one picture, in the capture and the clip alike: the sound
+           places the clip, the still picture there cannot name the unit (as 07-46-46's dark lead-in); the moving picture
+           after the glitch does
+  glitch-partial  two glitches 150 units apart (one stretch), a clip that ends 60 units after the first: the first is
+           filled, the second left exactly as it was (the owner recaptures what he sees, not the tool's stretches)
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import json, os, shutil, struct, subprocess, sys
@@ -137,7 +144,37 @@ def clip(src, S, name, by=1000, frac=None, audio_shift=0):
     if audio_shift: shift_resyncs(tp, audio_shift)
     sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
 
-def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None, audio_trim=0, moved_in=None):
+def window(src, S, name, a_frac, b_frac=None, by=1000):
+    """a recapture of only part of SOURCE: from the first video transfer after a_frac (to the one after b_frac), counters
+    raised by `by`, with its sidecar"""
+    b = open(src, 'rb').read(); recs = list(records(b))
+    def at(frac):
+        k = int(len(recs) * frac)
+        while not (recs[k][2][0] == 0 and recs[k][2][1] == 0x83 and recs[k][2][2] == 0): k += 1
+        return recs[k][0]
+    tp = os.path.join(S, name + '.mov.raw.tpc')
+    open(tp + '.part', 'wb').write(b[at(a_frac):at(b_frac) if b_frac else len(b)]); del b
+    raise_counters(tp + '.part', tp, by); os.remove(tp + '.part')
+    sidecar(tp, os.path.join(S, name + '.mov.registration.csv'), S); return tp
+
+def freeze(src, dst, i0, i1):
+    """src with the picture of whole units i0+1..i1 replaced by unit i0's (headers and counters kept): a still passage"""
+    from region import load, UNIT
+    b = bytearray(open(src, 'rb').read()); R = load(src, 0, len(b))
+    whole = [o for o, c, fm, ok in R.marks if ok and fm == 0xe801]
+    import bisect
+    pic = bytes(R.v[whole[i0] + 48:whole[i0] + UNIT]); starts = [s for s, _ in R.vpk]
+    for i in range(i0 + 1, i1 + 1):                        # copy packet by packet: the unit's picture spans many records
+        q, end = whole[i] + 48, whole[i] + UNIT
+        while q < end:
+            n = bisect.bisect_right(starts, q) - 1; s, k = R.vpk[n]
+            stop = min(end, starts[n + 1] if n + 1 < len(starts) else len(R.v))
+            fo = R.recs[k][0] + 24 + (q - s); b[fo:fo + stop - q] = pic[q - whole[i] - 48:stop - whole[i] - 48]; q = stop
+    open(dst, 'wb').write(b)
+    R2 = load(dst, 0, len(b)); w2 = [o for o, c, fm, ok in R2.marks if ok and fm == 0xe801]
+    assert all(bytes(R2.v[w2[i] + 48:w2[i] + UNIT]) == pic for i in range(i0, i1 + 1)), 'freeze did not land'
+
+def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None, audio_trim=0, moved_in=None, left=None):
     W = os.path.join(S, 'work-' + label)
     r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W] + (args or [x for c in clips for x in ('--donor', c)]),
                        capture_output=True, text=True, env=env)
@@ -149,8 +186,10 @@ def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None,
     res = json.load(open(os.path.join(W, 'result.json')))
     got, pL, pR = units(res['patched']['tpc'])
     if audio_trim: gL, gR = gL[:-audio_trim], gR[:-audio_trim]       # samples the case dropped from the stream's very end
-    bad = [c for c in good if got.get(c) != good[c]]
-    assert not bad, (label, 'units differ from the source', bad[:8], len(bad))
+    left = left or {}                                                # units the patch must leave as the capture had them
+    bad = [c for c in good if got.get(c) != left.get(c, good[c])]
+    assert not bad, (label, 'units differ from the source' + (' or from what was to be left' if left else ''), bad[:8], len(bad))
+    if left: print('%s: %d units of the glitch the clip does not cover are left as they were' % (label, len(left)))
     assert len(pL) == len(gL), (label, 'audio differs from the source (%d vs %d samples)' % (len(pL), len(gL)))
     import numpy as np
     d = np.nonzero((pL != gL) | (pR != gR))[0]
@@ -207,6 +246,24 @@ def main():
     S = os.path.join(S0, 'glitch-optional'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     glitch(src, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     run_case('glitch-optional', S, T, [clip(src, S, 'clipY', frac=0.3)], good, gL, gR, dict(os.environ), expect_fail='lines up with no disconnect, gap, glitch or the end')
+    # glitch-late: the glitch, a clip that starts 30 units before it
+    from region import load
+    nwhole = sum(1 for o, c, fm, ok in load(src, 0, os.path.getsize(src)).marks if ok and fm == 0xe801)
+    S = os.path.join(S0, 'glitch-late'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    glitch(src, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('glitch-late', S, T, [window(src, S, 'clipL', 0.5 - 30 / nwhole)], good, gL, gR, dict(os.environ))
+    # glitch-dim: the 140 units before the glitch frozen to one picture, in the capture and the clip
+    S = os.path.join(S0, 'glitch-dim'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc'); F = os.path.join(S, 'frozen.tpc')
+    i = int(nwhole * 0.5); freeze(src, F, i - 141, i - 2); fgood, fL, fR = units(F)
+    glitch(F, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('glitch-dim', S, T, [clip(F, S, 'clipD')], fgood, fL, fR, dict(os.environ)); os.remove(F)
+    # glitch-partial: two glitches 150 units apart, a clip ending 60 units after the first
+    S = os.path.join(S0, 'glitch-partial'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc'); T1 = os.path.join(S, 'one.tpc')
+    glitch(src, T1); second = glitch(T1, T, 0.5 + 150 / nwhole); os.remove(T1)
+    sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    got_t, _, _ = units(T); left = {c: got_t.get(c) for c in good if got_t.get(c) != good[c] and ((c - second[0]) % 65536) < 10}
+    assert left, 'the second glitch should damage units'
+    run_case('glitch-partial', S, T, [window(src, S, 'clipQ', 0.0, 0.5 + 60 / nwhole)], good, gL, gR, dict(os.environ), left=left)
     # run-ahead: the Shuttle's counters run ahead across a glitch, one clip
     S = os.path.join(S0, 'run-ahead'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra')

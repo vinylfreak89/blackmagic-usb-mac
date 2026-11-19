@@ -20,6 +20,7 @@
 # does not.
 import os
 import joins as J
+import slide as SL
 from joined import FullFile
 from region import load, UNIT
 from stretches import event_groups, stretch_range
@@ -73,6 +74,31 @@ def places(parts, log):
                             label='the %s at %d:%02d of %s' % ('glitch' if glitch else 'gap', a / 29.97 // 60, a / 29.97 % 60, os.path.basename(tp))))
     return out
 
+def slide_place(p, R, before, after, df, ch, tf, log):
+    """the sliding-window line-up of one clip at one place (slide.py): (pairing, offset, offset after a run-ahead glitch or
+    None, basis), or ValueError. The clip must line up in or within 130 units of the stretch; at a gap (host loss, not
+    optional) it must cover the whole gap, at a glitch any part of it (the planner fills the clusters it covers)."""
+    segs = SL.segments(R, df, ch, log, tf)
+    if not segs: raise ValueError('the sound places it nowhere in or around the stretch, or the picture cannot confirm where')
+    d = lambda x: ((x - before + 32768) % 65536) - 32768
+    end = d(after) if after is not None else 1 << 30
+    near = [g for g in segs if d(g['last']) >= -130 and d(g['first']) <= end + 130]
+    if not near: raise ValueError('it lines up only away from this stretch (%s)' % ', '.join('%+d at units %d-%d' % (g['off'], g['first'], g['last']) for g in segs))
+    offs = []
+    for g in near:
+        if not offs or (g['kind'], g['off']) != offs[-1]: offs.append((g['kind'], g['off']))
+    (kind, off), off_after = offs[0], None
+    if len(offs) > 1:
+        (k2, o2) = offs[1]; ahead = (off - o2) % 65536
+        if len(offs) > 2 or k2 != kind or not p.get('run_ahead') or not 0 < ahead <= RUN_AHEAD_MAX:
+            raise ValueError('it lines up at %s within one stretch' % ' and '.join('%s %+d' % x for x in offs))
+        off_after = o2
+    if not p.get('optional') and (min(d(g['first']) for g in near) > 0 or (after is not None and max(d(g['last']) for g in near) < end)):
+        raise ValueError('it covers only part of this gap (units %d-%d of %d-%d)' % (near[0]['first'], near[-1]['last'], before, after if after is not None else -1))
+    g0 = near[0]
+    return kind, off, off_after, 'sliding window (sound in %d windows, r >= %.3f; picture %d of %d fields agree, the next answer %d)' % (
+        sum(g['windows'] for g in near), min(g['r'] for g in near), g0['votes'], g0['of'], g0['rival'])
+
 def locate(parts, donors, log):
     """{'joins': [donor per disconnect], 'append': donor or None, 'gaps': [dict(part, rows, donor, pairing, off)], 'placed': ...}"""
     feats = {}
@@ -89,6 +115,7 @@ def locate(parts, donors, log):
             if p.get('optional'): log('%s: not a place for a clip (%s)' % (p['label'], e)); continue   # e.g. damage at the capture's very start
             raise ValueError('%s cannot be read for placing clips: %s' % (p['label'], e))
         if FullFile.short > s0: log('%s: %d of %d reads returned short and were read on' % (p['label'], FullFile.short - s0, FullFile.calls - c0))
+        tf = None
         for D in donors:
             df, ch = feats[D]; quiet = []
             try:
@@ -99,10 +126,17 @@ def locate(parts, donors, log):
                     ahead = (off - o2) % 65536
                     if k2 == kind and p.get('run_ahead') and 0 < ahead <= RUN_AHEAD_MAX: off_after = o2
                     elif (k2, o2) != (kind, off): raise ValueError('it lines up at %s before the %s and %s after' % ((kind, off), 'glitch' if p.get('optional') else 'gap', (k2, o2)))
-                found.setdefault(i, []).append((D, kind, off, basis, off_after))
-                log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d%s)' % (p['label'], os.path.basename(D), basis, kind, off,
-                    '; after it %+d: the capture\'s counters ran %d ahead' % (off_after, (off - off_after) % 65536) if off_after is not None else ''))
-            except ValueError as e: log('%s: not %s (%s)' % (p['label'], os.path.basename(D), e))
+            except ValueError as e:
+                if p['kind'] != 'gap' or not SL.sounds_here(R, ch):
+                    log('%s: not %s (%s)' % (p['label'], os.path.basename(D), e)); continue
+                try:
+                    if tf is None: tf = J.fields(R)
+                    kind, off, off_after, basis = slide_place(p, R, before, after, df, ch, tf, quiet.append)
+                except ValueError as e2:
+                    log('%s: not %s (%s; sliding window: %s)' % (p['label'], os.path.basename(D), e, e2)); continue
+            found.setdefault(i, []).append((D, kind, off, basis, off_after, SL.donor_span(df)))
+            log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d%s)' % (p['label'], os.path.basename(D), basis, kind, off,
+                '; after it %+d: the capture\'s counters ran %d ahead' % (off_after, (off - off_after) % 65536) if off_after is not None else ''))
         del R
     for i, ds in found.items():
         if len(ds) > 1: raise ValueError('%s is covered by more than one clip: %s; give one' % (pl[i]['label'], ', '.join(os.path.basename(d[0]) for d in ds)))
@@ -115,7 +149,8 @@ def locate(parts, donors, log):
             if i not in found: raise ValueError('%s has no clip: a recapture across it is needed to join the parts' % p['label'])
             joins.append(found[i][0][0])
     end = [found[i][0][0] for i, p in enumerate(pl) if p['kind'] == 'end' and i in found]
-    gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3], off_after=found[i][0][4])
+    gaps = [dict(part=p['part'], rows=p['rows'], donor=found[i][0][0], pairing=found[i][0][1], off=found[i][0][2], basis=found[i][0][3], off_after=found[i][0][4],
+                 donor_span=found[i][0][5])
             for i, p in enumerate(pl) if p['kind'] == 'gap' and i in found]
     left = [p['label'] for i, p in enumerate(pl) if p['kind'] == 'gap' and not p.get('optional') and i not in found]
     if left: raise ValueError('%s %s no clip: the patched capture would still have %s; add a recapture across %s' % (

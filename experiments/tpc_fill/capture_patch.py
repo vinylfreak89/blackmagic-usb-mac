@@ -450,13 +450,13 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
         lu = stage(W, 'lineup-%d' % g, dict(inputs, donor=D), lambda: lineup(VT, D, groups[g], per))
         log('%s: the event at %d:%02d, donor %s: pairing %s, FILL_OFF %d' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), lu['pairing'], lu['off']))
-        events.append((g, D, lu['pairing'], lu['off'], None, None, None))
+        events.append((g, D, lu['pairing'], lu['off'], None, None, None, None))
     for a, D, pairing, off, off_after in placed:
         t = parse_time(a); g = min(range(len(groups)), key=lambda i: abs(groups[i][0] / 29.97 - t)) if groups else None
         if g is None or abs(groups[g][0] / 29.97 - t) > 90: fail('no event within 90 s of %s in the live sidecar' % a)
         log('%s: the event at %d:%02d, donor %s placed beforehand: pairing %s, FILL_OFF %d%s' % (a, groups[g][0] / 29.97 // 60, groups[g][0] / 29.97 % 60, os.path.basename(D), pairing, off,
             ', FILL_OFF_AFTER %d (a glitch whose counters ran ahead)' % off_after if off_after is not None else ''))
-        events.append((g, D, pairing, off, None, None, off_after))
+        events.append((g, D, pairing, off, None, None, off_after, None))
     by_picture = set()
     for k, D in enumerate(joins_d + ([append_d] if append_d else [])):
         r0 = part_rows[k + 1]
@@ -466,7 +466,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         # sound line-ups; 150/300 MB made the planner pass its 3 GB guard on a 195-unit hole (3.6 GB; 2.4 GB at 40/120)
         rng = (max(0, part_at[k + 1] - 40_000_000), min(size, part_at[k + 1] + 120_000_000))
         log('%s: the event at sidecar rows %d-%d, donor %s: pairing %s, FILL_OFF %d, read from byte %d' % ('append' if j.get('append') else 'join %d' % (k + 1), groups[g][0], groups[g][-1], os.path.basename(D), j['pairing'], off, rng[0]))
-        events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None, None))   # an append: where its seam is
+        events.append((g, D, j['pairing'], off, rng, part_at[k + 1] if j.get('append') else None, None, None))   # an append: where its seam is
         if j.get('append') and str(j['basis']).startswith('picture'): by_picture.add(g)   # its unit is the picture's, not the sound's
     for gp in auto_gaps:                                 # gaps inside a part, placed by locate.py (offsets in the part's numbering)
         k = gp['part']; r0 = part_rows[k] + gp['rows'][0]
@@ -476,13 +476,14 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         off_after = ((gp['off_after'] - cd) + 32768) % 65536 - 32768 if gp.get('off_after') is not None else None
         log('gap at sidecar rows %d-%d, donor %s (lined up by %s): pairing %s, FILL_OFF %d%s' % (groups[g][0], groups[g][-1], os.path.basename(gp['donor']), gp['basis'], gp['pairing'], off,
             ', FILL_OFF_AFTER %d (a glitch whose counters ran ahead)' % off_after if off_after is not None else ''))
-        events.append((g, gp['donor'], gp['pairing'], off, None, None, off_after))
+        events.append((g, gp['donor'], gp['pairing'], off, None, None, off_after, gp.get('donor_span')))   # the clip's units: clusters outside them are left
     # events in one sidecar stretch are planned in one pass with one donor: merged when they share donor, pairing and offset
     # (a short part between a disconnect and the end), refused otherwise
     merged = {}
-    for g, D, pairing, off, rng, app_at, off_after in events:
+    for g, D, pairing, off, rng, app_at, off_after, span in events:
         if g in merged:
-            g0, D0, p0, o0, r0, a0, oa0 = merged[g]
+            g0, D0, p0, o0, r0, a0, oa0, sp0 = merged[g]
+            span = span or sp0
             # a gap and a run-ahead glitch of one clip: the gap at the glitch's offset before it or after it is planned with
             # the glitch (the builder takes the stretch's clusters in order: those after the glitch at the offset after)
             for (o1, x1), (o2, x2) in (((o0, oa0), (off, off_after)), ((off, off_after), (o0, oa0))):
@@ -494,16 +495,17 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             rng = (min(x[0] for x in rs), max(x[1] for x in rs))
             app_at = app_at if app_at is not None else a0
             log('the events at sidecar rows %d-%d share clip %s and its offset: planned together' % (groups[g][0], groups[g][-1], os.path.basename(D)))
-        merged[g] = (g, D, pairing, off, rng, app_at, off_after)
+        merged[g] = (g, D, pairing, off, rng, app_at, off_after, span)
     events = sorted(merged.values(), key=lambda e: e[0])          # in capture order: a run-ahead glitch renumbers what follows it
     FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
     # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
-        for g, D, pairing, off, rng, app_at, off_after in events:
+        for g, D, pairing, off, rng, app_at, off_after, span in events:
             env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
-            env.pop('FILL_OFF_AFTER', None); env.pop('FILL_APPEND_AT', None); env.pop('FILL_APPEND_BY_PICTURE', None)
+            env.pop('FILL_OFF_AFTER', None); env.pop('FILL_APPEND_AT', None); env.pop('FILL_APPEND_BY_PICTURE', None); env.pop('FILL_DONOR_SPAN', None)
+            if span: env['FILL_DONOR_SPAN'] = '%d,%d' % (span[0], span[1])
             if app_at is not None: env['FILL_APPEND_AT'] = str(app_at)
             if app_at is not None and g in by_picture: env['FILL_APPEND_BY_PICTURE'] = '1'
             if off_after is not None: env['FILL_OFF_AFTER'] = str(off_after)
@@ -511,6 +513,9 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if r.returncode != 0: fail('plan.py failed on the event at row %d (exit %d)' % (groups[g][0], r.returncode))
         P = json.load(open(os.path.join(work, 'plan.json')))
         ents = [e for g, *_ in events for e in P.get(str(g), [])]
+        for e in ents:
+            if e.get('skipped'): log('%s: left as it is (%s)' % (e['name'], e['skipped']))
+        ents = [e for e in ents if not e.get('skipped')]
         if not ents: fail('the planner found nothing to fill at the chosen events')
         bad = [e['name'] + ': ' + e.get('error', 'structure check failed') for e in ents if not e.get('filled') or not e.get('structure_ok')]
         if bad: fail('not every gap could be filled: %s' % '; '.join(bad))

@@ -11,6 +11,18 @@ T, SIDECAR, WORK = sys.argv[1], sys.argv[2], sys.argv[3]
 g_first = int(sys.argv[4]) if len(sys.argv) > 4 else 1; g_last = int(sys.argv[5]) if len(sys.argv) > 5 else 10 ** 6
 RANGE = (int(sys.argv[6]), int(sys.argv[7])) if len(sys.argv) > 7 else None
 RSS_LIMIT = 3 << 30
+# FILL_DONOR_SPAN=first,count: the clip's whole units (its own counters). A cluster whose units the clip does not reach at all
+# is left as it is (a glitch the clip was not recorded across: the owner recaptures what he sees, not the tool's stretches);
+# one it reaches only in part is not filled, by name (half a cluster cannot be rebuilt).
+SPAN = tuple(int(x) for x in os.environ['FILL_DONOR_SPAN'].split(',')) if os.environ.get('FILL_DONOR_SPAN') else None
+SPAN_MARGIN = 8            # units of the clip a cluster needs beyond its own: 3 either side in build_cluster, and the sound's reach
+def clip_reach(c):
+    """'all', 'none' or 'part': how much of what cluster c needs from the clip the clip has"""
+    cs = unwrap([g[k] for g in c['v'] + c['a'] for k in ('c1', 'c2')]); offs = [OFF] + ([OFF_AFTER] if OFF_AFTER is not None else [])
+    lo, hi = min(cs) + min(offs) - SPAN_MARGIN, max(cs) + max(offs) + SPAN_MARGIN
+    rel = lambda u: (u - SPAN[0]) % 65536
+    inside = [0 <= rel(u) < SPAN[1] for u in range(lo, hi + 1)]
+    return 'all' if all(inside) else 'none' if not any(inside) else 'part'
 os.makedirs(WORK, exist_ok=True)
 def rss(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 def put_file(path, data):
@@ -31,6 +43,14 @@ for g, grp in enumerate(groups):
     vg, ag = find_gaps(S); cl = cluster_gaps(vg, ag); mods = []; entries = []
     for i, c in enumerate(cl):
         name = 'g%02d.%d' % (g, i)
+        if SPAN:
+            reach = clip_reach(c)
+            if reach == 'none':
+                print('CLUSTER %s SKIPPED: the clip has none of its units' % name, flush=True)
+                entries.append(dict(name=name, filled=False, skipped='the clip was not recorded across it')); continue
+            if reach == 'part':
+                print('CLUSTER %s NOT FILLED: the clip ends inside it' % name, flush=True)
+                entries.append(dict(name=name, filled=False, error='the clip covers only part of this cluster: record across all of it')); continue
         try:
             nxt = min([x['k'] for x in cl[i + 1]['v'] + cl[i + 1]['a']]) - 6000 if i + 1 < len(cl) else 1 << 60
             m = build_cluster(S, c['v'], c['a'], R.recs[c['last']][0], name, nxt)
