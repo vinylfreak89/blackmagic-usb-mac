@@ -12,6 +12,10 @@ def truth(p):
     return FUSE + p[len(SHARE):] if p.startswith(SHARE + '/') and os.path.isdir(FUSE) else p
 def refuse(m): print('RESULT REFUSED: ' + m); sys.exit(1)
 
+# The share's size is JuiceMount's record; JuiceFS's is where the bytes are. They disagreed once for a whole render written to a
+# just-deleted path (2026-11-18: 37 GB listed, 0 held), and every read of it was an I/O error.
+held = os.stat(truth(PART)).st_size; listed = os.path.getsize(PART)
+if held != listed: refuse('the share lists %d bytes for %s but JuiceFS holds %d: the render did not reach the volume' % (listed, PART, held))
 slots = json.load(open(os.path.join(D, 'schedule.json')))['slots']
 au = json.load(open(os.path.join(D, 'audio.json')))
 r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,nb_frames,duration', '-of', 'json', PART], capture_output=True, text=True)
