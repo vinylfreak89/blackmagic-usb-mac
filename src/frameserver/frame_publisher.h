@@ -87,11 +87,13 @@ void fp_get_stats(const fp_publisher *p, fp_stats *out);
 void fp_close(fp_publisher *p);
 
 /* A picture that did not arrive as a whole unit: a deck in search (fast-forward, rewind) or an unlocked source makes
- * the device send one short field per unit. `rows` holds n_lines lines of 1440 bytes as they arrived. Up to 300 lines
- * (one field) they are stretched over the 480 output rows by repeating lines, with no field structure. More than 300
- * lines hold both fields as a whole unit's rows do: they are published in the whole unit's aperture, field 1 from row
- * 19+d1 and field 2 from 282+d2 (frame_publisher placement, d1/d2 as for fp_publish_placed), a line the unit does not
- * carry taken from the other field. For looking, not for keeping: the frame carries FP_TRANSPORT_SHORT.
+ * the device send one short field per unit. `rows` holds n_lines lines of 1440 bytes as they arrived (the caller cuts
+ * them at the first 00 byte: past it the Shuttle's own bytes, not picture). Up to 300 lines (one field) they are shown
+ * in field 1's aperture as a bob. More than 300 lines hold both fields as a whole unit's rows do: they are published in
+ * the whole unit's aperture, field 1 from row 19+d1 and field 2 from 282+d2 (frame_publisher placement, d1/d2 as for
+ * fp_publish_placed), a line the unit does not carry taken from the other field. Output rows the unit carries in
+ * neither are the last published frame's rows (black before any), so the rest of the picture stands as a deck's search
+ * picture does. For looking, not for keeping: the frame carries FP_TRANSPORT_SHORT.
  * Returns as fp_publish. */
 int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, int d1, int d2, uint64_t counter_ext,
                        int audio_pts_known, uint64_t audio_pts_num);
