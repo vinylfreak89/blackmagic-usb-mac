@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """finish.py D PART OUT -- the one-pass render's last step. PART's video frame count, from the file's own index (ffprobe's
 nb_frames reads the index, not the media: on a cloud volume nothing but the index is fetched), must be twice the relay's
-slots (59.94p from 29.97 slots; one fewer when the last field has no partner), and it must hold an audio track. Then PART
+slots (59.94p from 29.97 slots; one fewer when the last field has no partner; less the last slots the audio does not reach,
+which -shortest leaves out), and it must hold an audio track. Then PART
 takes OUT's name. An existing OUT (--replace) is deleted first; on the JuiceFS share the result is checked in JuiceMount's own
 directory, by inode and size, because JuiceMount keeps a deleted path's size mark (2026-10-21). Prints RESULT."""
 import json, os, subprocess, sys
@@ -28,7 +29,17 @@ st = json.loads(r.stdout).get('streams', [])
 v = [s for s in st if s.get('codec_type') == 'video']; a = [s for s in st if s.get('codec_type') == 'audio']
 if len(v) != 1 or len(a) != 1: refuse('expected one video and one audio track, found %d and %d' % (len(v), len(a)))
 vf = int(v[0].get('nb_frames', -1))
-if vf not in (2 * slots, 2 * slots - 1): refuse('the render has %d frames, expected %d' % (vf, 2 * slots))
+# -shortest ends the video with the audio. The audio relay's last sample can fall short of the last slot's end (2026-11-20,
+# 19-08-04: 1,310 samples, 27 ms, short of 84,533 slots; ffmpeg left that slot out), so the slots the audio does not reach in
+# full may be missing at the end, and only those.
+SLOT = 48000 * 1001 / 30000                       # 1601.6 samples per slot
+short_slots = max(0, -(-(slots * SLOT - au['samples']) // SLOT)) if au['samples'] < slots * SLOT else 0
+lowest = 2 * (slots - int(short_slots)) - 1
+if not lowest <= vf <= 2 * slots:
+    refuse('the render has %d frames, expected %d (down to %d where the audio ends %d slots early)' % (vf, 2 * slots, lowest, short_slots))
+if vf < 2 * slots - 1:
+    print('the last %d slots are not in the render: the audio ends %.1f ms before the last slot does' % (
+          slots - (vf + 1) // 2, (slots * SLOT - au['samples']) / 48))
 print('video %d frames (%.2f s, %d slots); audio %d samples streamed (%.2f s), %s s in the file; audio breaks %d; '
       'silence inserted (counter, samples): %s; re-anchors earlier than the audio (counter, samples, left contiguous): %s; '
       'untrusted anchors (counter, implied samples, left contiguous): %s' % (
