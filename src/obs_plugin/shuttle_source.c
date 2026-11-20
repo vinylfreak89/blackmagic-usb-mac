@@ -537,6 +537,8 @@ static void *tpc_closer(void *arg){
          (unsigned long long)st.spill_segments, (unsigned long long)st.spill_floor_refusals, st.spill_max_write_ns / 1e6,
          st.spill_error ? ", spill turned off by: " : "", st.spill_error ? strerror(st.spill_error) : "",
          st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
+    char ph[4096]; cc_async_sink_format_phases(&st, ph, sizeof ph);
+    if (ph[0]) blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR, "[shuttle-source] raw .tpc threads: %s", ph);
     shuttle_src *s = j->s; bfree(j->path); bfree(j);
     pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
     return NULL;
@@ -1447,7 +1449,14 @@ static void *spill_recover_main(void *arg){
     if (rc != 0) blog(LOG_ERROR, "[shuttle-source] spill recovery: %s is not a private directory of this user; nothing recovered", dir);
     return NULL;
 }
+/* Each raw .tpc's writer-thread record (cc_async_sink_diag_dir): local, durable, named after the capture. */
+static char tee_diag_dir[PATH_MAX];
 bool obs_module_load(void){
+    const char *home = getenv("HOME");
+    if (home && snprintf(tee_diag_dir, sizeof tee_diag_dir, "%s/Library/Logs/shuttle-source", home) < (int)sizeof tee_diag_dir){
+        if (mkdir(tee_diag_dir, 0700) == 0 || errno == EEXIST) cc_async_sink_diag_dir = tee_diag_dir;
+        else blog(LOG_WARNING, "[shuttle-source] no raw .tpc writer record: %s cannot be created (%s)", tee_diag_dir, strerror(errno));
+    }
     spill_recover_started = pthread_create(&spill_recover_thr, NULL, spill_recover_main, NULL) == 0;
     obs_register_source(&shuttle_info);
     discard_stream_register();

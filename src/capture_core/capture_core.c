@@ -1600,7 +1600,29 @@ int cc_async_sink_test_spill_any_volume = 0;
  * system retried until it hung (2026-10-03). A refused flush is a write error like any other: the file stops. */
 size_t cc_async_sink_sync_every = (size_t)256 << 20;
 int cc_async_sink_writer_qos = QOS_CLASS_UTILITY;
+const char *cc_async_sink_diag_dir = NULL;
+/* A thread's phase clock, written only by that thread (cpu0 is its own); the producer reads ph/t0 and the totals. */
+struct as_th { _Atomic int ph; _Atomic uint64_t t0; uint64_t cpu0; _Atomic uint64_t wall[CC_SINK_NPH], cpu[CC_SINK_NPH]; mach_port_t port; };
+struct as_throw { uint8_t ph, state; uint16_t usage; uint32_t age_ms, kcpu_ms; uint32_t wall_ms[CC_SINK_NPH], cpu_ms[CC_SINK_NPH]; };
+struct as_row { uint8_t kind; uint32_t t_ms; uint64_t mem, disk, written, lost; struct as_throw th[2]; };
+#define AS_ROWS_CAP ((size_t)65536)
 static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
+static const char *const as_ph_names_[CC_SINK_NPH]={"other","idle","take_wait","lock","copy","release","write","fsync",
+    "spill_read","manifest","segment","free_query","floor_wait","spill_write"};
+const char *cc_async_sink_phase_name(int ph){ return ph>=0 && ph<CC_SINK_NPH?as_ph_names_[ph]:"none"; }
+static void as_th_start_(struct as_th *t){
+    t->cpu0=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
+    atomic_store_explicit(&t->t0,as_now_(),memory_order_relaxed); atomic_store_explicit(&t->ph,CC_SINK_PH_OTHER,memory_order_relaxed);
+}
+/* The calling thread enters phase ph: the time since its last change, wall and its own CPU, goes to the phase it leaves.
+ * Two clock reads, on the writer's or spiller's own thread only. */
+static void as_ph_(struct as_th *t, int ph){
+    uint64_t now=as_now_(), cpu=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
+    int old=atomic_load_explicit(&t->ph,memory_order_relaxed);
+    atomic_fetch_add_explicit(&t->wall[old],now-atomic_load_explicit(&t->t0,memory_order_relaxed),memory_order_relaxed);
+    atomic_fetch_add_explicit(&t->cpu[old],cpu-t->cpu0,memory_order_relaxed);
+    t->cpu0=cpu; atomic_store_explicit(&t->t0,now,memory_order_relaxed); atomic_store_explicit(&t->ph,ph,memory_order_relaxed);
+}
 struct cc_async_sink {
     int fd; uint8_t *ring; size_t cap, chunk;
     _Atomic size_t head, tail;           // monotonic byte counts: producer publishes head, writer tail
@@ -1636,6 +1658,10 @@ struct cc_async_sink {
     int swfd, srfd; uint64_t swseg, srseg;   // spiller's open segment; writer's
     size_t bcap;                         // bbuf: a chunk, or one record larger than a chunk
     _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns;
+    struct as_th th[2];                  // [0] writer, [1] spiller
+    _Atomic uint64_t spill_taken;        // writer: spilled bytes delivered (spill_bytes - spill_taken is on disk)
+    _Atomic uint64_t loss_ph[2][CC_SINK_NPH], loss_run[2];   // producer: at each episode's first drop
+    struct as_row *rows; size_t nrows; uint64_t rows_dropped, t_open; char *dname;   // producer: the diag record
 };
 static size_t as_free_(struct cc_async_sink *k){
     return k->cap-(atomic_load_explicit(&k->head,memory_order_relaxed)-atomic_load_explicit(&k->tail,memory_order_acquire));
@@ -1674,10 +1700,53 @@ static void as_flush_loss_(struct cc_async_sink *k, int e){
 }
 /* The first drop of a run of dropped packets (nothing pending on either endpoint): one loss episode, and what the
  * writer was doing at that moment. */
+/* One thread's state for a diag row: relaxed loads of its phase clock and one thread_info call (the kernel's run state,
+ * recent CPU usage and CPU time). No lock, no allocation. */
+static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, uint64_t now){
+    memset(r,0,sizeof *r);
+    struct as_th *t=&k->th[i];
+    if(!t->port){ r->ph=255; return; }                 /* no such thread (no spill) */
+    r->ph=(uint8_t)atomic_load_explicit(&t->ph,memory_order_relaxed);
+    uint64_t t0=atomic_load_explicit(&t->t0,memory_order_relaxed); r->age_ms=now>t0?(uint32_t)((now-t0)/1000000):0;
+    for(int p=0;p<CC_SINK_NPH;p++){
+        r->wall_ms[p]=(uint32_t)(atomic_load_explicit(&t->wall[p],memory_order_relaxed)/1000000);
+        r->cpu_ms[p]=(uint32_t)(atomic_load_explicit(&t->cpu[p],memory_order_relaxed)/1000000);
+    }
+    thread_basic_info_data_t bi; mach_msg_type_number_t n=THREAD_BASIC_INFO_COUNT;
+    if(thread_info(t->port,THREAD_BASIC_INFO,(thread_info_t)&bi,&n)==KERN_SUCCESS){
+        r->state=(uint8_t)bi.run_state; r->usage=(uint16_t)bi.cpu_usage;
+        r->kcpu_ms=(uint32_t)((uint64_t)bi.user_time.seconds*1000+(uint64_t)bi.user_time.microseconds/1000
+                              +(uint64_t)bi.system_time.seconds*1000+(uint64_t)bi.system_time.microseconds/1000);
+    }
+}
+/* A diag row (kind 0 tick, 1 loss) from both threads' states; producer only. */
+static void as_row_(struct cc_async_sink *k, int kind, const struct as_throw th[2], uint64_t now){
+    if(!k->rows) return;
+    if(k->nrows>=AS_ROWS_CAP){ k->rows_dropped++; return; }
+    struct as_row *r=&k->rows[k->nrows++];
+    r->kind=(uint8_t)kind; r->t_ms=(uint32_t)((now-k->t_open)/1000000);
+    size_t head=atomic_load_explicit(&k->head,memory_order_relaxed), dr=atomic_load_explicit(&k->drained,memory_order_relaxed);
+    r->mem=head>dr?head-dr:0;
+    uint64_t sb=atomic_load_explicit(&k->spill_bytes,memory_order_relaxed), sk=atomic_load_explicit(&k->spill_taken,memory_order_relaxed);
+    r->disk=sb>sk?sb-sk:0;
+    r->written=atomic_load_explicit(&k->written,memory_order_relaxed);
+    r->lost=atomic_load_explicit(&k->lost_by[0],memory_order_relaxed)+atomic_load_explicit(&k->lost_by[1],memory_order_relaxed);
+    r->th[0]=th[0]; r->th[1]=th[1];
+}
 static void as_episode_(struct cc_async_sink *k){
     if(k->pend_pk[0] || k->pend_pk[1]) return;
     uint64_t ws=atomic_load_explicit(&k->write_started,memory_order_relaxed);
     atomic_fetch_add_explicit(&k->loss_episodes,1,memory_order_relaxed);
+    {   uint64_t now=as_now_(); struct as_throw th[2];
+        for(int i=0;i<2;i++){
+            as_sample_th_(k,i,&th[i],now);
+            if(th[i].ph<CC_SINK_NPH){
+                atomic_fetch_add_explicit(&k->loss_ph[i][th[i].ph],1,memory_order_relaxed);
+                if(th[i].state==TH_STATE_RUNNING) atomic_fetch_add_explicit(&k->loss_run[i],1,memory_order_relaxed);
+            }
+        }
+        as_row_(k,1,th,now);
+    }
     if(ws){
         uint64_t age=as_now_()-ws;
         atomic_fetch_add_explicit(&k->loss_in_write,1,memory_order_relaxed);
@@ -1728,7 +1797,11 @@ static void as_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
     uint16_t pi=kind==CC_ERROR_CONTROL_LOSS?0xFFFE:(kind==CC_ERROR_SUBMIT?0xFFFF:0);
     rec_hdr h={REC_MAGIC,REC_XFERERR,ep,pi,seq,(uint32_t)st,0,0}; as_meta_(ctx,&h);
 }
-static void as_tick_(void *ctx, uint32_t ms){ rec_hdr h={REC_MAGIC,REC_TICK,0,0,0,ms,0,0}; as_meta_(ctx,&h); }
+static void as_tick_(void *ctx, uint32_t ms){
+    struct cc_async_sink *k=ctx;
+    if(k->rows){ uint64_t now=as_now_(); struct as_throw th[2]; as_sample_th_(k,0,&th[0],now); as_sample_th_(k,1,&th[1],now); as_row_(k,0,th,now); }
+    rec_hdr h={REC_MAGIC,REC_TICK,0,0,0,ms,0,0}; as_meta_(k,&h);
+}
 static void as_end_(void *ctx, enum cc_end r){ (void)ctx; (void)r; }
 /* Hand the memory of drained ring bytes [a,b) back to the system. Laid out end to end, the stream passes through
  * every page of the ring once per ring length whether or not the writer keeps up, so without this a ring sized
@@ -1775,7 +1848,9 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
         uint64_t t0=as_now_();
         if(*last_done && t0-*last_done>atomic_load_explicit(&k->max_ready_gap_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_ready_gap_ns,t0-*last_done,memory_order_relaxed);
         atomic_store_explicit(&k->write_started,t0,memory_order_relaxed);
+        as_ph_(&k->th[0],CC_SINK_PH_WRITE);
         ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,buf+done,n-done):write(k->fd,buf+done,n-done);
+        { int we=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER); errno=we; }
         uint64_t t1=as_now_(), dt=t1-t0;
         atomic_store_explicit(&k->write_started,0,memory_order_relaxed); *last_done=t1;
         atomic_fetch_add_explicit(&k->writes,1,memory_order_relaxed); atomic_fetch_add_explicit(&k->write_ns,dt,memory_order_relaxed);
@@ -1791,8 +1866,10 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
     *since_sync+=done;
     if(!k->io_errno && cc_async_sink_sync_every && *since_sync>=cc_async_sink_sync_every){
         *since_sync=0;
+        as_ph_(&k->th[0],CC_SINK_PH_FSYNC);
         int r=cc_async_sink_test_fsync?cc_async_sink_test_fsync(k->fd):fsync(k->fd);
-        if(r!=0) k->io_errno=errno?errno:EIO;   /* from here on everything drains into the discarded count */
+        int fe=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER);
+        if(r!=0) k->io_errno=fe?fe:EIO;   /* from here on everything drains into the discarded count */
     }
 }
 #define AS_SD_CAP ((uint64_t)1<<18)      /* spilled chunks tracked at once: 256 GB of spill at 1 MiB chunks */
@@ -1869,24 +1946,25 @@ static void as_manifest_next_(struct cc_async_sink *k, uint64_t seg, uint64_t of
  * spill holds any, otherwise from memory, and writes them in stream order. A destination call that blocks for
  * seconds holds only this thread and its private chunk; memory keeps draining into the spill meanwhile. */
 static void *as_writer_(void *arg){
-    struct cc_async_sink *k=arg;
+    struct cc_async_sink *k=arg; struct as_th *T=&k->th[0];
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
+    as_th_start_(T);
     uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
     uint64_t since_sync=0;               /* bytes written since the last flush */
     int idle=0;                          /* the last pass found nothing to write (not thread start-up) */
-    pthread_mutex_lock(&k->m);
+    as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
     for(;;){
         size_t n; struct as_sd d; int from_spill=0;
         if(k->sd_r<k->sd_w){             /* the oldest records are on disk */
             d=k->sdq[k->sd_r%AS_SD_CAP]; n=d.len; from_spill=1;
         } else if(k->take_busy){         /* the spiller is moving the next records to disk; it signals when done */
-            as_wait_(&k->cv,&k->m,100000000ull); continue;
+            as_ph_(T,CC_SINK_PH_TAKE_WAIT); as_wait_(&k->cv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); continue;
         } else {
             size_t head=atomic_load_explicit(&k->head,memory_order_acquire), avail=head-k->mpos;
             if(!avail){
                 last_done=0; idle=1;
                 if(atomic_load(&k->stop)) break;
-                as_wait_(&k->cv,&k->m,100000000ull); continue;
+                as_ph_(T,CC_SINK_PH_IDLE); as_wait_(&k->cv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); continue;
             }
             /* What had built up while this thread was away in its idle wait: at device rate, how long it was not running.
              * (max_ready_gap_ns cannot see that: it measures between writes, and an idle writer has no previous write.) */
@@ -1894,36 +1972,42 @@ static void *as_writer_(void *arg){
             size_t lo=k->mpos; n=as_records_(k,lo,head,k->chunk,&d);
             k->mpos=lo+n; k->take_busy=1;
             pthread_mutex_unlock(&k->m);
-            as_peek_(k,lo,k->bbuf,n);
-            pthread_mutex_lock(&k->m);
-            as_consumed_(k,lo+n); k->take_busy=0; pthread_cond_signal(&k->acv);
+            as_ph_(T,CC_SINK_PH_COPY); as_peek_(k,lo,k->bbuf,n);
+            as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m);
+            as_ph_(T,CC_SINK_PH_RELEASE); as_consumed_(k,lo+n); as_ph_(T,CC_SINK_PH_OTHER);
+            k->take_busy=0; pthread_cond_signal(&k->acv);
         }
         pthread_mutex_unlock(&k->m);
+        int got=1;
+        if(!k->io_errno && from_spill){ as_ph_(T,CC_SINK_PH_SPILL_READ); got=as_spill_read_(k,&d); as_ph_(T,CC_SINK_PH_OTHER); }
         if(k->io_errno) atomic_fetch_add_explicit(&k->discarded,n,memory_order_relaxed);
-        else if(from_spill && !as_spill_read_(k,&d)) as_spill_lost_(k,&d,&last_done,&since_sync);
+        else if(!got) as_spill_lost_(k,&d,&last_done,&since_sync);
         else for(size_t w=0;w<n && !k->io_errno;){   /* destination writes never exceed the chunk */
             size_t m=n-w<k->chunk?n-w:k->chunk; as_dest_write_(k,k->bbuf+w,m,&last_done,&since_sync); w+=m;
         }
-        pthread_mutex_lock(&k->m);
+        as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
         if(from_spill){
             int last=k->sdq[k->sd_r%AS_SD_CAP].last;   /* re-read: the spiller may have closed this segment meanwhile */
-            k->sd_r++; k->sp_r+=d.len;
+            k->sd_r++; k->sp_r+=d.len; atomic_fetch_add_explicit(&k->spill_taken,d.len,memory_order_relaxed);
             uint64_t ns=d.seg, no=(uint64_t)d.off+d.len;   /* the next chunk's header */
             if(k->sd_r<k->sd_w){ ns=k->sdq[k->sd_r%AS_SD_CAP].seg; no=k->sdq[k->sd_r%AS_SD_CAP].off-sizeof(struct cc_spill_chunk_s); }
             else if(last){ ns=d.seg+1; no=0; }
             pthread_mutex_unlock(&k->m);
+            as_ph_(T,CC_SINK_PH_MANIFEST);
             as_manifest_next_(k,ns,no);       /* the writer's own fd, outside the lock: after the bytes reached the destination */
-            pthread_mutex_lock(&k->m);
+            as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
             if(last){                    /* that segment is fully delivered: its disk space goes back now */
                 pthread_mutex_unlock(&k->m);
+                as_ph_(T,CC_SINK_PH_SEGMENT);
                 if(k->srfd>=0 && k->srseg==d.seg){ close(k->srfd); k->srfd=-1; }
                 char nm[PATH_MAX]; as_seg_name_(k,d.seg,nm,sizeof nm); unlink(nm);
-                pthread_mutex_lock(&k->m);
+                as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
                 k->seg_lo=d.seg+1; k->floor_retry_ns=0; pthread_cond_signal(&k->acv);
             }
         }
     }
     pthread_mutex_unlock(&k->m);
+    as_ph_(T,CC_SINK_PH_OTHER);          /* the last phase's time into its total */
     return NULL;
 }
 /* Free space as macOS counts it for work the user asked for: what is free plus what it will purge to make room (Time
@@ -1950,18 +2034,19 @@ static uint64_t as_free_bytes_(struct cc_async_sink *k){
  * leaves sfloor bytes free on that volume; past that, memory is the only buffer again and overflow is HostLoss.
  * A spill write that fails returns its bytes to memory and turns the spill off: nothing is lost by that. */
 static void *as_spiller_(void *arg){
-    struct cc_async_sink *k=arg;
+    struct cc_async_sink *k=arg; struct as_th *T=&k->th[1];
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
-    pthread_mutex_lock(&k->m);
+    as_th_start_(T);
+    as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
     for(;;){
         if(atomic_load(&k->stop) || k->io_errno) break;
         size_t head=atomic_load_explicit(&k->head,memory_order_acquire), backlog=head-k->mpos;
         if(k->take_busy || backlog<k->safter){
             atomic_store_explicit(&k->a_wake_at,k->mpos+k->safter,memory_order_relaxed);
-            as_wait_(&k->acv,&k->m,100000000ull); continue;
+            as_ph_(T,k->take_busy?CC_SINK_PH_TAKE_WAIT:CC_SINK_PH_IDLE); as_wait_(&k->acv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); continue;
         }
         uint64_t now=as_now_();
-        if(now<k->floor_retry_ns){ atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed); as_wait_(&k->acv,&k->m,k->floor_retry_ns-now); continue; }
+        if(now<k->floor_retry_ns){ atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed); as_ph_(T,CC_SINK_PH_FLOOR_WAIT); as_wait_(&k->acv,&k->m,k->floor_retry_ns-now); as_ph_(T,CC_SINK_PH_OTHER); continue; }
         if(k->sd_w-k->sd_r==AS_SD_CAP){      /* every chunk slot in use: memory is the buffer until one frees */
             atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed); k->floor_retry_ns=as_now_()+100000000ull; continue;
         }
@@ -1974,14 +2059,17 @@ static void *as_spiller_(void *arg){
             }
             int oldfd=k->swfd; k->swfd=-1;
             pthread_mutex_unlock(&k->m);
+            as_ph_(T,CC_SINK_PH_SEGMENT);
             if(oldfd>=0) close(oldfd);
             if(ours){ char nm[PATH_MAX]; as_seg_name_(k,old,nm,sizeof nm); unlink(nm); }
+            as_ph_(T,CC_SINK_PH_FREE_QUERY);
             int fd=-1, err=0; uint64_t fr=as_free_bytes_(k), seg=k->segs_made;
+            as_ph_(T,CC_SINK_PH_SEGMENT);
             if(fr>=k->sfloor+k->sseg){
                 char nm[PATH_MAX]; as_seg_name_(k,seg,nm,sizeof nm);
                 fd=open(nm,O_WRONLY|O_CREAT|O_EXCL,0600); if(fd<0) err=errno;
             }
-            pthread_mutex_lock(&k->m);
+            as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
             if(ours){ k->seg_lo=old+1; }
             if(fd<0 && !err){                /* the floor: retry when a segment is freed, or the volume gains space */
                 atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed);
@@ -1994,6 +2082,7 @@ static void *as_spiller_(void *arg){
         }
         uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
         pthread_mutex_unlock(&k->m);
+        as_ph_(T,CC_SINK_PH_SPILL_WRITE);
         size_t done=0; int err=0; uint64_t t0=as_now_();
         /* a chunk header (its stream position and length) so a recovery knows exactly where its records belong */
         struct cc_spill_chunk_s chh={CC_SPILL_CHUNK_MAGIC,(uint32_t)n,(uint64_t)lo};
@@ -2008,19 +2097,21 @@ static void *as_spiller_(void *arg){
         }
         uint64_t dt=as_now_()-t0;
         if(dt>atomic_load_explicit(&k->spill_max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->spill_max_write_ns,dt,memory_order_relaxed);
-        pthread_mutex_lock(&k->m);
+        as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
         k->take_busy=0;
         if(err){                             /* the records are still in memory; their partial copy must not stay in the segment */
             if(ftruncate(k->swfd,(off_t)at)!=0){ char nm[PATH_MAX]; as_seg_name_(k,k->swseg,nm,sizeof nm); if(at==0) unlink(nm); }
             k->mpos=lo; k->spill_error=err; pthread_cond_signal(&k->cv); break; }
         d.seg=k->swseg; d.off=(uint32_t)(at+ch); d.len=(uint32_t)n; d.last=0;
-        k->sdq[k->sd_w%AS_SD_CAP]=d; k->sd_w++; k->swoff=at+ch+n; k->sp_w+=n; as_consumed_(k,lo+n);
+        k->sdq[k->sd_w%AS_SD_CAP]=d; k->sd_w++; k->swoff=at+ch+n; k->sp_w+=n;
+        as_ph_(T,CC_SINK_PH_RELEASE); as_consumed_(k,lo+n); as_ph_(T,CC_SINK_PH_OTHER);
         atomic_fetch_add_explicit(&k->spill_bytes,n,memory_order_relaxed);
         if(k->sp_w-k->sp_r>atomic_load_explicit(&k->spill_peak,memory_order_relaxed)) atomic_store_explicit(&k->spill_peak,k->sp_w-k->sp_r,memory_order_relaxed);
         pthread_cond_signal(&k->cv);
     }
     k->spill_on=0; atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed);
     pthread_mutex_unlock(&k->m);
+    as_ph_(T,CC_SINK_PH_OTHER);          /* the last phase's time into its total */
     return NULL;
 }
 /* ---- recovery of a crashed writer's spill (cc_spill_recover) ---- */
@@ -2303,13 +2394,21 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
     if(note && *note){
         size_t len=strlen(note); rec_hdr h={REC_MAGIC,REC_SESSION,0,0,0,0,0,(uint32_t)len}; as_put_(k,&h,note,len);
     }
+    k->t_open=as_now_();
+    if(cc_async_sink_diag_dir && *cc_async_sink_diag_dir){   /* the diag record: reserved here, touched as rows are added */
+        void *r=mmap(NULL,AS_ROWS_CAP*sizeof(struct as_row),PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);
+        if(r!=MAP_FAILED){ const char *b=strrchr(path,'/'); k->dname=strdup(b?b+1:path); if(k->dname) k->rows=r; else munmap(r,AS_ROWS_CAP*sizeof(struct as_row)); }
+    }
     int started=pthread_create(&k->thr,NULL,as_writer_,k)==0;
+    if(started) k->th[0].port=pthread_mach_thread_np(k->thr);
     if(started && k->spill_on){
-        if(pthread_create(&k->sthr,NULL,as_spiller_,k)==0) k->spill_thread=1;
+        if(pthread_create(&k->sthr,NULL,as_spiller_,k)==0){ k->spill_thread=1; k->th[1].port=pthread_mach_thread_np(k->sthr); }
         else { k->spill_on=0; k->spill_state=-EAGAIN; }
     }
     if(!started){
         close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
+        if(k->rows) munmap(k->rows,AS_ROWS_CAP*sizeof(struct as_row));
+        free(k->dname);
         munmap(k->ring,k->cap); free(k->bbuf); free(k->sdir); free(k->sbase); if(k->sdq) munmap(k->sdq,AS_SD_CAP*sizeof *k->sdq); free(k); return CC_ERR_NOMEM;
     }
     *out=k; return CC_OK;
@@ -2334,6 +2433,61 @@ int cc_async_sink_finish(cc_async_sink *k){
     pthread_join(k->thr,NULL);             /* the writer has delivered memory and spill, or counted them discarded */
     k->finished=1;
     return CC_OK;
+}
+static const char *as_state_name_(int s){
+    switch(s){ case TH_STATE_RUNNING: return "runnable"; case TH_STATE_STOPPED: return "stopped"; case TH_STATE_WAITING: return "waiting";
+               case TH_STATE_UNINTERRUPTIBLE: return "uninterruptible"; case TH_STATE_HALTED: return "halted"; default: return ""; }
+}
+/* The diag record, written at close (never on the producer's or the writer's path). */
+static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
+    if(!k->rows || !k->nrows) return;
+    FILE *f=NULL; char path[1024];
+    for(int i=1;i<=9 && !f;i++){
+        if(i==1) snprintf(path,sizeof path,"%s/%s.tee-diag.csv",cc_async_sink_diag_dir,k->dname);
+        else snprintf(path,sizeof path,"%s/%s.tee-diag.%d.csv",cc_async_sink_diag_dir,k->dname,i);
+        f=fopen(path,"wx");
+        if(!f && errno!=EEXIST) break;
+    }
+    if(!f){ st->diag_error=errno?errno:EEXIST; return; }
+    fprintf(f,"kind,t_s,mem_mb,disk_mb,written_mb,lost_mb");
+    const char *tn[2]={"w","s"};
+    for(int i=0;i<2;i++) fprintf(f,",%s_phase,%s_state,%s_usage_pct,%s_phase_age_ms,%s_cpu_ms",tn[i],tn[i],tn[i],tn[i],tn[i]);
+    for(int i=0;i<2;i++) for(int p=0;p<CC_SINK_NPH;p++) fprintf(f,",%s_wall_ms_%s,%s_cpu_ms_%s",tn[i],as_ph_names_[p],tn[i],as_ph_names_[p]);
+    fputc('\n',f);
+    for(size_t j=0;j<k->nrows;j++){
+        const struct as_row *r=&k->rows[j];
+        fprintf(f,"%s,%.3f,%.1f,%.1f,%.1f,%.1f",r->kind?"loss":"tick",r->t_ms/1e3,r->mem/1e6,r->disk/1e6,r->written/1e6,r->lost/1e6);
+        for(int i=0;i<2;i++){ const struct as_throw *t=&r->th[i];
+            fprintf(f,",%s,%s,%.1f,%u,%u",cc_async_sink_phase_name(t->ph),as_state_name_(t->state),t->usage/10.0,t->age_ms,t->kcpu_ms); }
+        for(int i=0;i<2;i++) for(int p=0;p<CC_SINK_NPH;p++) fprintf(f,",%u,%u",r->th[i].wall_ms[p],r->th[i].cpu_ms[p]);
+        fputc('\n',f);
+    }
+    int bad=ferror(f); int e=errno;
+    if(fclose(f)!=0 && !bad){ bad=1; e=errno; }
+    if(bad){ st->diag_error=e?e:EIO; return; }
+    snprintf(st->diag_path,sizeof st->diag_path,"%s",path); st->diag_rows=k->nrows;
+}
+void cc_async_sink_format_phases(const cc_async_sink_stats *st, char *out, size_t cap){
+    size_t o=0; if(!cap) return; out[0]=0;
+    #define AP(...) do{ if(o<cap){ int w_=snprintf(out+o,cap-o,__VA_ARGS__); if(w_>0) o+=(size_t)w_; } }while(0)
+    const char *tn[2]={"writer","spiller"};
+    for(int i=0;i<2;i++){
+        uint64_t tot=0; for(int p=0;p<CC_SINK_NPH;p++) tot+=st->phase_wall_ns[i][p];
+        if(!tot) continue;
+        AP("%s%s time:",o?" | ":"",tn[i]);
+        for(int p=0;p<CC_SINK_NPH;p++) if(st->phase_wall_ns[i][p]>=1000000)
+            AP(" %s %.1f s (cpu %.1f)",as_ph_names_[p],st->phase_wall_ns[i][p]/1e9,st->phase_cpu_ns[i][p]/1e9);
+    }
+    if(st->loss_episodes) for(int i=0;i<2;i++){
+        uint64_t n=0; for(int p=0;p<CC_SINK_NPH;p++) n+=st->loss_phase[i][p];
+        if(!n) continue;
+        AP(" | at the %llu drops the %s was:",(unsigned long long)st->loss_episodes,tn[i]);
+        for(int p=0;p<CC_SINK_NPH;p++) if(st->loss_phase[i][p]) AP(" %s %llu",as_ph_names_[p],(unsigned long long)st->loss_phase[i][p]);
+        AP(" (runnable at %llu)",(unsigned long long)st->loss_runnable[i]);
+    }
+    if(st->diag_path[0]) AP(" | per-second record: %s (%llu rows%s)",st->diag_path,(unsigned long long)st->diag_rows,st->diag_rows_dropped?", some dropped: the record was full":"");
+    else if(st->diag_error) AP(" | per-second record NOT written: %s",strerror(st->diag_error));
+    #undef AP
 }
 int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
     if(!k) return CC_ERR_ARGS;
@@ -2383,8 +2537,19 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->spill_floor_refusals=atomic_load(&k->spill_floor_refusals); st->spill_max_write_ns=atomic_load(&k->spill_max_write_ns);
         st->spill_read_errors=atomic_load(&k->spill_read_errors);
         for(int e=0;e<2;e++){ st->spill_read_lost_packets[e]=atomic_load(&k->spill_read_lost_pk[e]); st->spill_read_lost_bytes[e]=atomic_load(&k->spill_read_lost_by[e]); }
+        for(int i=0;i<2;i++){
+            for(int p=0;p<CC_SINK_NPH;p++){
+                st->phase_wall_ns[i][p]=atomic_load(&k->th[i].wall[p]); st->phase_cpu_ns[i][p]=atomic_load(&k->th[i].cpu[p]);
+                st->loss_phase[i][p]=atomic_load(&k->loss_ph[i][p]);
+            }
+            st->loss_runnable[i]=atomic_load(&k->loss_run[i]);
+        }
+        st->diag_rows_dropped=k->rows_dropped;
+        as_write_diag_(k,st);
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
+    if(k->rows) munmap(k->rows,AS_ROWS_CAP*sizeof(struct as_row));
+    free(k->dname);
     pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
     free(k->bbuf); free(k->sdir); free(k->sbase);
     /* After a refused hand-back part of the ring's range may be unmapped and something else may have been mapped

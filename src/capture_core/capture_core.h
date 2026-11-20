@@ -219,6 +219,13 @@ int  cc_tagged_sink_close(cc_tagged_sink *k);   // returns CC_ERR_IO on any fail
 // The destination is created exclusively (never replaces a file). Single producer: calls into
 // the callbacks must not race each other (the capture delivery thread is the only producer).
 typedef struct cc_async_sink cc_async_sink;
+// What the sink's two threads were doing ([0] the writer, [1] the spiller), timed by the threads themselves: wall time
+// and the thread's own CPU time in each phase. A phase whose wall time far exceeds its CPU time was blocked (a write,
+// a lock, a wait) or was ready to run and not given a CPU; the run state sampled at each drop tells those apart.
+enum { CC_SINK_PH_OTHER, CC_SINK_PH_IDLE, CC_SINK_PH_TAKE_WAIT, CC_SINK_PH_LOCK, CC_SINK_PH_COPY, CC_SINK_PH_RELEASE,
+       CC_SINK_PH_WRITE, CC_SINK_PH_FSYNC, CC_SINK_PH_SPILL_READ, CC_SINK_PH_MANIFEST, CC_SINK_PH_SEGMENT,
+       CC_SINK_PH_FREE_QUERY, CC_SINK_PH_FLOOR_WAIT, CC_SINK_PH_SPILL_WRITE, CC_SINK_NPH };
+const char *cc_async_sink_phase_name(int phase);
 typedef struct {
     uint64_t records, bytes_written;     // records accepted into the ring; bytes the writer wrote
     uint64_t lost_packets[2], lost_bytes[2];  // [0]=video [1]=audio DATA dropped by this sink
@@ -252,7 +259,17 @@ typedef struct {
     // (pkt_index 0xFFFB) carrying exactly the packets and bytes it held, and the capture goes on. Loss records inside
     // it fold into those counts (an unread-slot record's kind and seq are not kept); its other records count as dropped.
     uint64_t spill_read_errors, spill_read_lost_packets[2], spill_read_lost_bytes[2];
+    // Time per phase for [0] the writer and [1] the spiller (zero without a spill thread), and at each loss episode's
+    // first drop the phase each thread was in and whether the kernel had it runnable (running, or ready and waiting
+    // for a CPU) rather than blocked.
+    uint64_t phase_wall_ns[2][CC_SINK_NPH], phase_cpu_ns[2][CC_SINK_NPH];
+    uint64_t loss_phase[2][CC_SINK_NPH], loss_runnable[2];
+    // The per-second and per-drop record (cc_async_sink_diag_dir): its path ("" if none was written), rows written,
+    // rows that did not fit, and the errno of a failed write of it (the capture is unaffected).
+    char diag_path[1024]; uint64_t diag_rows, diag_rows_dropped; int diag_error;
 } cc_async_sink_stats;
+// One line naming where each thread's time went and what both were doing at the drops, for a log.
+void cc_async_sink_format_phases(const cc_async_sink_stats *st, char *out, size_t cap);
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
                          size_t ring_bytes, size_t write_chunk);
 // A destination on another volume (a network share) can stall for seconds or minutes. With a spill, once the
@@ -318,6 +335,11 @@ extern int cc_async_sink_test_spill_any_volume;   /* spill even onto the destina
 extern size_t cc_async_sink_sync_every;            /* bytes between flushes (default 256 MiB); 0: only at close */
 // The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
 extern int cc_async_sink_writer_qos;
+// If set when a sink opens: at close it writes <dir>/<destination name>.tee-diag.csv, one row per tick (1 Hz) and
+// one at each loss episode's first drop: backlogs, bytes written and lost, and for both threads the phase, its age,
+// the kernel run state, recent CPU usage, CPU time, and cumulative wall/CPU time per phase. Rows are kept in memory
+// reserved at open (65,536 rows, touched as used); the producer only copies counters into one.
+extern const char *cc_async_sink_diag_dir;
 
 #ifdef __cplusplus
 }

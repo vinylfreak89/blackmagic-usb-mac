@@ -29,6 +29,37 @@ static ssize_t gated_write(int fd,const void *b,size_t n){
     if(n>max_seen) max_seen=n;
     return write(fd,b,n>3000?3000:n);   /* short writes too */
 }
+static _Atomic int spin_open=1;   /* a destination write that burns CPU until opened: the writer is running, not blocked */
+static ssize_t spinning_write(int fd,const void *b,size_t n){
+    atomic_store(&in_gate,1); volatile uint64_t x=0;
+    while(!atomic_load(&spin_open)) x++;
+    return write(fd,b,n);
+}
+static _Atomic int sgate_open=1, in_sgate;
+static ssize_t gated_spill(int fd,const void *b,size_t n,off_t off){
+    atomic_store(&in_sgate,1);
+    while(!atomic_load(&sgate_open)){ struct timespec t={0,1000000}; nanosleep(&t,NULL); }
+    return pwrite(fd,b,n,off);
+}
+static double now_ms_(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
+static void video_burst(cc_callbacks *cb,int n){
+    for(int i=0;i<n;i++){ cc_packet p={CC_EP_VIDEO,(uint16_t)(i%128),(uint32_t)i,0,15360,15360,payload}; cb->on_packet(cb->ctx,&p); }
+}
+/* The diag record's rows: count of each kind, and the w_phase / s_phase / w_state of loss rows (all must match). */
+static void diag_rows(const char *path,int *ticks,int *losses,const char *want_w,const char *want_s,const char *want_wstate){
+    FILE *f=fopen(path,"r"); assert(f); char line[8192]; assert(fgets(line,sizeof line,f) && !strncmp(line,"kind,t_s,mem_mb",15));
+    *ticks=*losses=0;
+    while(fgets(line,sizeof line,f)){
+        char *fld[16]; int nf=0; for(char *t=strtok(line,",");t && nf<16;t=strtok(NULL,",")) fld[nf++]=t;
+        assert(nf==16);   /* 6 common + 5 per thread, then the per-phase columns (cut here) */
+        if(!strcmp(fld[0],"tick")){ (*ticks)++; continue; }
+        assert(!strcmp(fld[0],"loss")); (*losses)++;
+        if(want_w) assert(!strcmp(fld[6],want_w));
+        if(want_wstate) assert(!strcmp(fld[7],want_wstate));
+        if(want_s) assert(!strcmp(fld[11],want_s));
+    }
+    fclose(f);
+}
 static _Atomic uint64_t discarded_bytes;
 static ssize_t discarding_write(int fd,const void *b,size_t n){ (void)fd;(void)b; atomic_fetch_add(&discarded_bytes,n); return (ssize_t)n; }
 static uint64_t footprint(void){
@@ -607,8 +638,74 @@ int main(int argc, char **argv){
       assert(atomic_load(&rx.unclosed)==1 && cst.unclosed_marks==1);
       printf("  failed spill write, then a crash: recovered file is a prefix of the stream (%ld B), in order; replay sees the end mark\n",lastpos);
       unlink(s17); }
+    /* 18. the diag record (cc_async_sink_diag_dir): where each thread's time went, and what both were doing at each
+     * drop, decided by stalls placed on purpose. (a) A destination blocked inside a write: every drop finds the writer
+     * in its write phase, the write's wall time covers the stall and its CPU time does not. */
+    { char s18[256], dd[300]; snprintf(s18,sizeof s18,"%s/diag18.tpc",dir); snprintf(dd,sizeof dd,"%s/diag",dir); assert(mkdir(dd,0700)==0);
+      cc_async_sink_diag_dir=dd;
+      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      assert(cc_async_sink_open(&as,s18,"diag",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
+      double t0=now_ms_();
+      for(int r=0;r<5;r++){ video_burst(&ca,200); ca.on_tick(ca.ctx,(uint32_t)r); struct timespec d={0,60000000}; nanosleep(&d,NULL); }
+      double stalled=now_ms_()-t0;
+      atomic_store(&gate_open,1);
+      assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1);
+      assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes);
+      for(int p=0;p<CC_SINK_NPH;p++) assert(!st.loss_phase[1][p] && !st.phase_wall_ns[1][p]);   /* no spill thread */
+      assert(st.phase_wall_ns[0][CC_SINK_PH_WRITE]>=(uint64_t)(stalled*0.9e6));
+      assert(st.phase_cpu_ns[0][CC_SINK_PH_WRITE]<st.phase_wall_ns[0][CC_SINK_PH_WRITE]/4);   /* blocked, not computing */
+      assert(st.diag_path[0] && !st.diag_error && st.diag_rows==5+st.loss_episodes && !st.diag_rows_dropped);
+      int nt,nl; diag_rows(st.diag_path,&nt,&nl,"write","none",NULL); assert(nt==5 && (uint64_t)nl==st.loss_episodes);
+      char line[4096]; cc_async_sink_format_phases(&st,line,sizeof line); printf("  diag, blocked write: %s\n",line);
+      assert(strstr(line,"at the ") && strstr(line,"the writer was: write "));
+      unlink(st.diag_path); unlink(s18);
+    /* (b) A destination write that computes instead of blocking: the writer is runnable at every drop and the write's
+     * CPU time is most of its wall time. The run state is what separates a starved thread from a blocked one. */
+      cc_async_sink_test_write=spinning_write; atomic_store(&spin_open,0); atomic_store(&in_gate,0);
+      assert(cc_async_sink_open(&as,s18,"diag",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
+      for(int r=0;r<3;r++){ video_burst(&ca,200); ca.on_tick(ca.ctx,(uint32_t)r); struct timespec d={0,60000000}; nanosleep(&d,NULL); }
+      atomic_store(&spin_open,1);
+      assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1);
+      assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes && st.loss_runnable[0]==st.loss_episodes);
+      assert(st.phase_cpu_ns[0][CC_SINK_PH_WRITE]>st.phase_wall_ns[0][CC_SINK_PH_WRITE]/2);
+      diag_rows(st.diag_path,&nt,&nl,"write","none","runnable"); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
+      unlink(st.diag_path); unlink(s18);
+    /* (c) With a spill, a destination stalled and a spill write stalled too: every drop finds the writer in its write
+     * and the spiller in its spill write; the record names both. */
+      cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      cc_async_sink_test_spill_write=gated_spill; atomic_store(&sgate_open,0); atomic_store(&in_sgate,0);
+      cc_async_sink_spill sp18={sdir,1,1u<<20,1u<<20};
+      assert(cc_async_sink_open_spill(&as,s18,"diag",8u<<20,65536,&sp18)==CC_OK && cc_async_sink_spill_state(as)==1); cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
+      video_burst(&ca,150);                                   /* 2.3 MB: past the 1 MiB threshold, so the spiller starts */
+      for(int i=0;!atomic_load(&in_sgate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
+      for(int r=0;r<3;r++){ video_burst(&ca,400); ca.on_tick(ca.ctx,(uint32_t)r); struct timespec d={0,40000000}; nanosleep(&d,NULL); }
+      atomic_store(&sgate_open,1); atomic_store(&gate_open,1);
+      assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1);
+      assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes && st.loss_phase[1][CC_SINK_PH_SPILL_WRITE]==st.loss_episodes);
+      assert(st.phase_wall_ns[1][CC_SINK_PH_SPILL_WRITE]>=100000000ull);
+      diag_rows(st.diag_path,&nt,&nl,"write","spill_write",NULL); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
+      cc_async_sink_format_phases(&st,line,sizeof line); printf("  diag, stalled spill: %s\n",line);
+      unlink(st.diag_path); unlink(s18);
+      cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0;
+    /* (d) What the producer pays: a tick with the record on against off, and the writer's phase clock (two reads). */
+      cc_async_sink_test_write=discarding_write;
+      double cost[2];
+      for(int on=0;on<2;on++){
+          cc_async_sink_diag_dir=on?dd:NULL;
+          assert(cc_async_sink_open(&as,s18,"diag",64u<<20,1u<<20)==CC_OK); cc_async_sink_callbacks(as,&ca);
+          double a0=now_ms_(); for(int i=0;i<20000;i++) ca.on_tick(ca.ctx,(uint32_t)i); cost[on]=(now_ms_()-a0)/20000*1e6;
+          assert(cc_async_sink_close(as,&st)==CC_OK); if(on){ assert(st.diag_rows==20000); unlink(st.diag_path); } unlink(s18);
+      }
+      double c0=now_ms_(); uint64_t sink=0; for(int i=0;i<100000;i++) sink+=clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)+clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
+      double clk=(now_ms_()-c0)/100000*1e6; (void)sink;
+      printf("  diag cost: a tick %.0f ns without the record, %.0f ns with it (%.0f ns added, once a second and at each drop); a phase change %.0f ns on the writer/spiller thread\n",cost[0],cost[1],cost[1]-cost[0],clk);
+      assert(cost[1]-cost[0]<50000);                          /* far under a packet period; a loose guard against a regression */
+      cc_async_sink_diag_dir=NULL; cc_async_sink_test_write=NULL; rmdir(dd); }
     unlink(r7); unlink(s7); unlink(s8); unlink(s9); rmdir(sdir);
     unlink(a); unlink(b); unlink(c); unlink(d); rmdir(dir);
-    puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept, unreadable spill chunk confessed exactly and the capture goes on, a crashed writer's spill recovered into its destination");
+    puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept, unreadable spill chunk confessed exactly and the capture goes on, a crashed writer's spill recovered into its destination, the diag record names each thread's phase and run state at every drop");
     return 0;
 }
