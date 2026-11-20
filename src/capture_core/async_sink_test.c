@@ -711,7 +711,7 @@ int main(int argc, char **argv){
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
       video_burst(&ca,150);
       for(int i=0;atomic_load(&spill_calls)<2;i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
-      { struct timespec d={0,50000000}; nanosleep(&d,NULL); }   /* the spiller returns after its failed write */
+      for(int i=0;!cc_async_sink_test_thread_exited(as,1);i++){ assert(i<10000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }   /* the spiller has ended */
       for(int r=0;r<3;r++){ video_burst(&ca,400); ca.on_tick(ca.ctx,(uint32_t)r); }
       bw_set(1);
       assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1 && st.spill_error==EIO);

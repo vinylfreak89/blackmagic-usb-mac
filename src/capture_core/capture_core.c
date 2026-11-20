@@ -1612,7 +1612,10 @@ static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 static const char *const as_ph_names_[CC_SINK_NPH]={"other","idle","take_wait","lock","copy","release","write","fsync",
     "spill_read","manifest","segment","free_query","floor_wait","spill_write"};
 #define AS_PH_EXITED 254   /* in a diag row: the thread has ended (the spiller ends early when the spill turns off) */
-const char *cc_async_sink_phase_name(int ph){ return ph>=0 && ph<CC_SINK_NPH?as_ph_names_[ph]:ph==AS_PH_EXITED?"exited":"none"; }
+#define AS_PH_UNKNOWN 253  /* in a diag row: the thread exists but its port could not be referenced */
+const char *cc_async_sink_phase_name(int ph){
+    return ph>=0 && ph<CC_SINK_NPH?as_ph_names_[ph]:ph==AS_PH_EXITED?"exited":ph==AS_PH_UNKNOWN?"unknown":"none";
+}
 static void as_th_start_(struct as_th *t){
     t->cpu0=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
     atomic_store_explicit(&t->t0,as_now_(),memory_order_relaxed); atomic_store_explicit(&t->ph,CC_SINK_PH_OTHER,memory_order_relaxed);
@@ -1670,7 +1673,7 @@ struct cc_async_sink {
     struct as_th th[2];                  // [0] writer, [1] spiller
     _Atomic uint64_t spill_taken;        // writer: spilled bytes delivered (spill_bytes - spill_taken is on disk)
     _Atomic uint64_t loss_ph[2][CC_SINK_NPH], loss_run[2];   // producer: at each episode's first drop
-    struct as_row *rows; size_t nrows; uint64_t rows_dropped, t_open; char *dname, *ddir;   // producer: the diag record
+    struct as_row *rows; size_t nrows; uint64_t rows_dropped, loss_rows_dropped, t_open; char *dname, *ddir;   // producer: the diag record
 };
 static size_t as_free_(struct cc_async_sink *k){
     return k->cap-(atomic_load_explicit(&k->head,memory_order_relaxed)-atomic_load_explicit(&k->tail,memory_order_acquire));
@@ -1714,7 +1717,7 @@ static void as_flush_loss_(struct cc_async_sink *k, int e){
 static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, uint64_t now){
     memset(r,0,sizeof *r);
     struct as_th *t=&k->th[i];
-    if(!t->port){ r->ph=255; return; }                 /* no such thread (no spill) */
+    if(!t->port){ r->ph=i==0 || k->spill_thread?AS_PH_UNKNOWN:255; return; }   /* 255: no such thread (no spill) */
     if(atomic_load_explicit(&t->exited,memory_order_relaxed)){ r->ph=AS_PH_EXITED; return; }
     r->ph=(uint8_t)atomic_load_explicit(&t->ph,memory_order_relaxed);
     uint64_t t0=atomic_load_explicit(&t->t0,memory_order_relaxed); r->age_ms=now>t0?(uint32_t)((now-t0)/1000000):0;
@@ -1733,7 +1736,7 @@ static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, ui
 static void as_row_(struct cc_async_sink *k, int kind, const struct as_throw th[2], uint64_t now){
     if(!k->rows) return;
     /* ticks stop a quarter short of the end (about 13 h of them), so drops late in a long capture still find room */
-    if(k->nrows>=(kind?AS_ROWS_CAP:AS_ROWS_CAP-AS_ROWS_CAP/4)){ k->rows_dropped++; return; }
+    if(k->nrows>=(kind?AS_ROWS_CAP:AS_ROWS_CAP-AS_ROWS_CAP/4)){ k->rows_dropped++; if(kind) k->loss_rows_dropped++; return; }
     struct as_row *r=&k->rows[k->nrows++];
     r->kind=(uint8_t)kind; r->t_ms=(uint32_t)((now-k->t_open)/1000000);
     size_t head=atomic_load_explicit(&k->head,memory_order_relaxed), dr=atomic_load_explicit(&k->drained,memory_order_relaxed);
@@ -2434,6 +2437,7 @@ int cc_async_sink_open(cc_async_sink **out, const char *path, const char *note, 
     return cc_async_sink_open_spill(out,path,note,ring_bytes,chunk,NULL);
 }
 int cc_async_sink_spill_state(const cc_async_sink *k){ return k?k->spill_state:-EINVAL; }
+int cc_async_sink_test_thread_exited(const cc_async_sink *k, int i){ return k && i>=0 && i<2?atomic_load(&k->th[i].exited):0; }
 int64_t cc_async_sink_spill_room(const cc_async_sink *k){ return k?k->spill_room:0; }
 void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t *bytes){ *files=k?k->stale_files:0; *bytes=k?k->stale_bytes:0; }
 uint64_t cc_async_sink_progress(cc_async_sink *k){ return atomic_load(&k->written)+atomic_load(&k->discarded); }
@@ -2462,7 +2466,7 @@ static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
     for(int i=1;i<=9 && !f;i++){
         int w=i==1?snprintf(path,sizeof path,"%s/%s.tee-diag.csv",k->ddir,k->dname)
                   :snprintf(path,sizeof path,"%s/%s.tee-diag.%d.csv",k->ddir,k->dname,i);
-        if(w<0 || (size_t)w>=sizeof path){ st->diag_error=ENAMETOOLONG; return; }
+        if(w<0 || (size_t)w>=sizeof path){ st->diag_error=i==1?ENAMETOOLONG:EEXIST; return; }   /* past the first: the names that fit exist */
         f=fopen(path,"wx");
         if(!f && errno!=EEXIST) break;
     }
@@ -2503,7 +2507,8 @@ void cc_async_sink_format_phases(const cc_async_sink_stats *st, char *out, size_
         for(int p=0;p<CC_SINK_NPH;p++) if(st->loss_phase[i][p]) AP(" %s %llu",as_ph_names_[p],(unsigned long long)st->loss_phase[i][p]);
         AP(" (runnable at %llu)",(unsigned long long)st->loss_runnable[i]);
     }
-    if(st->diag_path[0]) AP(" | per-second record: %s (%llu rows%s)",st->diag_path,(unsigned long long)st->diag_rows,st->diag_rows_dropped?", some dropped: the record was full":"");
+    if(st->diag_path[0]) AP(" | per-second record: %s (%llu rows%s)",st->diag_path,(unsigned long long)st->diag_rows,
+        st->diag_loss_rows_dropped?", drops past the record's end not in it":st->diag_rows_dropped?", ticks after its first ~13 h not in it":"");
     else if(st->diag_error) AP(" | per-second record NOT written: %s",strerror(st->diag_error));
     #undef AP
 }
@@ -2562,7 +2567,7 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
             }
             st->loss_runnable[i]=atomic_load(&k->loss_run[i]);
         }
-        st->diag_rows_dropped=k->rows_dropped;
+        st->diag_rows_dropped=k->rows_dropped; st->diag_loss_rows_dropped=k->loss_rows_dropped;
         as_write_diag_(k,st);
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;

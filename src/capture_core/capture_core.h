@@ -268,7 +268,7 @@ typedef struct {
     uint64_t loss_phase[2][CC_SINK_NPH], loss_runnable[2];
     // The per-second and per-drop record (cc_async_sink_diag_dir): its path ("" if none was written), rows written,
     // rows that did not fit, and the errno of a failed write of it (the capture is unaffected).
-    char diag_path[1024]; uint64_t diag_rows, diag_rows_dropped; int diag_error;
+    char diag_path[1024]; uint64_t diag_rows, diag_rows_dropped, diag_loss_rows_dropped; int diag_error;
 } cc_async_sink_stats;
 // One line naming where each thread's time went and what both were doing at the drops, for a log.
 void cc_async_sink_format_phases(const cc_async_sink_stats *st, char *out, size_t cap);
@@ -333,7 +333,8 @@ extern int (*cc_async_sink_test_fsync)(int fd);   /* test hook for the periodic 
 extern ssize_t (*cc_async_sink_test_spill_write)(int fd, const void *buf, size_t n, off_t off);   /* spill writes */
 extern uint64_t (*cc_async_sink_test_free)(const char *dir);   /* free bytes on the spill volume */
 extern ssize_t (*cc_async_sink_test_spill_read)(int fd, void *buf, size_t n, off_t off);   /* spill reads */
-extern int cc_async_sink_test_spill_any_volume;   /* spill even onto the destination's own volume */
+extern int cc_async_sink_test_spill_any_volume;
+int cc_async_sink_test_thread_exited(const cc_async_sink *k, int thread);   /* tests: [0] writer, [1] spiller has ended */   /* spill even onto the destination's own volume */
 extern size_t cc_async_sink_sync_every;            /* bytes between flushes (default 256 MiB); 0: only at close */
 // The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
 extern int cc_async_sink_writer_qos;
