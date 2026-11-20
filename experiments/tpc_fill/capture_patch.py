@@ -19,6 +19,18 @@ when that is decisive and by sound otherwise (snow, held cels); where both can t
 somewhere, no place may get two clips, and every disconnect and every gap needs one (a gap with no clip is named before
 any work is done: a patched capture with a hole left in it would fail the replay check at the end); a glitch needs none.
 
+Before that, a one-part capture is searched for stretches its own writer lost (teeloss.py: the HostLoss records the
+plugin writes where its memory ring overflowed; the live sidecar shows nothing there, because the live path lost
+nothing). Each is bridged WHOLE from a clip (bridge.py): the capture's units up to the nearest clean scene cut before the
+stretch, the clip's units from there to the nearest clean cut after it, the capture's units again (owner, 2026-11-20: at a
+scene change close by, so the two passes' luma differences go unnoticed). The clip is lined up by its cuts (two passes
+differ by 11-14 codes per field, too much for single-field matches on slow picture) and checked by the run difference on
+both sides; both sides must give one offset and the same field pairing. No clean cut on a side inside the clip's reach,
+or a loss or error record inside its stretch, refuses the bridge by name. A clip used for a bridge is placed nowhere
+else. The assembler streams the clip's records into the patched capture (a bridge can be thousands of units: 10,467 on
+2026-11-20 08-50-37), cut at the seam units' markers and resync records, its counters moved into the capture's numbering
+and its packets numbered on from the capture's.
+
 A capture split at Shuttle disconnects (NAME.mov.raw.tpc, NAME.mov.raw.part2.tpc, ... with NAME.mov.registration.csv,
 NAME.mov.registration.part2.csv, ...) needs one --join DONOR per disconnect, in order: a recapture cued at least 15 s before
 the disconnect and run 15 s past where the Shuttle locked again. Each join is measured first (joins.py: the donor lined up
@@ -409,6 +421,28 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
     inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, placed=placed, donors={x: st(x) for x in donors})
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
+    # 0a. stretches the capture's own writer lost (teeloss.py: the live sidecar does not show them): each is bridged whole
+    # from a clip, at the nearest clean scene cut either side (bridge.py); the clips used for it are not placed again
+    bridges = []
+    if clips and len(parts) == 1:
+        import teeloss, bridge as B
+        tl = stage(W, 'teeloss', inputs, lambda: dict(episodes=teeloss.episodes(teeloss.census(truth(T), log)['losses'])))
+        for k, ep in enumerate(tl['episodes']):
+            log('stretch the capture\'s writer lost: units %s-%s, %d loss records, %.1f MB of picture and %.1f MB of sound' % (
+                ep['first'], ep['last'], ep['records'], ep['video_bytes'] / 1e6, ep['audio_bytes'] / 1e6))
+            done = None; why = []
+            for D in list(clips):
+                def pb(D=D, ep=ep, k=k):
+                    try: return B.measure(truth(T), B.plan(truth(T), truth(D), ep, log), name='bridge-%d' % k)
+                    except ValueError as e: return dict(error=str(e))
+                r = stage(W, 'bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, episode=ep, donor=D), pb)
+                if 'error' in r: why.append('%s: %s' % (os.path.basename(D), r['error'])); continue
+                done = r; clips.remove(D); break
+            if not done: fail('the stretch the capture\'s writer lost at units %s-%s: no clip bridges it (%s)' % (ep['first'], ep['last'], '; '.join(why) or 'no clips left'))
+            log('%s: units %d-%d from %s (offset %+d), %d bytes in place of %d' % (done['name'], done['units'][0], done['units'][1], os.path.basename(D),
+                done['offset'], done['bytes'], done['file_to'] - done['file_from']))
+            bridges.append(done)
+    elif clips: log('the capture is in %d parts: the stretches its writer lost are not looked for (one part only)' % len(parts))
     # 0. where each clip goes, when the clips are given alone
     append_d = None; auto_gaps = []
     if clips:
@@ -520,9 +554,10 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
+        os.makedirs(work, exist_ok=True)
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
         for g, D, pairing, off, rng, app_at, off_after, span, cmap in events:
-            env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)
+            env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)   # (a bridge is not planned here: bridge.py measured it)
             for k in ('FILL_OFF_AFTER', 'FILL_APPEND_AT', 'FILL_APPEND_BY_PICTURE', 'FILL_DONOR_SPAN', 'FILL_CLUSTERS', 'FILL_CLUSTERS_ONLY'): env.pop(k, None)
             if cmap:
                 os.makedirs(work, exist_ok=True); cp = os.path.join(work, 'clusters-%d.json' % g); json.dump(cmap, open(cp, 'w'), indent=1)
@@ -534,21 +569,25 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if off_after is not None: env['FILL_OFF_AFTER'] = str(off_after)
             r = subprocess.run([sys.executable, 'plan.py', VT, LIVE, work, str(g), str(g)] + ([str(rng[0]), str(rng[1])] if rng else []), cwd=HERE, env=env)
             if r.returncode != 0: fail('plan.py failed on the event at row %d (exit %d)' % (groups[g][0], r.returncode))
-        P = json.load(open(os.path.join(work, 'plan.json')))
+        P = json.load(open(os.path.join(work, 'plan.json'))) if events else {}
+        for b in bridges: P[b['name']] = [b]
+        if bridges: json.dump(P, open(os.path.join(work, 'plan.json.new'), 'w')); os.replace(os.path.join(work, 'plan.json.new'), os.path.join(work, 'plan.json'))
         ents = [e for g, *_ in events for e in P.get(str(g), [])]
         for e in ents:
             if e.get('skipped'): log('%s: left as it is (%s)' % (e['name'], e['skipped']))
         ents = [e for e in ents if not e.get('skipped')]
-        if not ents: fail('the planner found nothing to fill at the chosen events')
+        if not ents and not bridges: fail('the planner found nothing to fill at the chosen events')
         bad = [e['name'] + ': ' + e.get('error', 'structure check failed') for e in ents if not e.get('filled') or not e.get('structure_ok')]
         if bad: fail('not every gap could be filled: %s' % '; '.join(bad))
         for e in ents:
             if e['rep'].get('clip'): log('%s: filled from %s (pairing %s, offset %+d%s), units %s' % (e['name'], e['rep']['clip'], e['rep']['offsets'][0], e['rep']['offsets'][1],
                 '' if e['rep']['offsets'][1] == e['rep']['offsets'][2] else ', %+d after it' % e['rep']['offsets'][2], e['rep'].get('video_units_filled')))
+        for b in bridges: log('%s: bridges units %d-%d whole from %s' % (b['name'], b['units'][0], b['units'][1], os.path.basename(b['donor'])))
         return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=e['rep'].get('video_units_filled', []), counter_jump=e['rep'].get('counter_jump'),
-                                                                                                             clip=e['rep'].get('clip')) for e in ents],
+                                                                                                             clip=e['rep'].get('clip')) for e in ents]
+                    + [{k: b[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=[b['units']], counter_jump=None, clip=os.path.basename(b['donor'])) for b in bridges],
                     left=[dict(name=e['name'], why=e['skipped']) for g, *_ in events for e in P.get(str(g), []) if e.get('skipped')])
-    pl = stage(W, 'plan', dict(inputs, events=events), plan)
+    pl = stage(W, 'plan', dict(inputs, events=events, bridges=[b['sha256'] for b in bridges]), plan)
     for x in pl.get('left', []): log('%s left as it is: %s' % (x['name'], x['why']))
     # 2b. preview: each patched stretch rendered from a local copy, the plan in place; blue at a patched unit stops the patch
     def preview():
@@ -608,7 +647,8 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
     stats = {p: st(p) for pc in parts for p in pc}                 # as this run read them: swap deletes nothing that changed since
     res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=replaced, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
-               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, input_stats=stats, pairing=events[0][2], fill_off=events[0][3], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3], append_at=e[5], fill_off_after=e[6]) for e in events], spans=spans,
+               head=hd, tail=tl, patched_mtime=A['mtime'], patched_ino=A['ino'], original_times=times, input_stats=stats, pairing=events[0][2] if events else None, fill_off=events[0][3] if events else None,
+               bridges=[{k: b[k] for k in ('name', 'donor', 'units', 'offset', 'file_from', 'file_to', 'bytes', 'sha256')} for b in bridges], events=[dict(group=e[0], donor=e[1], pairing=e[2], fill_off=e[3], append_at=e[5], fill_off_after=e[6]) for e in events], spans=spans,
                joins=(json.load(open(VT)) if joins_d or append_d else None), verified_at=time.time())
     json.dump(res, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)%s' % (PATCH['tpc'], PATCH['mov'], W, '; swap also removes %s' % ', '.join(os.path.basename(x) for x in replaced) if replaced else ''))

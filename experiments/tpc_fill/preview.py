@@ -72,7 +72,7 @@ def main():
     P = json.load(open(os.path.join(W, 'plan', 'plan.json'))); pv = os.path.join(W, 'preview'); os.makedirs(pv, exist_ok=True)
     groups, nrows = event_groups(LIVE); size = capture_size(T); per = size / nrows
     res = []; cum = 0; bad = []
-    for g in sorted(P, key=int):
+    for g in sorted((k for k in P if k.isdigit()), key=int):   # a bridge (bridge.py) is checked by the final render, not here
         ents = [e for e in P[g] if e.get('filled')]
         if not ents: continue
         lo = max(0, min(e['file_from'] for e in ents) - LEAD); hi = min(size, max(e['file_to'] for e in ents) + LEAD)

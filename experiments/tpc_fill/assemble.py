@@ -193,9 +193,29 @@ def copy(a, b, ov, oa):
             if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > (1536 << 20): raise SystemExit('STOPPED: the assembler has used more than 1.5 GB of memory')
             if written // (2 << 30) != (written - len(bb)) // (2 << 30):
                 print('%.0f s: %.2f GB written, %d records, %.1f MB/s' % (time.time() - t0, written / 1e9, nrec, written / 1e6 / (time.time() - t0)), file=sys.stderr, flush=True)
+def bridge_range(m):
+    """a bridge (bridge.py): the recapture's records streamed in place of [file_from, file_to); they must be the bytes the
+    plan measured (length and SHA-256, before earlier ranges' sequence moves) and reach the same constant (kv, ka)"""
+    global nrec
+    import bridge
+    if base or src.endswith('.join.json'): raise SystemExit('STOPPED: a bridge needs a plain capture file as the source')
+    g = bridge.stream(src, m['donor'], m); h = hashlib.sha256(); n = 0
+    while True:
+        try: d = next(g)
+        except StopIteration as e: res = e.value; break
+        h.update(d); n += len(d); nrec += shift(d, ov, oa); emit(d)
+        if written - globals()['last_report'] > (256 << 20): globals()['last_report'] = written; throttle()
+    if n != m['bytes'] or h.hexdigest() != m['sha256'] or (res['kv'], res['ka']) != (m['kv'], m['ka']):
+        raise SystemExit('STOPPED: the bridge streamed %d bytes, SHA-256 %s, constant %s; the plan measured %d, %s, %s' % (
+            n, h.hexdigest(), (res['kv'], res['ka']), m['bytes'], m['sha256'], (m['kv'], m['ka'])))
+    return res
 pos = base; ov = oa = 0
 for m in mods:
     copy(pos, m['file_from'], ov, oa); segs.append(dict(kind='copy', src=[pos, m['file_from']], dst_end=at(), ov=ov, oa=oa))
+    if m.get('kind') == 'bridge':
+        d0 = at(); res = bridge_range(m)
+        segs.append(dict(kind='bridge', name=m['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], donor=m['donor'], headers=res['headers'], resyncs=res['resyncs']))
+        pos = m['file_to']; ov += m['kv']; oa += m['ka']; continue
     d = bytearray(data_of(m)); nrec += shift(d, ov, oa); d0 = at()
     if m.get('counter_shift'): Z.shift(d0 + m['counter_shift']['at'], m['counter_shift']['counts'])
     emit(d); segs.append(dict(kind='fill', name=m['rep']['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], counter_shift=m.get('counter_shift'))); del d
