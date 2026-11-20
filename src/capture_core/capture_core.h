@@ -222,6 +222,8 @@ typedef struct cc_async_sink cc_async_sink;
 // What the sink's two threads were doing ([0] the writer, [1] the spiller), timed by the threads themselves: wall time
 // and the thread's own CPU time in each phase. A phase whose wall time far exceeds its CPU time was blocked (a write,
 // a lock, a wait) or was ready to run and not given a CPU; the run state sampled at each drop tells those apart.
+// idle, take_wait and floor_wait include re-taking the sink's lock after the wake (a condition wait returns holding
+// it); lock is the explicit acquisitions. A thread that has ended reads as "exited" in the record.
 enum { CC_SINK_PH_OTHER, CC_SINK_PH_IDLE, CC_SINK_PH_TAKE_WAIT, CC_SINK_PH_LOCK, CC_SINK_PH_COPY, CC_SINK_PH_RELEASE,
        CC_SINK_PH_WRITE, CC_SINK_PH_FSYNC, CC_SINK_PH_SPILL_READ, CC_SINK_PH_MANIFEST, CC_SINK_PH_SEGMENT,
        CC_SINK_PH_FREE_QUERY, CC_SINK_PH_FLOOR_WAIT, CC_SINK_PH_SPILL_WRITE, CC_SINK_NPH };

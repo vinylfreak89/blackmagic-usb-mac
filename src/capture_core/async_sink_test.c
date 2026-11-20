@@ -35,6 +35,15 @@ static ssize_t spinning_write(int fd,const void *b,size_t n){
     while(!atomic_load(&spin_open)) x++;
     return write(fd,b,n);
 }
+/* A destination write blocked on a condition variable until opened: the writer is waiting in the kernel the whole
+ * time, never woken to poll, so every sample must find it blocked. */
+static pthread_mutex_t bw_m=PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t bw_c=PTHREAD_COND_INITIALIZER; static int bw_open=1;
+static ssize_t blocked_write(int fd,const void *b,size_t n){
+    atomic_store(&in_gate,1);
+    pthread_mutex_lock(&bw_m); while(!bw_open) pthread_cond_wait(&bw_c,&bw_m); pthread_mutex_unlock(&bw_m);
+    return write(fd,b,n);
+}
+static void bw_set(int open){ pthread_mutex_lock(&bw_m); bw_open=open; pthread_cond_broadcast(&bw_c); pthread_mutex_unlock(&bw_m); }
 static _Atomic int sgate_open=1, in_sgate;
 static ssize_t gated_spill(int fd,const void *b,size_t n,off_t off){
     atomic_store(&in_sgate,1);
@@ -50,8 +59,9 @@ static void diag_rows(const char *path,int *ticks,int *losses,const char *want_w
     FILE *f=fopen(path,"r"); assert(f); char line[8192]; assert(fgets(line,sizeof line,f) && !strncmp(line,"kind,t_s,mem_mb",15));
     *ticks=*losses=0;
     while(fgets(line,sizeof line,f)){
-        char *fld[16]; int nf=0; for(char *t=strtok(line,",");t && nf<16;t=strtok(NULL,",")) fld[nf++]=t;
-        assert(nf==16);   /* 6 common + 5 per thread, then the per-phase columns (cut here) */
+        char *fld[128]; int nf=0; line[strcspn(line,"\n")]=0;
+        for(char *t=line;;){ fld[nf++]=t; char *c=strchr(t,','); if(!c || nf==128) break; *c=0; t=c+1; }   /* empty fields kept */
+        assert(nf==6+2*5+2*2*CC_SINK_NPH);
         if(!strcmp(fld[0],"tick")){ (*ticks)++; continue; }
         assert(!strcmp(fld[0],"loss")); (*losses)++;
         if(want_w) assert(!strcmp(fld[6],want_w));
@@ -643,20 +653,20 @@ int main(int argc, char **argv){
      * in its write phase, the write's wall time covers the stall and its CPU time does not. */
     { char s18[256], dd[300]; snprintf(s18,sizeof s18,"%s/diag18.tpc",dir); snprintf(dd,sizeof dd,"%s/diag",dir); assert(mkdir(dd,0700)==0);
       cc_async_sink_diag_dir=dd;
-      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      cc_async_sink_test_write=blocked_write; bw_set(0); atomic_store(&in_gate,0);
       assert(cc_async_sink_open(&as,s18,"diag",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
       double t0=now_ms_();
       for(int r=0;r<5;r++){ video_burst(&ca,200); ca.on_tick(ca.ctx,(uint32_t)r); struct timespec d={0,60000000}; nanosleep(&d,NULL); }
       double stalled=now_ms_()-t0;
-      atomic_store(&gate_open,1);
+      bw_set(1);
       assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1);
-      assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes);
+      assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes && st.loss_runnable[0]==0);   /* blocked: never runnable */
       for(int p=0;p<CC_SINK_NPH;p++) assert(!st.loss_phase[1][p] && !st.phase_wall_ns[1][p]);   /* no spill thread */
       assert(st.phase_wall_ns[0][CC_SINK_PH_WRITE]>=(uint64_t)(stalled*0.9e6));
       assert(st.phase_cpu_ns[0][CC_SINK_PH_WRITE]<st.phase_wall_ns[0][CC_SINK_PH_WRITE]/4);   /* blocked, not computing */
       assert(st.diag_path[0] && !st.diag_error && st.diag_rows==5+st.loss_episodes && !st.diag_rows_dropped);
-      int nt,nl; diag_rows(st.diag_path,&nt,&nl,"write","none",NULL); assert(nt==5 && (uint64_t)nl==st.loss_episodes);
+      int nt,nl; diag_rows(st.diag_path,&nt,&nl,"write","none","waiting"); assert(nt==5 && (uint64_t)nl==st.loss_episodes);
       char line[4096]; cc_async_sink_format_phases(&st,line,sizeof line); printf("  diag, blocked write: %s\n",line);
       assert(strstr(line,"at the ") && strstr(line,"the writer was: write "));
       unlink(st.diag_path); unlink(s18);
@@ -669,7 +679,10 @@ int main(int argc, char **argv){
       atomic_store(&spin_open,1);
       assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1);
       assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes && st.loss_runnable[0]==st.loss_episodes);
-      assert(st.phase_cpu_ns[0][CC_SINK_PH_WRITE]>st.phase_wall_ns[0][CC_SINK_PH_WRITE]/2);
+      /* No bound on its CPU share: under load a utility-QoS spinner got under a tenth of its wall time (2026-11-20, with
+       * other suites running), which is the starvation this record exists to show. The run state decides the case. */
+      printf("  diag, computing write: runnable at %llu of %llu drops, cpu %.0f%% of the write's wall time\n",(unsigned long long)st.loss_runnable[0],
+             (unsigned long long)st.loss_episodes,100.0*st.phase_cpu_ns[0][CC_SINK_PH_WRITE]/(double)st.phase_wall_ns[0][CC_SINK_PH_WRITE]);
       diag_rows(st.diag_path,&nt,&nl,"write","none","runnable"); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
       unlink(st.diag_path); unlink(s18);
     /* (c) With a spill, a destination stalled and a spill write stalled too: every drop finds the writer in its write
@@ -688,6 +701,22 @@ int main(int argc, char **argv){
       assert(st.phase_wall_ns[1][CC_SINK_PH_SPILL_WRITE]>=100000000ull);
       diag_rows(st.diag_path,&nt,&nl,"write","spill_write",NULL); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
       cc_async_sink_format_phases(&st,line,sizeof line); printf("  diag, stalled spill: %s\n",line);
+      unlink(st.diag_path); unlink(s18);
+      cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0;
+    /* (e) A spill write that fails turns the spill off and the spiller ends. Drops after that read it as exited
+     * (never as a phase it is no longer in) and count no spiller phase; its port is still ours to ask about. */
+      cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=blocked_write; bw_set(0); atomic_store(&in_gate,0);
+      atomic_store(&spill_calls,0); atomic_store(&spill_fail_at,2); cc_async_sink_test_spill_write=failing_spill;
+      assert(cc_async_sink_open_spill(&as,s18,"diag",8u<<20,65536,&sp18)==CC_OK && cc_async_sink_spill_state(as)==1); cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
+      video_burst(&ca,150);
+      for(int i=0;atomic_load(&spill_calls)<2;i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
+      { struct timespec d={0,50000000}; nanosleep(&d,NULL); }   /* the spiller returns after its failed write */
+      for(int r=0;r<3;r++){ video_burst(&ca,400); ca.on_tick(ca.ctx,(uint32_t)r); }
+      bw_set(1);
+      assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1 && st.spill_error==EIO);
+      for(int p=0;p<CC_SINK_NPH;p++) assert(!st.loss_phase[1][p]);
+      diag_rows(st.diag_path,&nt,&nl,"write","exited",NULL); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
       unlink(st.diag_path); unlink(s18);
       cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0;
     /* (d) What the producer pays: a tick with the record on against off, and the writer's phase clock (two reads). */

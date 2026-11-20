@@ -1602,14 +1602,17 @@ size_t cc_async_sink_sync_every = (size_t)256 << 20;
 int cc_async_sink_writer_qos = QOS_CLASS_UTILITY;
 const char *cc_async_sink_diag_dir = NULL;
 /* A thread's phase clock, written only by that thread (cpu0 is its own); the producer reads ph/t0 and the totals. */
-struct as_th { _Atomic int ph; _Atomic uint64_t t0; uint64_t cpu0; _Atomic uint64_t wall[CC_SINK_NPH], cpu[CC_SINK_NPH]; mach_port_t port; };
+struct as_th { _Atomic int ph, exited; _Atomic uint64_t t0; uint64_t cpu0; _Atomic uint64_t wall[CC_SINK_NPH], cpu[CC_SINK_NPH];
+                mach_port_t port; };   /* port: a send right of our own (taken at open, released at close), so the name
+                                        * keeps naming this thread after it exits and is never reused while sampled */
 struct as_throw { uint8_t ph, state; uint16_t usage; uint32_t age_ms, kcpu_ms; uint32_t wall_ms[CC_SINK_NPH], cpu_ms[CC_SINK_NPH]; };
 struct as_row { uint8_t kind; uint32_t t_ms; uint64_t mem, disk, written, lost; struct as_throw th[2]; };
 #define AS_ROWS_CAP ((size_t)65536)
 static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
 static const char *const as_ph_names_[CC_SINK_NPH]={"other","idle","take_wait","lock","copy","release","write","fsync",
     "spill_read","manifest","segment","free_query","floor_wait","spill_write"};
-const char *cc_async_sink_phase_name(int ph){ return ph>=0 && ph<CC_SINK_NPH?as_ph_names_[ph]:"none"; }
+#define AS_PH_EXITED 254   /* in a diag row: the thread has ended (the spiller ends early when the spill turns off) */
+const char *cc_async_sink_phase_name(int ph){ return ph>=0 && ph<CC_SINK_NPH?as_ph_names_[ph]:ph==AS_PH_EXITED?"exited":"none"; }
 static void as_th_start_(struct as_th *t){
     t->cpu0=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);
     atomic_store_explicit(&t->t0,as_now_(),memory_order_relaxed); atomic_store_explicit(&t->ph,CC_SINK_PH_OTHER,memory_order_relaxed);
@@ -1622,6 +1625,12 @@ static void as_ph_(struct as_th *t, int ph){
     atomic_fetch_add_explicit(&t->wall[old],now-atomic_load_explicit(&t->t0,memory_order_relaxed),memory_order_relaxed);
     atomic_fetch_add_explicit(&t->cpu[old],cpu-t->cpu0,memory_order_relaxed);
     t->cpu0=cpu; atomic_store_explicit(&t->t0,now,memory_order_relaxed); atomic_store_explicit(&t->ph,ph,memory_order_relaxed);
+}
+/* The thread's port with a send right of our own: libpthread releases its name when the thread ends, and a name
+ * released could be reused for another port while the producer still samples it. 0 if the reference is refused. */
+static mach_port_t as_port_(pthread_t t){
+    mach_port_t p=pthread_mach_thread_np(t);
+    return p!=MACH_PORT_NULL && mach_port_mod_refs(mach_task_self(),p,MACH_PORT_RIGHT_SEND,1)==KERN_SUCCESS?p:MACH_PORT_NULL;
 }
 struct cc_async_sink {
     int fd; uint8_t *ring; size_t cap, chunk;
@@ -1661,7 +1670,7 @@ struct cc_async_sink {
     struct as_th th[2];                  // [0] writer, [1] spiller
     _Atomic uint64_t spill_taken;        // writer: spilled bytes delivered (spill_bytes - spill_taken is on disk)
     _Atomic uint64_t loss_ph[2][CC_SINK_NPH], loss_run[2];   // producer: at each episode's first drop
-    struct as_row *rows; size_t nrows; uint64_t rows_dropped, t_open; char *dname;   // producer: the diag record
+    struct as_row *rows; size_t nrows; uint64_t rows_dropped, t_open; char *dname, *ddir;   // producer: the diag record
 };
 static size_t as_free_(struct cc_async_sink *k){
     return k->cap-(atomic_load_explicit(&k->head,memory_order_relaxed)-atomic_load_explicit(&k->tail,memory_order_acquire));
@@ -1706,6 +1715,7 @@ static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, ui
     memset(r,0,sizeof *r);
     struct as_th *t=&k->th[i];
     if(!t->port){ r->ph=255; return; }                 /* no such thread (no spill) */
+    if(atomic_load_explicit(&t->exited,memory_order_relaxed)){ r->ph=AS_PH_EXITED; return; }
     r->ph=(uint8_t)atomic_load_explicit(&t->ph,memory_order_relaxed);
     uint64_t t0=atomic_load_explicit(&t->t0,memory_order_relaxed); r->age_ms=now>t0?(uint32_t)((now-t0)/1000000):0;
     for(int p=0;p<CC_SINK_NPH;p++){
@@ -1722,7 +1732,8 @@ static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, ui
 /* A diag row (kind 0 tick, 1 loss) from both threads' states; producer only. */
 static void as_row_(struct cc_async_sink *k, int kind, const struct as_throw th[2], uint64_t now){
     if(!k->rows) return;
-    if(k->nrows>=AS_ROWS_CAP){ k->rows_dropped++; return; }
+    /* ticks stop a quarter short of the end (about 13 h of them), so drops late in a long capture still find room */
+    if(k->nrows>=(kind?AS_ROWS_CAP:AS_ROWS_CAP-AS_ROWS_CAP/4)){ k->rows_dropped++; return; }
     struct as_row *r=&k->rows[k->nrows++];
     r->kind=(uint8_t)kind; r->t_ms=(uint32_t)((now-k->t_open)/1000000);
     size_t head=atomic_load_explicit(&k->head,memory_order_relaxed), dr=atomic_load_explicit(&k->drained,memory_order_relaxed);
@@ -2008,6 +2019,7 @@ static void *as_writer_(void *arg){
     }
     pthread_mutex_unlock(&k->m);
     as_ph_(T,CC_SINK_PH_OTHER);          /* the last phase's time into its total */
+    atomic_store(&T->exited,1);
     return NULL;
 }
 /* Free space as macOS counts it for work the user asked for: what is free plus what it will purge to make room (Time
@@ -2112,6 +2124,7 @@ static void *as_spiller_(void *arg){
     k->spill_on=0; atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed);
     pthread_mutex_unlock(&k->m);
     as_ph_(T,CC_SINK_PH_OTHER);          /* the last phase's time into its total */
+    atomic_store(&T->exited,1);
     return NULL;
 }
 /* ---- recovery of a crashed writer's spill (cc_spill_recover) ---- */
@@ -2395,20 +2408,24 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
         size_t len=strlen(note); rec_hdr h={REC_MAGIC,REC_SESSION,0,0,0,0,0,(uint32_t)len}; as_put_(k,&h,note,len);
     }
     k->t_open=as_now_();
+    for(int i=0;i<2;i++) atomic_store(&k->th[i].t0,k->t_open);   /* a sample before the thread runs reads a sane age */
     if(cc_async_sink_diag_dir && *cc_async_sink_diag_dir){   /* the diag record: reserved here, touched as rows are added */
         void *r=mmap(NULL,AS_ROWS_CAP*sizeof(struct as_row),PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);
-        if(r!=MAP_FAILED){ const char *b=strrchr(path,'/'); k->dname=strdup(b?b+1:path); if(k->dname) k->rows=r; else munmap(r,AS_ROWS_CAP*sizeof(struct as_row)); }
+        if(r!=MAP_FAILED){
+            const char *b=strrchr(path,'/'); k->dname=strdup(b?b+1:path); k->ddir=strdup(cc_async_sink_diag_dir);
+            if(k->dname && k->ddir) k->rows=r; else munmap(r,AS_ROWS_CAP*sizeof(struct as_row));
+        }
     }
     int started=pthread_create(&k->thr,NULL,as_writer_,k)==0;
-    if(started) k->th[0].port=pthread_mach_thread_np(k->thr);
+    if(started) k->th[0].port=as_port_(k->thr);
     if(started && k->spill_on){
-        if(pthread_create(&k->sthr,NULL,as_spiller_,k)==0){ k->spill_thread=1; k->th[1].port=pthread_mach_thread_np(k->sthr); }
+        if(pthread_create(&k->sthr,NULL,as_spiller_,k)==0){ k->spill_thread=1; k->th[1].port=as_port_(k->sthr); }
         else { k->spill_on=0; k->spill_state=-EAGAIN; }
     }
     if(!started){
         close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
         if(k->rows) munmap(k->rows,AS_ROWS_CAP*sizeof(struct as_row));
-        free(k->dname);
+        free(k->dname); free(k->ddir);
         munmap(k->ring,k->cap); free(k->bbuf); free(k->sdir); free(k->sbase); if(k->sdq) munmap(k->sdq,AS_SD_CAP*sizeof *k->sdq); free(k); return CC_ERR_NOMEM;
     }
     *out=k; return CC_OK;
@@ -2443,8 +2460,9 @@ static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
     if(!k->rows || !k->nrows) return;
     FILE *f=NULL; char path[1024];
     for(int i=1;i<=9 && !f;i++){
-        if(i==1) snprintf(path,sizeof path,"%s/%s.tee-diag.csv",cc_async_sink_diag_dir,k->dname);
-        else snprintf(path,sizeof path,"%s/%s.tee-diag.%d.csv",cc_async_sink_diag_dir,k->dname,i);
+        int w=i==1?snprintf(path,sizeof path,"%s/%s.tee-diag.csv",k->ddir,k->dname)
+                  :snprintf(path,sizeof path,"%s/%s.tee-diag.%d.csv",k->ddir,k->dname,i);
+        if(w<0 || (size_t)w>=sizeof path){ st->diag_error=ENAMETOOLONG; return; }
         f=fopen(path,"wx");
         if(!f && errno!=EEXIST) break;
     }
@@ -2464,7 +2482,7 @@ static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
     }
     int bad=ferror(f); int e=errno;
     if(fclose(f)!=0 && !bad){ bad=1; e=errno; }
-    if(bad){ st->diag_error=e?e:EIO; return; }
+    if(bad){ st->diag_error=e?e:EIO; unlink(path); return; }   /* no partial record left looking whole */
     snprintf(st->diag_path,sizeof st->diag_path,"%s",path); st->diag_rows=k->nrows;
 }
 void cc_async_sink_format_phases(const cc_async_sink_stats *st, char *out, size_t cap){
@@ -2549,7 +2567,8 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
     if(k->rows) munmap(k->rows,AS_ROWS_CAP*sizeof(struct as_row));
-    free(k->dname);
+    free(k->dname); free(k->ddir);
+    for(int i=0;i<2;i++) if(k->th[i].port) mach_port_deallocate(mach_task_self(),k->th[i].port);
     pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
     free(k->bbuf); free(k->sdir); free(k->sbase);
     /* After a refused hand-back part of the ring's range may be unmapped and something else may have been mapped
