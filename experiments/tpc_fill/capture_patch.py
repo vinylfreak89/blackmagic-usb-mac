@@ -50,6 +50,7 @@ read-back. Every step is logged; DIR/result.json holds what was proven.
 The rebuilt sidecar comes from plain_render's replay (registration and H-retiming off), so a target whose live capture
 ran with either on fails the decision-column gate, by name, rather than getting a sidecar that describes another setting.
 """
+import collections
 import hashlib, json, os, re, signal, subprocess, sys, threading, time
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE); sys.path.insert(1, os.path.join(REPO, 'scripts', 'juicefs'))
@@ -351,10 +352,17 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
     # the edges are each session's own: the live sidecar began a few units before the raw capture did, and a replay of the
     # file sees its leading fragment first; events there are left out as values there are (the first 300 units, the last 30)
     edge = lambda prev: prev is None or prev - first < 300 or max(L) - prev < 30
-    ev_live = [e for e in events(live) if e[0] not in GAP and not edge(e[0])]; ev_new = [e for e in events(new) if not edge(e[0])]
-    log('sidecar: non-picture rows live %d (%d outside the patched spans), rebuilt %d' % (len(events(live)), len(ev_live), len(ev_new)))
+    # outside the spans' margins the rows must match exactly; inside them the live rows of a filled unit are gone, while a gap
+    # left as it is beside a fill (a run-ahead, filled gap by gap by the sound) keeps its rows: each must be one the live had
+    ev_live = [e for e in events(live) if e[0] not in GAP and not edge(e[0])]
+    ev_new = [e for e in events(new) if e[0] not in GAP and not edge(e[0])]
+    in_new = collections.Counter(e for e in events(new) if e[0] in GAP and not edge(e[0]))
+    in_live = collections.Counter(e for e in events(live) if e[0] in GAP and not edge(e[0]))
+    log('sidecar: non-picture rows live %d (%d outside the patched spans), rebuilt %d (%d beside the spans, each one of the live ones there)' % (
+        len(events(live)), len(ev_live), len(ev_new) + sum(in_new.values()), sum(in_new.values())))
     if ev_new != ev_live: fail('the rebuilt sidecar\'s non-picture rows differ from the live ones outside the patched spans: first live %s / rebuilt %s' % (
         next((a for a, b in zip(ev_live, ev_new) if a != b), ev_live[len(ev_new):][:1]), next((b for a, b in zip(ev_live, ev_new) if a != b), ev_new[len(ev_live):][:1])))
+    if in_new - in_live: fail('the rebuilt sidecar has non-picture rows beside the patched spans that the live one does not: %s' % sorted(in_new - in_live)[:8])
     if any(h not in HIST for h in diff): fail('the rebuilt sidecar differs from the live one in decision columns: %s (was the live capture run with registration or H-retiming on?)' % diff)
     ends = lambda c: c - min(L) < 30 or max(L) - c < 30
     if [c for c in missing if c not in GAP and not ends(c)] or [c for c in added if c not in GAP and not ends(c)]: fail('the rebuilt sidecar covers different units outside the patched spans and the ends')

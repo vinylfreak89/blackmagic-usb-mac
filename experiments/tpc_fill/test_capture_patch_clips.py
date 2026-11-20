@@ -40,6 +40,8 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            field while it lost lock, 20.5 units of sound for 43 counters), and the glitch 20 units after it, one stretch:
            the run-ahead cannot be filled by whole units, so the cluster is filled gap by gap by the sound (build_by_sound):
            the glitch's units become the source's picture, every other unit and every audio sample stays the capture's
+  glitch-before-half  the same with the glitch 8 units before the run-ahead, so the run-ahead's own non-picture rows lie
+           beside the glitch's fills (as in 17-41-39): the rebuilt sidecar keeps them, and they must be the live ones
 In every case that runs, every unit and audio sample of the patched capture must equal SOURCE's (the clip's counters are
 moved back into the capture's numbering), and swap must leave one capture and one sidecar."""
 import hashlib, json, os, shutil, struct, subprocess, sys
@@ -72,13 +74,13 @@ def shift_resyncs(path, by):
     for o, n in slots: b[o:o + n] = a[o2:o2 + n]; o2 += n
     open(path, 'wb').write(b)
 
-def glitch(src, dst, at_frac=0.5):
+def glitch(src, dst, at_frac=0.5, at=None):
     """the Shuttle's own damage with every USB packet kept: the marker of unit m destroyed (m-1 and m run together into
     one oversized unit) and a false marker (unit m+4's header) half-way through unit m+3, with m+4's own marker destroyed
     (m+3 comes short, the false m+4 oversized). Only video payload bytes change, in place."""
     from region import load, UNIT
     b = bytearray(open(src, 'rb').read()); R = load(src, 0, len(b))
-    whole = [(o, c) for o, c, fm, ok in R.marks if ok and fm == 0xe801]; i = int(len(whole) * at_frac)
+    whole = [(o, c) for o, c, fm, ok in R.marks if ok and fm == 0xe801]; i = at if at is not None else int(len(whole) * at_frac)
     o_m = whole[i][0]; o3 = whole[i + 3][0]; o4 = whole[i + 4][0]
     assert all(whole[i + j][0] == o_m + j * UNIT for j in range(6)), 'the source is not clean where the glitch goes'
     def put(so, data):                               # write video stream bytes at stream offset so, across packets
@@ -242,34 +244,41 @@ def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None,
     for x in res.get('replaced', []): assert not os.path.exists(x), (label, 'swap left', x)
     for c in clips: assert os.path.exists(c), (label, 'swap removed a clip', c)
 
-def beside_half(src, S0, good, nwhole):
-    """glitch-beside-half (see the docstring): checked here, not by run_case, as the capture keeps its own numbering (the
-    run-ahead is left, so nothing is renumbered) and the glitch's units take the source's picture under the capture's counters"""
+def beside_half(src, S0, good, nwhole, before=False):
+    """glitch-beside-half and glitch-before-half (see the docstring): checked here, not by run_case, as the capture keeps its
+    own numbering (the run-ahead is left, so nothing is renumbered) and the glitch's units take the source's picture under the
+    capture's counters (raised by 5 after the run-ahead)"""
     from region import load, UNIT
-    S = os.path.join(S0, 'glitch-beside-half'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    NAME = 'glitch-before-half' if before else 'glitch-beside-half'
+    S = os.path.join(S0, NAME); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T + '.ra'); remove_samples(T + '.ra', broken[2], 800)
-    second = glitch(T + '.ra', T, 0.5 + 20 / nwhole); os.remove(T + '.ra'); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
-    print('glitch-beside-half: units %s broken in place, counters after them raised by 5, 800 samples gone after resync %d; '
-          'the glitch at %s' % (broken, broken[2], second))
+    if before:                                   # m = 8 units before the first broken one (the unit before it runs into it, so is not whole)
+        Rra = load(T + '.ra', 0, os.path.getsize(T + '.ra'))
+        wra = [c for o, c, fm, ok in Rra.marks if ok and fm == 0xe801]; second = glitch(T + '.ra', T, at=wra.index(broken[0] - 1) - 6); shift = 0
+    else: second = glitch(T + '.ra', T, 0.5 + 20 / nwhole); shift = 5
+    os.remove(T + '.ra'); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    print('%s: units %s broken in place, counters after them raised by 5, 800 samples gone after resync %d; '
+          'the glitch at %s' % (NAME, broken, broken[2], second))
     def pics(path):
         R = load(path, 0, os.path.getsize(path))
         return {c: hashlib.sha256(bytes(R.v[o + 6:o + UNIT])).hexdigest() for o, c, fm, ok in R.marks if ok and fm == 0xe801}, R.pcm()
     (tp, (tL, tR)), (sp, _) = pics(T), pics(src)
     c = clip(src, S, 'clipB'); W = os.path.join(S, 'work')
     r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W, '--donor', c], capture_output=True, text=True)
-    assert r.returncode == 0, ('glitch-beside-half', r.stdout[-3000:], r.stderr[-3000:])
-    assert 'by the sound' in r.stdout and 'counters ran ahead' in r.stdout, ('glitch-beside-half: not filled gap by gap', r.stdout[-3000:])
+    assert r.returncode == 0, (NAME, r.stdout[-3000:], r.stderr[-3000:])
+    assert 'by the sound' in r.stdout and 'counters ran ahead' in r.stdout, (NAME + ': not filled gap by gap', r.stdout[-3000:])
+    if before: assert 'beside the spans, each one of the live ones there' in r.stdout and ' (0 beside' not in r.stdout, (NAME + ': no rows beside the fills', r.stdout[-3000:])
     res = json.load(open(os.path.join(W, 'result.json'))); (pp, (pL, pR)) = pics(res['patched']['tpc'])
     want = set(range(second[0], second[3] + 2))            # the glitch's units, from the one before it to the one after the false marker
     import numpy as np
     for u in sorted(want):
-        assert pp.get(u) == sp.get(u - 5), ('glitch-beside-half: unit %d is not the source\'s picture' % u)
+        assert pp.get(u) == sp.get(u - shift), (NAME + ': unit %d is not the source\'s picture' % u)
     others = [u for u in tp if u not in want]
-    assert all(pp.get(u) == tp[u] for u in others), ('glitch-beside-half: units outside the glitch changed', [u for u in others if pp.get(u) != tp[u]][:8])
-    assert len(pL) == len(tL) and not np.any((pL != tL) | (pR != tR)), 'glitch-beside-half: the audio changed'
+    assert all(pp.get(u) == tp[u] for u in others), (NAME + ': units outside the glitch changed', [u for u in others if pp.get(u) != tp[u]][:8])
+    assert len(pL) == len(tL) and not np.any((pL != tL) | (pR != tR)), NAME + ': the audio changed'
     missing = [u for u in range(broken[1], broken[1] + 8) if u not in pp]
-    assert missing, 'glitch-beside-half: the run-ahead should be left as it was'
-    print('glitch-beside-half: the glitch\'s %d units are the source\'s picture, the run-ahead left (%d units as they were), %d other units and all %d samples unchanged'
+    assert missing, NAME + ': the run-ahead should be left as it was'
+    print(NAME + ': the glitch\'s %d units are the source\'s picture, the run-ahead left (%d units as they were), %d other units and all %d samples unchanged'
           % (len(want), len(missing), len(others), len(pL)))
     wait_free([res['patched']['tpc'], res['patched']['mov']]); shutil.rmtree(S)
 
@@ -338,6 +347,7 @@ def main():
     got_t, _, _ = units(T); left = {c: got_t.get(c) for c in good if got_t.get(c) != good[c] and ((c - second[0]) % 65536) < 10}
     run_case('glitch-clip-damaged', S, T, [clip(C1, S, 'clipZ')], good, gL, gR, dict(os.environ), left=left); os.remove(C1)
     beside_half(src, S0, good, nwhole)
+    beside_half(src, S0, good, nwhole, before=True)
     # run-ahead: the Shuttle's counters run ahead across a glitch, one clip
     S = os.path.join(S0, 'run-ahead'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra')
