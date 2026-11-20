@@ -83,11 +83,33 @@ for g, grp in enumerate(groups):
                     jumped = jumped or BB.JUMP_DONE; m['rep']['clip'] = dn; m['rep']['offsets'] = [kb, ob, oa]; break
                 except (AssertionError, KeyError, SystemExit) as e:
                     m = None; why.append('%s at %+d/%+d: %r' % (dn, ob, oa, e)); continue
+            if m is None and placed:
+                # no choice fills the cluster whole: its gaps whose sound is complete, each from the clip unit its sound lines
+                # up with (build_by_sound), anchored where the picture placed the clip on one side; the rest stay as they are
+                for ch in placed[0]['choices']:
+                    side = ch['before'] or ch['after']
+                    if not side: continue
+                    D = CMAP['clips'][ch['clip']]; dn = os.path.basename(D['donor']); kind, off = side
+                    gs = sorted(c['v'], key=lambda g: g['k'])
+                    ca = gs[0]['c1'] if ch['before'] else gs[-1]['c2']
+                    use_clip(D['donor'], kind, off, None); BB.JUMP_DONE = False
+                    try:
+                        m = BB.build_by_sound(S, copy.deepcopy(gs), (ca, off), R.recs[c['last']][0], name, nxt)
+                        if mods: assert mods[-1]['file_to'] <= m['file_from'], 'windows of two clusters overlap'
+                        m['rep']['clip'] = dn; m['rep']['offsets'] = [kind, off, off]; m['by_sound'] = True
+                        why.append('%s: the gaps whose sound is complete filled one by one, the rest left as they are' % dn); break
+                    except (AssertionError, KeyError, SystemExit) as e:
+                        m = None; why.append('%s by the sound: %r' % (dn, e)); continue
             if m is None:
                 r = '; '.join(why) or 'no clip was placed at it'
                 print('CLUSTER %s LEFT AS IT IS: %s' % (name, r), flush=True); entries.append(dict(name=name, filled=False, skipped=r)); continue
-            print('CLUSTER %s: %s, pairing %s, offset %+d%s' % (name, m['rep']['clip'], m['rep']['offsets'][0], m['rep']['offsets'][1],
-                  '' if m['rep']['offsets'][1] == m['rep']['offsets'][2] else ', %+d after it' % m['rep']['offsets'][2]), flush=True)
+            if m.get('by_sound'):
+                print('CLUSTER %s: %s, pairing %s, gap by gap by the sound: %s; left as they are: %s' % (name, m['rep']['clip'], m['rep']['offsets'][0],
+                      ', '.join('%d-%d at %+d' % (x['c1'], x['c2'], x['off']) for x in m['rep']['by_sound']['gaps']),
+                      '; '.join('%d-%d (%s)' % x for x in m['rep']['by_sound']['left']) or 'none'), flush=True)
+            else:
+                print('CLUSTER %s: %s, pairing %s, offset %+d%s' % (name, m['rep']['clip'], m['rep']['offsets'][0], m['rep']['offsets'][1],
+                      '' if m['rep']['offsets'][1] == m['rep']['offsets'][2] else ', %+d after it' % m['rep']['offsets'][2]), flush=True)
             mods.append(m)
             assert rss() < RSS_LIMIT, 'STOPPED: planning has used %d MB of memory' % (rss() >> 20)
             continue
@@ -112,11 +134,12 @@ for g, grp in enumerate(groups):
     for m in mods:
         k0 = bisect.bisect_left(pos, m['file_from'] - 3_000_000); k1 = bisect.bisect_right(pos, m['file_to'] + 3_000_000) - 1
         a0 = pos[max(k0, 1)]; a1 = pos[min(k1, len(pos) - 2)]
-        minis.append((a0, bytes(R.b[a0 - R.p0:m['file_from'] - R.p0]), bytes(R.b[m['file_to'] - R.p0:a1 - R.p0])))
+        minis.append((a0, bytes(R.b[a0 - R.p0:m['file_from'] - R.p0]), bytes(R.b[m['file_to'] - R.p0:a1 - R.p0]),
+                      bytes(R.b[m['file_from'] - R.p0:m['file_to'] - R.p0]) if m.get('by_sound') else None))
     del S, R, b; gc.collect()
     cum = sum(e['counter_shift']['counts'] for gg, es in plan.items() if int(gg) < g for e in es if e.get('counter_shift'))   # earlier stretches' run-ahead
-    for m, (a0, pre, post) in zip(mods, minis):
-        post = bytearray(post); p = 0
+    for m, (a0, pre, post, orig_mid) in zip(mods, minis):
+        post_orig = bytes(post); post = bytearray(post); p = 0
         while p < len(post):
             mg, t, ep, pi, sq, st, rq, al = H.unpack_from(post, p)
             if t in (0, 2): struct.pack_into('<I', post, p + 8, sq + (m['kv'] if ep == 0x83 else m['ka'] if ep == 0x84 else 0))
@@ -127,7 +150,10 @@ for g, grp in enumerate(groups):
         # buffer alike, which the check, testing continuity within it, does not see)
         shifts = [(len(pre) + m['counter_shift']['at'], m['counter_shift']['counts'])] if m.get('counter_shift') else []
         whole = pre + m['data'] + bytes(post)
-        ok, N = check(renumber(whole, shifts) if shifts else whole, a0, print, seam); del N, whole
+        known = []
+        if orig_mid is not None:            # a sound fill leaves its cluster's other glitches: the problems the capture had there are known
+            _, N0 = check(pre + orig_mid + post_orig, a0, lambda *_: None, seam, found=known); del N0
+        ok, N = check(renumber(whole, shifts) if shifts else whole, a0, print, seam, known=set(known)); del N, whole
         cum_before = cum
         if m.get('counter_shift'): cum += m['counter_shift']['counts']
         if m['rep'].get('append_seam'): print('  %s: append seam; the donor\'s sound sits %s samples off the capture\'s against the picture, taken up in the seam\'s resync intervals' % (m['rep']['name'], m['rep'].get('append_av_shift_samples')), flush=True)

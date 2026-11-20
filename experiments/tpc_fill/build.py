@@ -26,6 +26,7 @@ APPEND_BY_PICTURE = os.environ.get('FILL_APPEND_BY_PICTURE') == '1'   # the appe
 # jump kept in the file cost the unit on each side of it (2026-10-26), and the counters then count the tape's units.
 OFF_AFTER = int(os.environ['FILL_OFF_AFTER']) if os.environ.get('FILL_OFF_AFTER') else None
 JUMP_DONE = False     # the glitch has been built: the stretch's later clusters (built in order) are all at FILL_OFF_AFTER
+OFF_MAP = None        # counter -> offset, set only while build_by_sound builds: each gap at the clip unit its own sound lines up with
 F_LONG = 0.5124                   # usual share of 2848-byte video packets
 F_EIGHT = 0.50094                 # usual share of 8-record audio packets
 VREQ, AREQ = 15360, 192
@@ -124,7 +125,9 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
     jump = {}                                                   # the run-ahead glitch: c1, c2 (whole units either side), k (its units)
     past = OFF_AFTER is not None and JUMP_DONE                  # a cluster after the glitch: every counter is at FILL_OFF_AFTER
     after_jump = lambda c: bool(jump) and ((c - jump['c2']) % 65536) < 32768
-    def off_for(c): return OFF_AFTER if past or after_jump(c) else OFF
+    def off_for(c):
+        if OFF_MAP is not None: return OFF_MAP[c % 65536]
+        return OFF_AFTER if past or after_jump(c) else OFF
     def new_c(c): return (c - jump['ahead']) % 65536 if after_jump(c) and 'ahead' in jump else c % 65536   # a counter as the patched capture has it
     def make_rows(c, row7):
         o = off_for(c)
@@ -162,6 +165,9 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
             g['checked'] = {}
             for side, c in (('before', g['c1']), ('after', g['c2'])):
                 step = -1 if side == 'before' else 1; moved = 0
+                # a sound fill takes only the missing units: beside these glitches (17-41-39 2604, 2652) the units either side
+                # differed from the clip by a tape noise band that differs on every pass (48-88 rows), the same picture
+                if OFF_MAP is not None: continue
                 while moved < 3:
                     r = damaged(c)
                     if r is None: break
@@ -510,6 +516,67 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         cshift = dict(at=min(post), counts=jump['ahead']); rep['counter_shift'] = cshift; JUMP_DONE = True
     return dict(file_from=f_lo, file_to=f_hi, data=bytes(out), kv=kv, ka=ka, rep=rep, counter_shift=cshift)
 
+SOUND_SLACK = 0.05     # a gap's sound is complete when it holds the units its counters count, to within this share of a unit
+SOUND_PHASE = 400      # samples: the clip unit must land this close to where the sound puts it (a quarter unit; two plays drift by tens)
+SOUND_R = 0.8          # the cross-correlation a line-up by ear needs
+
+def build_by_sound(S, vgs, anchor, est_off, name, k_limit=1 << 60):
+    """The gaps of a cluster the whole-cluster build refuses (2026-11-19: half-unit run-ahead glitches, a clip with its own lock
+    loss inside) that can still be filled one by one: a gap whose sound holds exactly the units its counters count (the picture is
+    missing, the sound is all there), from the clip unit the sound lines up with. anchor (c, off): a whole unit on a side of the
+    cluster the picture placed, and its clip offset; it calibrates where the clip's resyncs sit against the sound (two plays sit a
+    few hundred samples apart against their units). Each gap is then placed by the sound around it, cross-correlated with the
+    clip's, so glitches between it and the anchor (run-ahead in either capture, a field slip) cannot carry a wrong offset to it:
+    the clip unit must land within SOUND_PHASE of where the sound puts it, at both of the gap's edges. Run-ahead gaps, and gaps
+    the sound cannot place, are left as they are, by name. The capture's samples are kept: only picture units are put in."""
+    global OFF_MAP, OFF_AFTER, JUMP_DONE, OFF
+    R = S.R; rsa = {c: s for _, s, c in R.resyncs}; ca, oa = anchor
+    cs = unwrap([ca] + [g[k] for g in vgs for k in ('c1', 'c2')]); lo, hi = min(cs), max(cs)
+    D = load_donor((lo + oa - 3) % 65536, hi - lo + 6, est_off)
+    drs = {c: s for _, s, c in D.resyncs}; DU = D.whole_units(); DL, DR = D.pcm(); Dm = (DL + DR).astype(np.float64)
+    dk = sorted(drs, key=lambda c: drs[c]); dpos = np.array([drs[c] for c in dk])
+    def by_ear(s_t, around):
+        d, r = align(S, Dm, max(0, s_t - 6000), min(len(S.mono), s_t + 6000), around=around, reach=4000 if around is not None else 8000)
+        return (d, r) if r >= SOUND_R else (None, r)
+    assert ca in rsa and (ca + oa) % 65536 in drs, ('the anchor unit has no resync in one of the captures', name, ca)
+    da, ra = by_ear(rsa[ca], None)
+    assert da is not None, ('the sound at the anchor does not line up with the clip', name, round(ra, 3))
+    phase = drs[(ca + oa) % 65536] - (rsa[ca] + da)          # the clip's resync for the anchor's picture, against the same sound
+    def clip_unit(s_t, d):
+        """the clip counter whose resync sits where the sound puts target sample s_t's unit, and how far off it lands"""
+        want = s_t + d + phase; i = int(np.argmin(np.abs(dpos - want))); return dk[i], int(dpos[i] - want)
+    take = []; left = []
+    for g in vgs:
+        a, b = (g['c1'] + 1) % 65536, g['c2'] % 65536
+        if a not in rsa or b not in rsa or g['c1'] % 65536 not in rsa: left.append((g['c1'], g['c2'], 'a resync is missing at its edges')); continue
+        units = (rsa[b] - rsa[a]) / 1601.6
+        if abs(units - g['n']) > SOUND_SLACK:
+            left.append((g['c1'], g['c2'], 'its sound holds %.2f units for %d counted (the counters ran ahead)' % (units, g['n']))); continue
+        d, r = by_ear(rsa[g['c1'] % 65536], da)
+        if d is None: left.append((g['c1'], g['c2'], 'its sound does not line up with the clip (r %.2f)' % r)); continue
+        k1, e1 = clip_unit(rsa[g['c1'] % 65536], d); k2, e2 = clip_unit(rsa[b], d)
+        off = ((k1 - g['c1']) + 32768) % 65536 - 32768
+        if abs(e1) > SOUND_PHASE or abs(e2) > SOUND_PHASE or (k2 - k1) % 65536 != (b - g['c1']) % 65536:
+            left.append((g['c1'], g['c2'], 'no run of clip units lands on it (%+d and %+d samples off, clip %d-%d)' % (e1, e2, k1, k2))); continue
+        need = [(c + off + dd) % 65536 for c in range(g['c1'] + 1, g['c1'] + g['n'] + 1) for dd in ((0,) if PAIRING == 'same' else (-1, 0))]
+        if not all(u in DU for u in need): left.append((g['c1'], g['c2'], 'the clip has no whole picture unit for it at %+d' % off)); continue
+        take.append((g, off)); S.log('  %s: gap %d-%d by the sound at %+d (the clip\'s units land %+d and %+d samples off)' % (name, g['c1'], g['c2'], off, e1, e2))
+    for c1, c2, why in left: S.log('  %s: gap %d-%d left as it is: %s' % (name, c1, c2, why))
+    assert take, ('no gap of the cluster can be filled by its sound', [(c1, c2, why) for c1, c2, why in left])
+    offs = [off for _, off in take]
+    assert max(offs) - min(offs) < 90, ('the gaps\' offsets spread over more than the clip read', offs)
+    m = {}
+    for g, off in take:                                     # the units either side (widening looks up to 3) take the gap's offset,
+        for c in range(g['c1'] - 3, g['c2'] + 4): m.setdefault(c % 65536, off)
+    for g, off in take:                                     # and each gap's own units always its own
+        for c in range(g['c1'], g['c2'] + 1): m[c % 65536] = off
+    saved = (OFF, OFF_AFTER)
+    OFF_MAP = m; OFF_AFTER = None; JUMP_DONE = False; OFF = min(offs)
+    try: res = build_cluster(S, [g for g, _ in take], [], est_off, name, k_limit)
+    finally: OFF_MAP = None; OFF, OFF_AFTER = saved
+    res['rep']['by_sound'] = dict(anchor=[ca, oa], phase=phase, gaps=[dict(c1=g['c1'], c2=g['c2'], off=off) for g, off in take], left=left)
+    return res
+
 def apply(R, mods):
     """the stretch with every modification applied and later sequence numbers shifted"""
     out = bytearray(); pos = R.p0; ov = oa = 0
@@ -535,10 +602,12 @@ def apply(R, mods):
     out += copy(pos, R.p0 + len(R.b), ov, oa)
     return bytes(out)
 
-def check(b, p0, log, seam_units=()):
+def check(b, p0, log, seam_units=(), found=None, known=()):
     """structural check of a filled stretch: sequence continuity, whole transfers, every unit, every resync interval.
     seam_units: counters c whose interval c -> c+1 lies in an append seam, where the two passes' different audio offsets
-    are taken up: such an interval may be anything within half a unit of 1601.6"""
+    are taken up: such an interval may be anything within half a unit of 1601.6.
+    found: a list given to collect the unit and resync problems, by counters; known: such problems the capture already had
+    and a fill left alone (a sound fill leaves its cluster's other glitches as they are), which do not fail the check"""
     N = Region(b, p0); ok = True; last = {}
     for pos, t, ep, pi, seq, st, req, al in N.recs:
         if t != 0: continue
@@ -554,8 +623,14 @@ def check(b, p0, log, seam_units=()):
         if r[1] == 1: log('  host-loss record left in the stretch: ep %#x seq %d, %d slots' % (r[2], r[4], r[6]))
     whole = [(off, c) for off, c, fm, okk in N.marks if okk and fm == 0xe801]
     for (o1, c1), (o2, c2) in zip(whole, whole[1:]):
-        if o2 - o1 != UNIT or (c2 - c1) % 65536 != 1: ok = False; log('  unit problem after %d: next %d, %d bytes apart' % (c1, c2, o2 - o1))
+        if o2 - o1 != UNIT or (c2 - c1) % 65536 != 1:
+            key = ('unit', c1, c2, o2 - o1)
+            if found is not None: found.append(key)
+            if key not in known: ok = False; log('  unit problem after %d: next %d, %d bytes apart' % (c1, c2, o2 - o1))
     for (i1, s1, c1), (i2, s2, c2) in zip(N.resyncs, N.resyncs[1:]):
         seam = c1 % 65536 in seam_units and abs(s2 - s1 - 1601.6) <= 800
-        if (c2 - c1) % 65536 != 1 or (s2 - s1 not in (1601, 1602) and not seam): ok = False; log('  resync problem %d -> %d: %d samples' % (c1, c2, s2 - s1))
+        if (c2 - c1) % 65536 != 1 or (s2 - s1 not in (1601, 1602) and not seam):
+            key = ('resync', c1, c2, s2 - s1)
+            if found is not None: found.append(key)
+            if key not in known: ok = False; log('  resync problem %d -> %d: %d samples' % (c1, c2, s2 - s1))
     return ok, N
