@@ -143,6 +143,13 @@ class Counters:
     header may still be incomplete (a header can run across two packets)"""
     def __init__(self, delta):
         self.d = delta % 65536; self.q = []; self.tail = []; self.headers = self.resyncs = 0
+        self.seen = {'headers': [], 'resyncs': []}       # first moved counter, last, and any step that was not +1
+    def _saw(self, kind, c):
+        s = self.seen[kind]
+        if not s: s.extend([c, c, None])
+        else:
+            if c != (s[1] + 1) % 65536 and s[2] is None: s[2] = (s[1], c)
+            s[1] = c
     def push(self, r):
         """r: a whole record (bytearray, modified in place); returns the records now final"""
         self.q.append(r)
@@ -152,7 +159,7 @@ class Counters:
             j = r.find(SYNC, 24)
             while j >= 0:
                 if (j - 24) % 24 == 0:
-                    c = r[j + 20] | r[j + 21] << 8; c = (c + self.d) % 65536; r[j + 20] = c & 0xff; r[j + 21] = c >> 8; self.resyncs += 1
+                    c = r[j + 20] | r[j + 21] << 8; c = (c + self.d) % 65536; r[j + 20] = c & 0xff; r[j + 21] = c >> 8; self.resyncs += 1; self._saw('resyncs', c)
                 j = r.find(SYNC, j + 1)
         elif t == 0 and al and ep == 0x83:
             nt = len(self.tail)
@@ -162,7 +169,7 @@ class Counters:
             while j >= 0 and j + 48 <= len(comb):
                 if comb[j + 7] == 0xe8 and comb[j + 8:j + 48] == ZEROS:
                     c = (comb[j + 4] | comb[j + 5] << 8) + self.d
-                    (b0, i0), (b1, i1) = at(j + 4), at(j + 5); b0[i0] = c & 0xff; b1[i1] = (c >> 8) & 0xff; self.headers += 1
+                    (b0, i0), (b1, i1) = at(j + 4), at(j + 5); b0[i0] = c & 0xff; b1[i1] = (c >> 8) & 0xff; self.headers += 1; self._saw('headers', c % 65536)
                 j = comb.find(MARK, j + 1)
             n = len(comb); self.tail = [at(i) for i in range(max(0, n - 47), n)]
         keep = self.tail[0][0] if self.tail else None
@@ -189,7 +196,7 @@ def stream(T, D, b):
         t, ep = h[1], h[2]
         if t == 1: raise ValueError('a loss record at %d, before seam A' % pos)
         if t != 0:
-            if t == 2 and pos >= last.get(ep, 0): raise ValueError('a transfer error at %d, at seam A' % pos)
+            if t == 2 and ep in last and pos >= last[ep]: raise ValueError('a transfer error at %d, at seam A' % pos)
             take(rec(h, pay)); continue
         if pos < last[ep]: take(rec(h, pay))
         elif pos == last[ep] and cut[ep]: take(rec(h, pay[:cut[ep]]))
@@ -206,7 +213,7 @@ def stream(T, D, b):
         f0, f1 = first[ep], end[ep]
         if pos < f0[0] or pos > f1[0]: continue
         a = f0[1] if pos == f0[0] else 0; z = f1[1] if pos == f1[0] else len(pay)
-        if z <= a: continue
+        if z <= a and (pos == f0[0] or pos == f1[0]): continue     # a seam packet with nothing left of it on this side
         s, i = seq[ep].map(h[4], h[3], 'recapture %d' % pos)
         for r in C.push(rec(h, pay[a:z], s, i)): take(r)
         if size > (32 << 20): yield from drain()
@@ -219,6 +226,7 @@ def stream(T, D, b):
         t, ep = h[1], h[2]
         if t == 1: raise ValueError('a loss record at %d, after seam B' % pos)
         if t != 0:
+            if t == 2 and ep not in first: take(rec(h, pay)); continue
             if t == 2:
                 if pos < first[ep][0]: continue
                 s = (h[4] + seq2[ep].delta) if seq2[ep].delta is not None else seq2[ep].cur
@@ -234,6 +242,12 @@ def stream(T, D, b):
     yield from drain()
     for ep in EPS:
         if seq2[ep].delta is None: raise ValueError('endpoint %02x reaches no whole transfer before file_to' % ep)
+    uA, uL = b['units']; n = (uL - uA) % 65536 + 1
+    for kind in ('headers', 'resyncs'):
+        s = C.seen[kind]; cnt = getattr(C, kind)
+        if cnt != n or not s or s[0] != uA or s[1] != uL or s[2] is not None:
+            raise ValueError('the recapture\'s %s moved: %d, first %s, last %s, break %s; the bridge needs units %d-%d, one each' % (
+                kind, cnt, s[0] if s else None, s[1] if s else None, s[2] if s else None, uA, uL))
     return dict(kv=seq2[0x83].delta, ka=seq2[0x84].delta, headers=C.headers, resyncs=C.resyncs)
 
 # ------------------------------------------------------------------ the seams, measured
@@ -248,6 +262,12 @@ def seam(path, counter, lo, hi):
     s0, kv = R.vpk[R.vrec_of(vm[0])]; s1, ka = R.apk[R.arec_of(rs[0])]
     rv, ra = R.recs[kv], R.recs[ka]
     return dict(v=[rv[0], vm[0] - s0], a=[ra[0], rs[0] * 24 - s1], v_seq=rv[4], a_seq=ra[4], v_pi=rv[3], a_pi=ra[3])
+
+def seq_start(sm):
+    """each endpoint's first transfer number in the recapture's stretch: one past the capture's seam transfer, or that
+    transfer's own number when the seam packet is dropped whole (cut at its first byte) and it began its transfer: the
+    capture's last packet kept is then the previous transfer's"""
+    return {'131': sm['v_seq'] + (0 if sm['v'][1] == 0 and sm['v_pi'] == 0 else 1), '132': sm['a_seq'] + (0 if sm['a'][1] == 0 and sm['a_pi'] == 0 else 1)}
 
 def whole_transfer_after(path, sm, limit=64 << 20):
     """the file offset just past the first record on each endpoint, after its seam record, that begins a transfer
@@ -338,10 +358,16 @@ def fields_at(path, lo, hi, log):
     while at < hi:
         R = load(path, at, min(PIECE + 2 * UNIT, os.path.getsize(path) - at))
         for o, c, fm, ok in R.marks:
-            if ok and fm == 0xe801 and c not in out and o + UNIT <= len(R.v):
+            if ok and fm == 0xe801 and o + UNIT <= len(R.v):
+                fo = R.recs[R.vpk[R.vrec_of(o)][1]][0]
+                if c in out:
+                    if at_[c] == fo: continue                     # the same unit, read again where pieces overlap
+                    raise ValueError('%s has unit counter %d twice (it runs past one 16-bit wrap, 36 min): not supported' % (os.path.basename(path), c))
                 u = np.frombuffer(bytes(R.v[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
-                out[c] = (u[20:256:2, 1::8].copy(), u[283:519:2, 1::8].copy()); at_[c] = R.recs[R.vpk[R.vrec_of(o)][1]][0]
+                out[c] = (u[20:256:2, 1::8].copy(), u[283:519:2, 1::8].copy()); at_[c] = fo
         at += PIECE; del R
+        import resource
+        if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > (3500 << 20): raise ValueError('reading the fields passed 3.5 GB of memory')
     log('fields: %d whole units in bytes %d-%d of %s' % (len(out), lo, hi, os.path.basename(path)))
     return out, at_
 
@@ -352,6 +378,7 @@ def plan(T, D, ep, log, window_s=60, rate=807_500):
     ta, ta_at = fields_at(T, ep['to_offset'], min(os.path.getsize(T), ep['to_offset'] + span), log)
     df, df_at = fields_at(D, 0, os.path.getsize(D), log)
     first, last = ep['first'], ep['last']
+    if first is None or last is None: raise ValueError('the stretch begins before the capture\'s first picture unit')
     cb_t = clean_cuts({c: v for c, v in tb.items() if sgn(c - first) <= 0}); ca_t = clean_cuts({c: v for c, v in ta.items() if sgn(c - last) > 0})
     off = cut_offset([cb_t, ca_t], clean_cuts(df), log)
     if off is None: raise ValueError('the scene cuts either side of the stretch do not place the recapture: its offset cannot be found')
@@ -366,11 +393,22 @@ def plan(T, D, ep, log, window_s=60, rate=807_500):
     after = [c for c in after if (c + off) % 65536 in clean_cuts_in(df, (c + off) % 65536)]
     if not before: raise ValueError('no clean scene cut before the stretch (from unit %d) inside the recapture' % first)
     if not after: raise ValueError('no clean scene cut after the stretch (to unit %d) inside the recapture (its last unit is the capture\'s %d)' % (last, (max(df_at, key=lambda c: df_at[c]) - off) % 65536))
-    uA = max(before, key=lambda c: sgn(c - first)); uB = min(after, key=lambda c: sgn(c - last))
-    log('bridge: seams at the cuts at unit %d (%d before the stretch) and unit %d (%d after it), recapture offset %+d' % (uA, -sgn(uA - first), uB, sgn(uB - last), sgn(off)))
     w = lambda m, c: (max(0, m[c] - (4 << 20)), m[c] + (8 << 20))
-    tA = seam(T, uA, *w(tb_at, uA)); tB = seam(T, uB, *w(ta_at, uB))
+    # the nearest cut whose seam records (picture and sound) lie clear of the loss records on its side
+    tA = tB = None
+    for c in sorted(before, key=lambda c: -sgn(c - first)):
+        s = seam(T, c, *w(tb_at, c))
+        if max(s['v'][0], s['a'][0]) < ep['from_offset']: uA, tA = c, s; break
+        log('bridge: the cut at unit %d is too close to the stretch (its seam records reach the loss records)' % c)
+    for c in sorted(after, key=lambda c: sgn(c - last)):
+        s = seam(T, c, *w(ta_at, c))
+        if min(s['v'][0], s['a'][0]) > ep['to_offset']: uB, tB = c, s; break
+        log('bridge: the cut at unit %d is too close to the stretch (its seam records reach the loss records)' % c)
+    if tA is None or tB is None: raise ValueError('no clean scene cut %s the stretch is clear of its loss records' % ('before' if tA is None else 'after'))
+    gone = [c for c in ((uA + off + k) % 65536 for k in range((uB - uA) % 65536)) if c not in df]
+    if gone: raise ValueError('the recapture has no whole unit for %d of the bridged units (its %s...): it has damage of its own there' % (len(gone), gone[:5]))
+    log('bridge: seams at the cuts at unit %d (%d before the stretch) and unit %d (%d after it), recapture offset %+d' % (uA, -sgn(uA - first), uB, sgn(uB - last), sgn(off)))
     dA = seam(D, (uA + off) % 65536, *w(df_at, (uA + off) % 65536)); dB = seam(D, (uB + off) % 65536, *w(df_at, (uB + off) % 65536))
     b = dict(kind='bridge', donor=D, tA=tA, dA=dA, dB=dB, tB=tB, file_from=min(tA['v'][0], tA['a'][0]), file_to=whole_transfer_after(T, tB),
-             counter_delta=-sgn(off), seq_start={'131': tA['v_seq'] + 1, '132': tA['a_seq'] + 1}, units=[uA, (uB - 1) % 65536], offset=sgn(off))
+             counter_delta=-sgn(off), seq_start=seq_start(tA), units=[uA, (uB - 1) % 65536], offset=sgn(off))
     return b

@@ -393,6 +393,21 @@ def stage(W, name, inputs, fn):
         if j.get('inputs') == json.loads(json.dumps(inputs)): log('%s: done in an earlier run, reused' % name); return j['result']   # as stored (tuples become lists)
     r = fn(); json.dump(dict(inputs=inputs, result=r), open(p + '.new', 'w'), indent=1); os.replace(p + '.new', p); return r
 
+def live_lost(rows, ix):
+    """16-bit counters where the live sidecar shows acquisition loss: a Hole or RingFullTail row, or ring drops before a
+    row. The Shuttle's own damage (Short, ShortShown, OtherShown, Unframed, Complete) is in the raw file too, and PoolFull
+    is shed after the raw file is written: neither is a loss of the raw file. A loss row's own counter may be empty: the
+    counters either side of it are taken instead."""
+    out = set(); prev = None; mark_next = False
+    for r in rows:
+        c = r[ix['counter_extended']] or r[ix['observed_counter']]; c = int(c) % 65536 if c not in ('', '0') else None
+        lost = r[ix['drop_reason']] in ('Hole', 'RingFullTail') or r[ix['preceding_ring_drops']] not in ('', '0')
+        if c is not None and (lost or mark_next): out.add(c)
+        if lost and prev is not None: out.add(prev)
+        mark_next = lost and c is None
+        if c is not None: prev = c
+    return out
+
 def run(T, ats, joins_d, W, clips=None, placed=()):
     """ats: [(TIME, DONOR)] gaps inside the capture; joins_d: [DONOR] one per disconnect between its parts; or clips: [DONOR]
     in any order, each placed where it lines up (locate.py): at a disconnect, a gap, or past the end (an append)"""
@@ -423,25 +438,39 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
     # 0a. stretches the capture's own writer lost (teeloss.py: the live sidecar does not show them): each is bridged whole
     # from a clip, at the nearest clean scene cut either side (bridge.py); the clips used for it are not placed again
-    bridges = []
+    bridges = []; used = []
     if clips and len(parts) == 1:
         import teeloss, bridge as B
         tl = stage(W, 'teeloss', inputs, lambda: dict(episodes=teeloss.episodes(teeloss.census(truth(T), log)['losses'])))
-        for k, ep in enumerate(tl['episodes']):
+        # a stretch the live sidecar shows lost was lost in acquisition, not by the writer: the gap fill handles it as before
+        lp_, lh_, lr_ = load_csv(parts[0][1]); live_bad = live_lost(lr_, {h: i for i, h in enumerate(lh_)})
+        eps = []
+        for ep in tl['episodes']:
+            if ep['first'] is not None and ep['last'] is not None and any((ep['first'] + k) % 65536 in live_bad for k in range(-2, (ep['last'] - ep['first']) % 65536 + 3)):
+                log('loss records at units %s-%s: the live sidecar shows them too (lost in acquisition): left to the gap fill' % (ep['first'], ep['last'])); continue
+            eps.append(ep)
+        for k, ep in enumerate(eps):
             log('stretch the capture\'s writer lost: units %s-%s, %d loss records, %.1f MB of picture and %.1f MB of sound' % (
                 ep['first'], ep['last'], ep['records'], ep['video_bytes'] / 1e6, ep['audio_bytes'] / 1e6))
             done = None; why = []
-            for D in list(clips):
+            for D in list(clips):                        # every clip, those that bridged an earlier stretch too
                 def pb(D=D, ep=ep, k=k):
                     try: return B.measure(truth(T), B.plan(truth(T), truth(D), ep, log), name='bridge-%d' % k)
                     except ValueError as e: return dict(error=str(e))
                 r = stage(W, 'bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, episode=ep, donor=D), pb)
                 if 'error' in r: why.append('%s: %s' % (os.path.basename(D), r['error'])); continue
-                done = r; clips.remove(D); break
+                done = r
+                if D not in used: used.append(D)
+                break
             if not done: fail('the stretch the capture\'s writer lost at units %s-%s: no clip bridges it (%s)' % (ep['first'], ep['last'], '; '.join(why) or 'no clips left'))
             log('%s: units %d-%d from %s (offset %+d), %d bytes in place of %d' % (done['name'], done['units'][0], done['units'][1], os.path.basename(D),
                 done['offset'], done['bytes'], done['file_to'] - done['file_from']))
             bridges.append(done)
+        for D in used: clips.remove(D)               # a clip that bridged a stretch is placed nowhere else
+        bb = sorted(bridges, key=lambda b: b['file_from'])
+        for a, b in zip(bb, bb[1:]):
+            if a['file_to'] > b['file_from']: fail('%s (units %d-%d) and %s (units %d-%d) overlap from cut to cut: bridging them as one is not built yet' % (
+                a['name'], a['units'][0], a['units'][1], b['name'], b['units'][0], b['units'][1]))
     elif clips: log('the capture is in %d parts: the stretches its writer lost are not looked for (one part only)' % len(parts))
     # 0. where each clip goes, when the clips are given alone
     append_d = None; auto_gaps = []
@@ -577,6 +606,9 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if e.get('skipped'): log('%s: left as it is (%s)' % (e['name'], e['skipped']))
         ents = [e for e in ents if not e.get('skipped')]
         if not ents and not bridges: fail('the planner found nothing to fill at the chosen events')
+        for e in ents:                                   # a fill inside a bridge would be replaced by it: refused before anything is written
+            for b in bridges:
+                if e['file_from'] < b['file_to'] and b['file_from'] < e['file_to']: fail('%s falls inside %s (units %d-%d), which replaces that stretch whole' % (e['name'], b['name'], b['units'][0], b['units'][1]))
         bad = [e['name'] + ': ' + e.get('error', 'structure check failed') for e in ents if not e.get('filled') or not e.get('structure_ok')]
         if bad: fail('not every gap could be filled: %s' % '; '.join(bad))
         for e in ents:

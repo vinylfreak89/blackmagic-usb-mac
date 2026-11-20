@@ -6,7 +6,9 @@
 # sidecar). Only the file's own records say where.
 #
 # census(path) walks every record header, follows the video stream far enough to know the last unit marker seen (its
-# counter, format and stream offset), and returns each loss record with the file offset where it sits, plus every unit
+# counter, format and stream offset), and returns each ring-overflow loss record (pkt_index 0: the writer's own ring, or
+# the capture core's acquisition ring forwarded through it; the caller tells those apart by the live sidecar, which shows
+# only the second) with the file offset where it sits, plus every unit
 # marker's file offset at a stride (for placing a counter in the file without reading it again). Memory is bounded: the
 # file is read in 16 MiB pieces and only headers and marker positions are kept.
 # usage: teeloss.py <capture.raw.tpc> [out.json]
@@ -44,7 +46,7 @@ def census(path, log=print, stride=30):
                     nmarks += 1
                 j = s.find(MARK, j + 1)
             tail = s[-7:]
-        elif t == 1:
+        elif t == 1 and pi == 0:       # ring overflow; unread-slot, hole and unclosed records carry their own pkt_index
             losses.append(dict(offset=pos, ep=ep, pi=pi, packets=req, bytes=al, after_counter=last_c, after_unit_at=last_c_at))
         nrec += 1; pos += 24 + plen
         if pos >= next_log:
