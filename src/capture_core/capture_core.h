@@ -256,7 +256,7 @@ typedef struct {
     uint64_t spill_bytes, spill_peak;        // bytes that went through the local disk; most on disk at once
     uint64_t spill_segments;                 // segment files created
     uint64_t spill_floor_refusals;           // times a new segment was refused because it would break the free-space floor
-    uint64_t spill_stalls;                   // destination calls the spill took memory during (each blocked for the stall time)
+    uint64_t spill_stalls;                   // stalls the spill took memory during (a stall it could not take from is not counted)
     uint64_t spill_max_write_ns;             // longest local spill write
     // Spilled chunks the local disk would not give back: each is replaced in the file by HostLoss records
     // (pkt_index 0xFFFB) carrying exactly the packets and bytes it held, and the capture goes on. Loss records inside
@@ -280,16 +280,16 @@ int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *sess
 // bytes, the oldest of the backlog moves to segment files in `dir` on the local disk and is delivered from there, in
 // order, so a stalled destination costs local disk space instead of the capture. A backlog alone never spills: a
 // writer the machine is not scheduling falls behind with every call short, and the spill would cost it CPU it does
-// not have while it waits on the spiller. When the blocked call returns the spill stops taking; the writer delivers
-// what it holds, then memory. The spill always leaves `floor` bytes free on its volume; beyond that memory is the
-// only buffer and overflow is HostLoss. Segments are deleted as they are delivered and at close. A destination on the
+// not have while it waits on the spiller. When the blocked call returns, the writer delivers the spill before memory,
+// and the spill keeps the backlog at `after` until it is empty, then takes no more. The spill always leaves `floor`
+// bytes free on its volume; beyond that memory is the only buffer and overflow is HostLoss. Segments are deleted as they are delivered and at close. A destination on the
 // spill's own volume gets no spill.
 typedef struct {
     const char *dir;      // local, non-synced directory (created 0700 if absent); NULL: no spill
     uint64_t floor;       // free bytes always left on the spill volume; 0: 32 GB (32e9)
-    size_t after;         // memory backlog at which bytes start going to disk; 0: ring/16 within [8 MiB, 256 MiB]
+    size_t after;         // memory backlog the spill leaves in memory (it moves the rest); 0: ring/16 within [8 MiB, 256 MiB]
     size_t segment;       // bytes per segment file; 0: 128 MiB
-    uint64_t stall_ns;    // a destination call blocked this long is a stall; 0: 10 s
+    uint64_t stall_ns;    // a destination delivery (a chunk's write calls and any flush) blocked this long is a stall; 0: 10 s
 } cc_async_sink_spill;
 int  cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *session_note,
                               size_t ring_bytes, size_t write_chunk, const cc_async_sink_spill *spill);

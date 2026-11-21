@@ -1875,18 +1875,21 @@ static void as_consumed_(struct cc_async_sink *k, size_t pos){
 static void as_seg_name_(const struct cc_async_sink *k, uint64_t seg, char *out, size_t cap){
     snprintf(out,cap,"%s/%.96s.p%d.%08x.spill%06llu",k->sdir,k->sbase,(int)getpid(),(unsigned)k->stag,(unsigned long long)seg);
 }
-/* Write buf[0,n) to the destination. Short only after a failure, which sets io_errno; the rest is counted discarded. */
+/* Write buf[0,n) to the destination. Short only after a failure, which sets io_errno; the rest is counted discarded.
+ * dest_since covers the whole delivery, its retries (EINTR, partial writes) and the flush after it: a destination that
+ * trickles or keeps interrupting is as stalled as one that blocks (see as_spiller_). */
 static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n, uint64_t *last_done, uint64_t *since_sync){
     size_t done=0;
+    atomic_store_explicit(&k->dest_since,as_now_(),memory_order_relaxed);
     while(done<n){
         uint64_t t0=as_now_();
         if(*last_done && t0-*last_done>atomic_load_explicit(&k->max_ready_gap_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_ready_gap_ns,t0-*last_done,memory_order_relaxed);
-        atomic_store_explicit(&k->write_started,t0,memory_order_relaxed); atomic_store_explicit(&k->dest_since,t0,memory_order_relaxed);
+        atomic_store_explicit(&k->write_started,t0,memory_order_relaxed);
         as_ph_(&k->th[0],CC_SINK_PH_WRITE);
         ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,buf+done,n-done):write(k->fd,buf+done,n-done);
         { int we=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER); errno=we; }
         uint64_t t1=as_now_(), dt=t1-t0;
-        atomic_store_explicit(&k->write_started,0,memory_order_relaxed); atomic_store_explicit(&k->dest_since,0,memory_order_relaxed); *last_done=t1;
+        atomic_store_explicit(&k->write_started,0,memory_order_relaxed); *last_done=t1;
         atomic_fetch_add_explicit(&k->writes,1,memory_order_relaxed); atomic_fetch_add_explicit(&k->write_ns,dt,memory_order_relaxed);
         if(dt>atomic_load_explicit(&k->max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_write_ns,dt,memory_order_relaxed);
         if(dt>100000000ull) atomic_fetch_add_explicit(&k->slow_writes,1,memory_order_relaxed);
@@ -1900,12 +1903,12 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
     *since_sync+=done;
     if(!k->io_errno && cc_async_sink_sync_every && *since_sync>=cc_async_sink_sync_every){
         *since_sync=0;
-        atomic_store_explicit(&k->dest_since,as_now_(),memory_order_relaxed);
         as_ph_(&k->th[0],CC_SINK_PH_FSYNC);
         int r=cc_async_sink_test_fsync?cc_async_sink_test_fsync(k->fd):fsync(k->fd);
-        int fe=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER); atomic_store_explicit(&k->dest_since,0,memory_order_relaxed);
+        int fe=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER);
         if(r!=0) k->io_errno=fe?fe:EIO;   /* from here on everything drains into the discarded count */
     }
+    atomic_store_explicit(&k->dest_since,0,memory_order_relaxed);
 }
 #define AS_SD_CAP ((uint64_t)1<<18)      /* spilled chunks tracked at once: 256 GB of spill at 1 MiB chunks */
 #define AS_PI_SPILL_LOSS 0xFFFBu          /* HostLoss written where spilled records could not be read back */
@@ -2075,8 +2078,8 @@ static uint64_t as_free_bytes_(struct cc_async_sink *k){
  * the machine was not scheduling reaches that with every destination call short: from then on every byte went
  * through the spiller, the writer waited on each of its chunks, and a capture delivered 4.3 MB/s for 35 minutes
  * with 4.3 GB in memory and 0-50 MB on disk (2026-11-20 15:50). Calls stretched that way lasted up to 2.9 s in
- * three days of captures; the one stall seen lasted 20 s. A call that returns ends the stall: whichever chunk the
- * spiller already took finishes, and it takes no more. */
+ * three days of captures (flushes up to 4 s); the one stall seen lasted 20 s. A call that returns ends the stall; the
+ * spiller then keeps the backlog at `after` only until the writer has delivered the spill, then takes no more. */
 static void *as_spiller_(void *arg){
     struct cc_async_sink *k=arg; struct as_th *T=&k->th[1];
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
@@ -2090,7 +2093,11 @@ static void *as_spiller_(void *arg){
             as_ph_(T,CC_SINK_PH_IDLE); as_wait_(&k->acv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); continue;
         }
         uint64_t now=as_now_(), since=atomic_load_explicit(&k->dest_since,memory_order_relaxed);
-        if(!since || now<since || now-since<k->sstall){   /* the destination is taking data: memory holds the backlog */
+        int stalled=since && now>=since && now-since>=k->sstall;
+        /* After a stall the writer delivers the spill before memory, so memory grows for the whole drain: until the
+         * spill is empty the spiller keeps the backlog at `after`, as it did through the stall. Only a stall starts
+         * this; a backlog with every call short never does. */
+        if(!stalled && k->sd_w==k->sd_r){   /* the destination is taking data and nothing waits on disk: memory holds the backlog */
             /* No event says a call has gone on too long, so this waits for the moment it would have: the current
              * call's start plus sstall, or with none in progress, sstall from now (a call starting meanwhile is
              * caught by then). The producer is not to wake it meanwhile. */
@@ -2098,7 +2105,9 @@ static void *as_spiller_(void *arg){
             uint64_t until=(since && since<=now?since:now)+k->sstall;
             as_ph_(T,CC_SINK_PH_IDLE); as_wait_(&k->acv,&k->m,until-now); as_ph_(T,CC_SINK_PH_OTHER); continue;
         }
-        if(k->take_busy){                    /* the writer is taking memory (not inside a destination call) */
+        if(k->take_busy){   /* the writer is taking memory. Not expected here: a stall means the writer is in a destination
+                             * call (not taking), and while the spill holds bytes it takes from the spill. Kept so a later
+                             * change cannot turn the 100 ms backstop into the wake: the writer signals a waiting spiller. */
             k->s_take_wait=1; atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed);
             as_ph_(T,CC_SINK_PH_TAKE_WAIT); as_wait_(&k->acv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); k->s_take_wait=0; continue;
         }
@@ -2136,7 +2145,7 @@ static void *as_spiller_(void *arg){
             atomic_fetch_add_explicit(&k->spill_segments,1,memory_order_relaxed);
             continue;                        /* state may have moved while unlocked */
         }
-        if(since!=k->stall_seen){ k->stall_seen=since; atomic_fetch_add_explicit(&k->spill_stalls,1,memory_order_relaxed); }
+        if(stalled && since!=k->stall_seen){ k->stall_seen=since; atomic_fetch_add_explicit(&k->spill_stalls,1,memory_order_relaxed); }
         uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
         pthread_mutex_unlock(&k->m);
         as_ph_(T,CC_SINK_PH_SPILL_WRITE);
