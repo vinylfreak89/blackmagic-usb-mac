@@ -1753,11 +1753,15 @@ static void as_row_(struct cc_async_sink *k, int kind, const struct as_throw th[
     r->lost=atomic_load_explicit(&k->lost_by[0],memory_order_relaxed)+atomic_load_explicit(&k->lost_by[1],memory_order_relaxed);
     r->th[0]=th[0]; r->th[1]=th[1];
     r->sys=0;
-    if(!kind){                           /* once a second: the machine's CPU load and memory, and this process's paging */
+    /* Once a second: the machine's CPU load and memory, and this process's paging. host_statistics64 answers an
+     * unprivileged process from a cache refreshed a few times a second, so a value can be up to about a second old;
+     * the process's page-in and fault counts are 32-bit in the kernel and stop at its cap in a very long session. */
+    if(!kind){
         double la; if(getloadavg(&la,1)==1){ r->load100=(uint16_t)(la*100>65535?65535:la*100); r->sys|=1; }
         mach_port_t h=mach_host_self(); vm_statistics64_data_t v; mach_msg_type_number_t c=HOST_VM_INFO64_COUNT;
         if(host_statistics64(h,HOST_VM_INFO64,(host_info64_t)&v,&c)==KERN_SUCCESS){
-            r->swapins=v.swapins; r->swapouts=v.swapouts; r->comp_pg=v.compressor_page_count; r->free_pg=v.free_count; r->sys|=2; }
+            r->swapins=v.swapins; r->swapouts=v.swapouts; r->comp_pg=v.compressor_page_count;
+            r->free_pg=v.free_count>v.speculative_count?v.free_count-v.speculative_count:0; r->sys|=2; }   /* free as vm_stat counts it */
         mach_port_deallocate(mach_task_self(),h);
         task_events_info_data_t te; c=TASK_EVENTS_INFO_COUNT;
         if(task_info(mach_task_self(),TASK_EVENTS_INFO,(task_info_t)&te,&c)==KERN_SUCCESS){ r->t_pageins=(uint32_t)te.pageins; r->t_faults=(uint32_t)te.faults; r->sys|=4; }
@@ -2514,7 +2518,7 @@ static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
     const char *tn[2]={"w","s"};
     for(int i=0;i<2;i++) fprintf(f,",%s_phase,%s_state,%s_usage_pct,%s_phase_age_ms,%s_cpu_ms",tn[i],tn[i],tn[i],tn[i],tn[i]);
     for(int i=0;i<2;i++) for(int p=0;p<CC_SINK_NPH;p++) fprintf(f,",%s_wall_ms_%s,%s_cpu_ms_%s",tn[i],as_ph_names_[p],tn[i],as_ph_names_[p]);
-    fprintf(f,",w_curpri,w_basepri,s_curpri,s_basepri,load1,sys_swapins,sys_swapouts,compressor_mb,free_mb,obs_pageins,obs_faults");
+    fprintf(f,",w_curpri,w_basepri,s_curpri,s_basepri,load1,swapins_pages,swapouts_pages,compressor_mb,free_mb,proc_pageins,proc_faults");
     fputc('\n',f);
     for(size_t j=0;j<k->nrows;j++){
         const struct as_row *r=&k->rows[j];
