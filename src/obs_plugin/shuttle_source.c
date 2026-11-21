@@ -526,14 +526,14 @@ static void *tpc_closer(void *arg){
         blog(LOG_ERROR, "[shuttle-source] raw .tpc: the local spill could not give back %llu chunks: %llu video / %llu audio packets lost there, confessed in the file in their place; the capture went on",
              (unsigned long long)st.spill_read_errors, (unsigned long long)st.spill_read_lost_packets[0], (unsigned long long)st.spill_read_lost_packets[1]);
     blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
-         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals | local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s%s%s",
+         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals | local spill %s: %.1f MB through it during %llu destination stalls, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s%s%s",
          rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,
          (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
          (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write,
          (unsigned long long)st.writes, st.writes ? st.write_ns / 1e6 / (double)st.writes : 0.0, st.max_write_ns / 1e6, (unsigned long long)st.slow_writes, st.max_ready_gap_ns / 1e6,
          (unsigned long long)st.loss_episodes, (unsigned long long)st.loss_in_write, st.max_in_write_at_loss_ns / 1e6, st.max_wake_backlog / 1e6,
          st.released_bytes / 1e6, (unsigned long long)st.release_failures,
-         st.spill_state == 1 ? "on" : st.spill_state == 0 ? "off (same volume)" : "UNUSABLE", st.spill_bytes / 1e6, st.spill_peak / 1e6,
+         st.spill_state == 1 ? "on" : st.spill_state == 0 ? "off (same volume)" : "UNUSABLE", st.spill_bytes / 1e6, (unsigned long long)st.spill_stalls, st.spill_peak / 1e6,
          (unsigned long long)st.spill_segments, (unsigned long long)st.spill_floor_refusals, st.spill_max_write_ns / 1e6,
          st.spill_error ? ", spill turned off by: " : "", st.spill_error ? strerror(st.spill_error) : "",
          st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");

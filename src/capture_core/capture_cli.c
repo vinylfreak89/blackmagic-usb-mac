@@ -245,8 +245,8 @@ int main(int argc,char**argv){
     printf("writer: %.1f MB written, lost v=%llu a=%llu pkts, control records dropped %llu, ring peak %.1f MB, longest write %.1f ms, %llu over 100 ms\n",
            ks.bytes_written/1e6,(unsigned long long)ks.lost_packets[0],(unsigned long long)ks.lost_packets[1],(unsigned long long)ks.control_dropped,
            ks.high_water/1e6,ks.max_write_ns/1e6,(unsigned long long)ks.slow_writes);
-    printf("local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s\n",
-           ks.spill_state==1?"on":ks.spill_state==0?"off (same volume)":"UNUSABLE",ks.spill_bytes/1e6,ks.spill_peak/1e6,
+    printf("local spill %s: %.1f MB through it during %llu destination stalls, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s\n",
+           ks.spill_state==1?"on":ks.spill_state==0?"off (same volume)":"UNUSABLE",ks.spill_bytes/1e6,(unsigned long long)ks.spill_stalls,ks.spill_peak/1e6,
            (unsigned long long)ks.spill_segments,(unsigned long long)ks.spill_floor_refusals,ks.spill_max_write_ns/1e6,
            ks.spill_error?", turned off by: ":"",ks.spill_error?strerror(ks.spill_error):"");
     if(ks.spill_read_errors)

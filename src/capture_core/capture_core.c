@@ -1648,6 +1648,7 @@ struct cc_async_sink {
     _Atomic uint64_t records, written, lost_pk[2], lost_by[2], control_dropped, discarded;
     _Atomic size_t high_water, max_write; _Atomic int io_errno; int qos;
     _Atomic uint64_t write_started;      // writer: nonzero while inside a write call (its start time)
+    _Atomic uint64_t dest_since;         // writer: nonzero while inside a destination call, a write or a flush (its start time)
     _Atomic uint64_t writes, write_ns, max_write_ns, slow_writes, max_ready_gap_ns;
     _Atomic uint64_t loss_episodes, loss_in_write, max_in_write_at_loss_ns;
     /* Two consumers take memory from the front, one take at a time, under m: the writer (copies a chunk out, then
@@ -1656,10 +1657,12 @@ struct cc_async_sink {
      * destination receives the stream in order. Spill offsets [sp_r, sp_w) are the bytes on disk, segment = off/sseg. */
     size_t mpos;                         // under m: stream position up to which memory is taken (or being taken)
     int take_busy, stuck;                // under m: a take is in progress; a release failed (the tail stays put)
+    int s_take_wait;                     // under m: the spiller waits for the writer's take to finish
     uint8_t *bbuf;                       // writer: the chunk being written
     int spill_on, spill_thread, spill_state; _Atomic int spill_error;
     pthread_t sthr; pthread_cond_t acv; _Atomic size_t a_wake_at;   // the producer wakes the spiller when head reaches a_wake_at
-    char *sdir, *sbase; uint32_t stag; uint64_t sfloor; size_t safter, sseg;
+    char *sdir, *sbase; uint32_t stag; uint64_t sfloor, sstall; size_t safter, sseg;
+    uint64_t stall_seen;                 // spiller: dest_since of the last stall it took memory during
     uint64_t sp_w, sp_r, floor_retry_ns; // under m: bytes spilled and consumed (sp_w-sp_r is on disk)
     /* Spilled chunks, in order: whole records each, with what they hold, so a chunk the local disk cannot give back
      * is replaced in the file by HostLoss records saying exactly what was lost there. Under m. */
@@ -1671,7 +1674,7 @@ struct cc_async_sink {
     int64_t sdelta;                      /* writer: destination bytes minus stream bytes (HostLoss written for lost spill chunks) */   /* at open: free bytes above the floor; segments of dead writers */
     int swfd, srfd; uint64_t swseg, srseg;   // spiller's open segment; writer's
     size_t bcap;                         // bbuf: a chunk, or one record larger than a chunk
-    _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns;
+    _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns, spill_stalls;
     struct as_th th[2];                  // [0] writer, [1] spiller
     _Atomic uint64_t spill_taken;        // writer: spilled bytes delivered (spill_bytes - spill_taken is on disk)
     _Atomic uint64_t loss_ph[2][CC_SINK_NPH], loss_run[2];   // producer: at each episode's first drop
@@ -1874,12 +1877,12 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
     while(done<n){
         uint64_t t0=as_now_();
         if(*last_done && t0-*last_done>atomic_load_explicit(&k->max_ready_gap_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_ready_gap_ns,t0-*last_done,memory_order_relaxed);
-        atomic_store_explicit(&k->write_started,t0,memory_order_relaxed);
+        atomic_store_explicit(&k->write_started,t0,memory_order_relaxed); atomic_store_explicit(&k->dest_since,t0,memory_order_relaxed);
         as_ph_(&k->th[0],CC_SINK_PH_WRITE);
         ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,buf+done,n-done):write(k->fd,buf+done,n-done);
         { int we=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER); errno=we; }
         uint64_t t1=as_now_(), dt=t1-t0;
-        atomic_store_explicit(&k->write_started,0,memory_order_relaxed); *last_done=t1;
+        atomic_store_explicit(&k->write_started,0,memory_order_relaxed); atomic_store_explicit(&k->dest_since,0,memory_order_relaxed); *last_done=t1;
         atomic_fetch_add_explicit(&k->writes,1,memory_order_relaxed); atomic_fetch_add_explicit(&k->write_ns,dt,memory_order_relaxed);
         if(dt>atomic_load_explicit(&k->max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_write_ns,dt,memory_order_relaxed);
         if(dt>100000000ull) atomic_fetch_add_explicit(&k->slow_writes,1,memory_order_relaxed);
@@ -1893,9 +1896,10 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
     *since_sync+=done;
     if(!k->io_errno && cc_async_sink_sync_every && *since_sync>=cc_async_sink_sync_every){
         *since_sync=0;
+        atomic_store_explicit(&k->dest_since,as_now_(),memory_order_relaxed);
         as_ph_(&k->th[0],CC_SINK_PH_FSYNC);
         int r=cc_async_sink_test_fsync?cc_async_sink_test_fsync(k->fd):fsync(k->fd);
-        int fe=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER);
+        int fe=errno; as_ph_(&k->th[0],CC_SINK_PH_OTHER); atomic_store_explicit(&k->dest_since,0,memory_order_relaxed);
         if(r!=0) k->io_errno=fe?fe:EIO;   /* from here on everything drains into the discarded count */
     }
 }
@@ -2002,7 +2006,7 @@ static void *as_writer_(void *arg){
             as_ph_(T,CC_SINK_PH_COPY); as_peek_(k,lo,k->bbuf,n);
             as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m);
             as_ph_(T,CC_SINK_PH_RELEASE); as_consumed_(k,lo+n); as_ph_(T,CC_SINK_PH_OTHER);
-            k->take_busy=0; pthread_cond_signal(&k->acv);
+            k->take_busy=0; if(k->s_take_wait) pthread_cond_signal(&k->acv);   /* only a spiller waiting on this take */
         }
         pthread_mutex_unlock(&k->m);
         int got=1;
@@ -2057,10 +2061,18 @@ static uint64_t as_free_bytes_(struct cc_async_sink *k){
     struct statfs s; if(statfs(k->sdir,&s)!=0) return 0;   /* unknown free space is no free space */
     return (uint64_t)s.f_bavail*(uint64_t)s.f_bsize;
 }
-/* The spiller: when the memory backlog reaches safter bytes, it moves the oldest memory bytes to segment files on
- * the local disk, so a destination that stalls for minutes costs local disk space instead of the capture. It
- * leaves sfloor bytes free on that volume; past that, memory is the only buffer again and overflow is HostLoss.
- * A spill write that fails returns its bytes to memory and turns the spill off: nothing is lost by that. */
+/* The spiller: while one destination call has been blocked for sstall and the memory backlog is at least safter
+ * bytes, it moves the oldest memory bytes to segment files on the local disk, so a destination that stalls for
+ * minutes costs local disk space instead of the capture. It leaves sfloor bytes free on that volume; past that,
+ * memory is the only buffer again and overflow is HostLoss. A spill write that fails returns its bytes to memory
+ * and turns the spill off: nothing is lost by that.
+ * The spill is the exceptional path (owner, 2026-11-20: "the sink's slow path needs to only be exercised in the
+ * exceptional case, not the normal one"). It once took memory whenever the backlog reached safter, and a writer
+ * the machine was not scheduling reaches that with every destination call short: from then on every byte went
+ * through the spiller, the writer waited on each of its chunks, and a capture delivered 4.3 MB/s for 35 minutes
+ * with 4.3 GB in memory and 0-50 MB on disk (2026-11-20 15:50). Calls stretched that way lasted up to 2.9 s in
+ * three days of captures; the one stall seen lasted 20 s. A call that returns ends the stall: whichever chunk the
+ * spiller already took finishes, and it takes no more. */
 static void *as_spiller_(void *arg){
     struct cc_async_sink *k=arg; struct as_th *T=&k->th[1];
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
@@ -2069,11 +2081,23 @@ static void *as_spiller_(void *arg){
     for(;;){
         if(atomic_load(&k->stop) || k->io_errno) break;
         size_t head=atomic_load_explicit(&k->head,memory_order_acquire), backlog=head-k->mpos;
-        if(k->take_busy || backlog<k->safter){
+        if(backlog<k->safter){
             atomic_store_explicit(&k->a_wake_at,k->mpos+k->safter,memory_order_relaxed);
-            as_ph_(T,k->take_busy?CC_SINK_PH_TAKE_WAIT:CC_SINK_PH_IDLE); as_wait_(&k->acv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); continue;
+            as_ph_(T,CC_SINK_PH_IDLE); as_wait_(&k->acv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); continue;
         }
-        uint64_t now=as_now_();
+        uint64_t now=as_now_(), since=atomic_load_explicit(&k->dest_since,memory_order_relaxed);
+        if(!since || now<since || now-since<k->sstall){   /* the destination is taking data: memory holds the backlog */
+            /* No event says a call has gone on too long, so this waits for the moment it would have: the current
+             * call's start plus sstall, or with none in progress, sstall from now (a call starting meanwhile is
+             * caught by then). The producer is not to wake it meanwhile. */
+            atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed);
+            uint64_t until=(since && since<=now?since:now)+k->sstall;
+            as_ph_(T,CC_SINK_PH_IDLE); as_wait_(&k->acv,&k->m,until-now); as_ph_(T,CC_SINK_PH_OTHER); continue;
+        }
+        if(k->take_busy){                    /* the writer is taking memory (not inside a destination call) */
+            k->s_take_wait=1; atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed);
+            as_ph_(T,CC_SINK_PH_TAKE_WAIT); as_wait_(&k->acv,&k->m,100000000ull); as_ph_(T,CC_SINK_PH_OTHER); k->s_take_wait=0; continue;
+        }
         if(now<k->floor_retry_ns){ atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed); as_ph_(T,CC_SINK_PH_FLOOR_WAIT); as_wait_(&k->acv,&k->m,k->floor_retry_ns-now); as_ph_(T,CC_SINK_PH_OTHER); continue; }
         if(k->sd_w-k->sd_r==AS_SD_CAP){      /* every chunk slot in use: memory is the buffer until one frees */
             atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed); k->floor_retry_ns=as_now_()+100000000ull; continue;
@@ -2108,6 +2132,7 @@ static void *as_spiller_(void *arg){
             atomic_fetch_add_explicit(&k->spill_segments,1,memory_order_relaxed);
             continue;                        /* state may have moved while unlocked */
         }
+        if(since!=k->stall_seen){ k->stall_seen=since; atomic_fetch_add_explicit(&k->spill_stalls,1,memory_order_relaxed); }
         uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
         pthread_mutex_unlock(&k->m);
         as_ph_(T,CC_SINK_PH_SPILL_WRITE);
@@ -2398,6 +2423,7 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
             const char *b=strrchr(path,'/');
             k->sdir=strdup(sp->dir); k->sbase=strdup(b?b+1:path); k->stag=arc4random();
             k->sfloor=sp->floor?sp->floor:32000000000ull;   /* 32 GB (owner's staging floor, decimal) */
+            k->sstall=sp->stall_ns?sp->stall_ns:10000000000ull;   /* 10 s: see as_spiller_ */
             k->sseg=sp->segment?sp->segment:(size_t)128<<20;
             if(k->sseg<k->bcap) k->sseg=k->bcap;   /* a segment holds at least one take */
             size_t def=ring_bytes/16; if(def<((size_t)8<<20)) def=(size_t)8<<20; if(def>((size_t)256<<20)) def=(size_t)256<<20;
@@ -2577,6 +2603,7 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->spill_state=k->spill_state; st->spill_error=k->spill_error; st->spill_bytes=atomic_load(&k->spill_bytes);
         st->spill_peak=atomic_load(&k->spill_peak); st->spill_segments=atomic_load(&k->spill_segments);
         st->spill_floor_refusals=atomic_load(&k->spill_floor_refusals); st->spill_max_write_ns=atomic_load(&k->spill_max_write_ns);
+        st->spill_stalls=atomic_load(&k->spill_stalls);
         st->spill_read_errors=atomic_load(&k->spill_read_errors);
         for(int e=0;e<2;e++){ st->spill_read_lost_packets[e]=atomic_load(&k->spill_read_lost_pk[e]); st->spill_read_lost_bytes[e]=atomic_load(&k->spill_read_lost_by[e]); }
         for(int i=0;i<2;i++){
