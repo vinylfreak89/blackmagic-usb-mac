@@ -254,9 +254,13 @@ typedef struct {
     // that turned it off mid-capture (the bytes of that write stayed in memory: nothing is lost by it).
     int spill_state, spill_error;
     uint64_t spill_bytes, spill_peak;        // bytes that went through the local disk; most on disk at once
-    uint64_t spill_segments;                 // segment files created
-    uint64_t spill_floor_refusals;           // times a new segment was refused because it would break the free-space floor
-    uint64_t spill_stalls;                   // stalls the spill took memory during (a stall it could not take from is not counted)
+    uint64_t spill_segments;                 // segment files created (the first at open; the next is made ahead while there is room)
+    uint64_t spill_floor_refusals;           // times the spill ran out of room: a new segment refused under the free-space floor
+                                             // (at open too), or every chunk slot in use; once per run of refusals
+    uint64_t spill_engagements;              // spill episodes: from the backlog reaching the mark until memory is under it and the spill empty
+    uint64_t spill_mark, spill_over_mark;    // the mark (bytes); how far past it ring memory reached (high_water - mark, 0 if it never did):
+                                             // the part of the reserve the spill's response used, takes in flight included: size the reserve from it
+    uint64_t spill_segment_waits;            // times a take needed the next segment and none could be made (the floor)
     uint64_t spill_max_write_ns;             // longest local spill write
     // Spilled chunks the local disk would not give back: each is replaced in the file by HostLoss records
     // (pkt_index 0xFFFB) carrying exactly the packets and bytes it held, and the capture goes on. Loss records inside
@@ -275,21 +279,19 @@ typedef struct {
 void cc_async_sink_format_phases(const cc_async_sink_stats *st, char *out, size_t cap);
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
                          size_t ring_bytes, size_t write_chunk);
-// A destination on another volume (a network share) can stall for seconds or minutes. With a spill, while one
-// destination call (a write or a flush) has been blocked for `stall_ns` and the memory backlog is at least `after`
-// bytes, the oldest of the backlog moves to segment files in `dir` on the local disk and is delivered from there, in
-// order, so a stalled destination costs local disk space instead of the capture. A backlog alone never spills: a
-// writer the machine is not scheduling falls behind with every call short, and the spill would cost it CPU it does
-// not have while it waits on the spiller. When the blocked call returns, the writer delivers the spill before memory,
-// and the spill keeps the backlog at `after` until the writer finds it empty, then takes no more. The spill always leaves `floor`
-// bytes free on its volume; beyond that memory is the only buffer and overflow is HostLoss. Segments are deleted as they are delivered and at close. A destination on the
-// spill's own volume gets no spill.
+// A destination on another volume (a network share) can stall for seconds or minutes, and a writer the machine is
+// not scheduling falls behind. Memory holds the backlog either way; the spill is where the ring overflows to. When
+// the memory backlog reaches the mark (the ring's size less `reserve`), the oldest of it moves to segment files in
+// `dir` on the local disk, as much as brings it under the mark again, and is delivered from there before memory, in
+// order. Nothing else starts or stops it. The reserve is what the producer still has while the spiller responds;
+// the next segment is always made ahead, so that response is a wake and a local write. The spill always leaves
+// `floor` bytes free on its volume; beyond that memory is the only buffer and overflow is HostLoss. Segments are
+// deleted as they are delivered and at close. A destination on the spill's own volume gets no spill.
 typedef struct {
     const char *dir;      // local, non-synced directory (created 0700 if absent); NULL: no spill
     uint64_t floor;       // free bytes always left on the spill volume; 0: 32 GB (32e9)
-    size_t after;         // memory backlog the spill leaves in memory (it moves the rest); 0: ring/16 within [8 MiB, 256 MiB]
+    size_t reserve;       // ring bytes above the mark; 0: ring/16 within [8 MiB, 256 MiB]; at most half the ring
     size_t segment;       // bytes per segment file; 0: 128 MiB
-    uint64_t stall_ns;    // a destination delivery (a chunk's write calls and any flush) blocked this long is a stall; 0: 10 s
 } cc_async_sink_spill;
 int  cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *session_note,
                               size_t ring_bytes, size_t write_chunk, const cc_async_sink_spill *spill);
@@ -331,13 +333,15 @@ void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/los
 // the sink stays valid, so cc_async_sink_progress can be watched from another thread meanwhile. Call it from one
 // thread, after the producer has stopped; close calls it if it has not run.
 int  cc_async_sink_finish(cc_async_sink *k);
-// Drains everything accepted, joins the writer, fsyncs and closes; fills *st (may be NULL).
+// Drains everything accepted, joins the writer, fsyncs and closes; fills *st (may be NULL). With a spill it also waits
+// for a free-space query in flight (seconds under heavy memory pressure: 16.6 s once): call it off any real-time thread.
 int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
 // Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
 extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
 extern int (*cc_async_sink_test_fsync)(int fd);   /* test hook for the periodic flush */
 extern ssize_t (*cc_async_sink_test_spill_write)(int fd, const void *buf, size_t n, off_t off);   /* spill writes */
 extern uint64_t (*cc_async_sink_test_free)(const char *dir);   /* free bytes on the spill volume */
+extern void (*cc_async_sink_test_take)(int who);   /* inside a take, outside the lock: [0] writer, [1] spiller */
 extern ssize_t (*cc_async_sink_test_spill_read)(int fd, void *buf, size_t n, off_t off);   /* spill reads */
 extern int cc_async_sink_test_spill_any_volume;
 int cc_async_sink_test_thread_exited(const cc_async_sink *k, int thread);   /* tests: [0] writer, [1] spiller has ended */   /* spill even onto the destination's own volume */
