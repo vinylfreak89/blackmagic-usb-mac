@@ -1658,6 +1658,7 @@ struct cc_async_sink {
     size_t mpos;                         // under m: stream position up to which memory is taken (or being taken)
     int take_busy, stuck;                // under m: a take is in progress; a release failed (the tail stays put)
     int s_take_wait;                     // under m: the spiller waits for the writer's take to finish
+    int caught_up;                       // under m: the writer has found the spill empty since the spiller last took during a stall
     uint8_t *bbuf;                       // writer: the chunk being written
     int spill_on, spill_thread, spill_state; _Atomic int spill_error;
     pthread_t sthr; pthread_cond_t acv; _Atomic size_t a_wake_at;   // the producer wakes the spiller when head reaches a_wake_at
@@ -1993,6 +1994,7 @@ static void *as_writer_(void *arg){
     as_ph_(T,CC_SINK_PH_LOCK); pthread_mutex_lock(&k->m); as_ph_(T,CC_SINK_PH_OTHER);
     for(;;){
         size_t n; struct as_sd d; int from_spill=0;
+        if(k->sd_r==k->sd_w) k->caught_up=1;   /* caught up with the spill: a drain after a stall is over (as_spiller_) */
         if(k->sd_r<k->sd_w){             /* the oldest records are on disk */
             d=k->sdq[k->sd_r%AS_SD_CAP]; n=d.len; from_spill=1;
         } else if(k->take_busy){         /* the spiller is moving the next records to disk; it signals when done */
@@ -2079,7 +2081,7 @@ static uint64_t as_free_bytes_(struct cc_async_sink *k){
  * through the spiller, the writer waited on each of its chunks, and a capture delivered 4.3 MB/s for 35 minutes
  * with 4.3 GB in memory and 0-50 MB on disk (2026-11-20 15:50). Calls stretched that way lasted up to 2.9 s in
  * three days of captures (flushes up to 4 s); the one stall seen lasted 20 s. A call that returns ends the stall; the
- * spiller then keeps the backlog at `after` only until the writer has delivered the spill, then takes no more. */
+ * spiller then keeps the backlog at `after` only until the writer finds the spill empty, then takes no more. */
 static void *as_spiller_(void *arg){
     struct cc_async_sink *k=arg; struct as_th *T=&k->th[1];
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
@@ -2095,9 +2097,12 @@ static void *as_spiller_(void *arg){
         uint64_t now=as_now_(), since=atomic_load_explicit(&k->dest_since,memory_order_relaxed);
         int stalled=since && now>=since && now-since>=k->sstall;
         /* After a stall the writer delivers the spill before memory, so memory grows for the whole drain: until the
-         * spill is empty the spiller keeps the backlog at `after`, as it did through the stall. Only a stall starts
-         * this; a backlog with every call short never does. */
-        if(!stalled && k->sd_w==k->sd_r){   /* the destination is taking data and nothing waits on disk: memory holds the backlog */
+         * writer finds the spill empty the spiller keeps the backlog at `after`, as it did through the stall. Only a
+         * stall starts this; a backlog with every call short never does. The drain ends when the writer finds the
+         * spill empty, not when the spiller does: the spiller's own new chunk would otherwise always count as
+         * something on disk, it would take again before the writer got the lock, and a writer faster than the
+         * spiller would deliver at the spiller's rate for as long as memory stayed over `after` (review, round 2). */
+        if(!stalled && (k->sd_w==k->sd_r || k->caught_up)){   /* the destination is taking data and the writer has caught up: memory holds the backlog */
             /* No event says a call has gone on too long, so this waits for the moment it would have: the current
              * call's start plus sstall, or with none in progress, sstall from now (a call starting meanwhile is
              * caught by then). The producer is not to wake it meanwhile. */
@@ -2145,7 +2150,7 @@ static void *as_spiller_(void *arg){
             atomic_fetch_add_explicit(&k->spill_segments,1,memory_order_relaxed);
             continue;                        /* state may have moved while unlocked */
         }
-        if(stalled && since!=k->stall_seen){ k->stall_seen=since; atomic_fetch_add_explicit(&k->spill_stalls,1,memory_order_relaxed); }
+        if(stalled){ k->caught_up=0; if(since!=k->stall_seen){ k->stall_seen=since; atomic_fetch_add_explicit(&k->spill_stalls,1,memory_order_relaxed); } }
         uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
         pthread_mutex_unlock(&k->m);
         as_ph_(T,CC_SINK_PH_SPILL_WRITE);

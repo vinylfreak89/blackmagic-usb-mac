@@ -123,8 +123,12 @@ static _Atomic int short_calls;
 static ssize_t short_write(int fd,const void *b,size_t n){
     struct timespec d={0,2000000}; nanosleep(&d,NULL); atomic_fetch_add(&short_calls,1); return write(fd,b,n);
 }
-/* About 6.5 MB/s in 64 KiB calls: slower than the feed, so a spill takes seconds to deliver. */
-static ssize_t drain_write(int fd,const void *b,size_t n){ struct timespec d={0,10000000}; nanosleep(&d,NULL); return write(fd,b,n); }
+/* About 1.6 MB/s in 64 KiB calls: far slower than any spill, so a spill takes seconds to deliver. */
+static _Atomic int drain_calls;
+static ssize_t drain_write(int fd,const void *b,size_t n){ struct timespec d={0,40000000}; nanosleep(&d,NULL); atomic_fetch_add(&drain_calls,1); return write(fd,b,n); }
+static ssize_t counting_spill(int fd,const void *b,size_t n,off_t off);
+/* A spill that takes 20 ms per write (about 3 MB/s in 64 KiB chunks), counted as counting_spill counts. */
+static ssize_t slow_spill(int fd,const void *b,size_t n,off_t off){ struct timespec d={0,20000000}; nanosleep(&d,NULL); return counting_spill(fd,b,n,off); }
 /* Wait (1 ms steps, 20 s at most, then fail) until the sink has delivered `bytes` to its destination. */
 static void delivered(cc_async_sink *k,uint64_t bytes,const char *what){
     for(int i=0;cc_async_sink_progress(k)<bytes;i++){
@@ -513,27 +517,59 @@ int main(int argc, char **argv){
       assert(same_file(r7b,s7b) && spill_files(sdir)==0);
       unlink(r7b); unlink(s7b); cc_async_sink_test_spill_write=NULL; }
     /* 7c. a stall longer than memory can carry through the drain: after it the writer needs seconds to deliver the
-     * spill (6.5 MB/s) while the producer goes on faster, through an 8 MiB ring. The spill keeps memory at `after`
-     * until it is empty, so nothing is lost however long the drain. A spill that stopped at the end of the stall
-     * lost data whenever the drain outlasted (ring - after) / device rate: about 3 minutes with the plugin's ring
-     * (review, 2026-11-20). Here the feed is paced by the spill, so that version fails by name, never by timing. */
+     * spill (1.6 MB/s) while the producer goes on faster, through an 8 MiB ring. The spill keeps memory at `after`
+     * until the writer finds it empty, so nothing is lost however long the drain. A spill that stopped at the end of
+     * the stall lost data whenever the drain outlasted (ring - after) / device rate: about 3 minutes with the plugin's
+     * ring (review, 2026-11-20). The feed is paced by the spill, so that version fails by name, never by timing; the
+     * second feed starts only once the writer is out of the stalled call and delivering slowly, so the stall itself
+     * cannot carry it. */
     { char r7c[256],s7c[256]; snprintf(r7c,sizeof r7c,"%s/ref7c.tpc",dir); snprintf(s7c,sizeof s7c,"%s/drain7c.tpc",dir);
       { cc_tagged_sink *t; cc_callbacks c; assert(cc_tagged_sink_open(&t,r7c,"drain")==CC_OK); cc_tagged_sink_callbacks(t,&c);
-        put_range(&c,0,3000); assert(cc_tagged_sink_close(t)==CC_OK); }
-      cc_async_sink_spill sd={sdir,1,1u<<20,1u<<20,2000000000ull};   /* 2 s: no 10 ms call can be taken for a stall */
+        put_range(&c,0,1600); assert(cc_tagged_sink_close(t)==CC_OK); }
+      cc_async_sink_spill sd={sdir,1,1u<<20,16u<<20,2000000000ull};   /* 2 s: no 40 ms call can be taken for a stall */
+      int qos_was=cc_async_sink_writer_qos; cc_async_sink_writer_qos=QOS_CLASS_USER_INITIATED;
       cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=blocked_write; bw_set(0); atomic_store(&in_gate,0); spill_counting();
       assert(cc_async_sink_open_spill(&as,s7c,"drain",8u<<20,65536,&sd)==CC_OK && cc_async_sink_spill_state(as)==1);
       cc_async_sink_callbacks(as,&ca);
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-      feed_spilled_range(&ca,0,1500,8u<<20,"drain");    /* 15 MB through the stall */
-      cc_async_sink_test_write=drain_write; bw_set(1);
-      feed_spilled_range(&ca,1500,3000,8u<<20,NULL);    /* 15 MB more while the writer delivers the first */
-      assert(cc_async_sink_close(as,&st)==CC_OK);
+      feed_spilled_range(&ca,0,800,8u<<20,"drain");     /* 8 MB through the stall */
+      cc_async_sink_test_write=drain_write; int c0=atomic_load(&drain_calls); bw_set(1);
+      for(int i=0;atomic_load(&drain_calls)==c0;i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+      feed_spilled_range(&ca,800,1600,8u<<20,NULL);     /* 8 MB more while the writer delivers the first */
+      assert(cc_async_sink_close(as,&st)==CC_OK); cc_async_sink_writer_qos=qos_was;
       printf("  long drain: %.1f MB through the local disk, peak %.1f MB there, ring peak %.1f MB of 8.4, lost %llu packets\n",
              st.spill_bytes/1e6,st.spill_peak/1e6,st.high_water/1e6,(unsigned long long)(st.lost_packets[0]+st.lost_packets[1]));
       assert(!st.lost_packets[0] && !st.lost_packets[1] && !st.control_dropped && !st.io_error && !st.spill_error);
       assert(same_file(r7c,s7c) && spill_files(sdir)==0);
       unlink(r7c); unlink(s7c); cc_async_sink_test_spill_write=NULL; }
+    /* 7d. after a stall, a spill slower than the writer does not set the writer's pace: once the writer finds the spill
+     * empty it goes back to memory. Without that the spiller took again before the writer got the lock, its own new
+     * chunk counted as something on disk, and the writer delivered at the spiller's rate for as long as memory stayed
+     * over `after` (review, round 2: the 15:50 funnel, brought back by any stall). Spill writes take 20 ms here (about
+     * 3 MB/s) against a writer at ~30 MB/s; one 64 MiB segment, so no segment roll lets the writer slip past. */
+    { char r7d[256],s7d[256]; snprintf(r7d,sizeof r7d,"%s/ref7d.tpc",dir); snprintf(s7d,sizeof s7d,"%s/latch7d.tpc",dir);
+      { cc_tagged_sink *t; cc_callbacks c; assert(cc_tagged_sink_open(&t,r7d,"latch")==CC_OK); cc_tagged_sink_callbacks(t,&c);
+        put_range(&c,0,1001); assert(cc_tagged_sink_close(t)==CC_OK); }
+      cc_async_sink_spill sl={sdir,1,1u<<20,64u<<20,300000000ull};
+      int qos_was=cc_async_sink_writer_qos; cc_async_sink_writer_qos=QOS_CLASS_USER_INITIATED;
+      cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=blocked_write; bw_set(0); atomic_store(&in_gate,0);
+      spill_counting(); cc_async_sink_test_spill_write=slow_spill;
+      assert(cc_async_sink_open_spill(&as,s7d,"latch",64u<<20,65536,&sl)==CC_OK && cc_async_sink_spill_state(as)==1);
+      cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+      uint64_t fed=24+strlen("latch")+put_range(&ca,0,1001);   /* 10 MB behind the stall */
+      uint64_t m_stall=0;
+      for(int i=0;;i++){ pthread_mutex_lock(&sp_m); m_stall=sp_moved; pthread_mutex_unlock(&sp_m);
+                         if(m_stall>=(512u<<10)) break; assert(i<20000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+      cc_async_sink_test_write=short_write; bw_set(1);   /* the stall ends with 9+ MB still in memory */
+      delivered(as,fed,"7d after the stall");
+      pthread_mutex_lock(&sp_m); uint64_t m_end=sp_moved; pthread_mutex_unlock(&sp_m);
+      assert(cc_async_sink_close(as,&st)==CC_OK); cc_async_sink_writer_qos=qos_was;
+      printf("  slow spill after a stall: %.2f MB to disk during it, %.2f MB more after it (%.1f MB were behind)\n",m_stall/1e6,(m_end-m_stall)/1e6,fed/1e6);
+      assert(!st.lost_packets[0] && !st.lost_packets[1] && !st.control_dropped && !st.io_error && !st.spill_error);
+      assert(m_end-m_stall<(512u<<10));                 /* a few in-flight chunks, never the backlog */
+      assert(same_file(r7d,s7d) && spill_files(sdir)==0);
+      unlink(r7d); unlink(s7d); cc_async_sink_test_spill_write=NULL; }
     cc_async_sink_test_write=gated_write;                /* cases 8 and 9 stall it, as 7 left it */
     /* 8. the floor: three segments allowed, then the volume is "full". The spill stops growing, memory is the only
      * buffer again, and overflow is exact HostLoss: every fed packet is in the file or confessed, in order. */

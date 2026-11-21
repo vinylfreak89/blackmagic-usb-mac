@@ -281,7 +281,7 @@ int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *sess
 // order, so a stalled destination costs local disk space instead of the capture. A backlog alone never spills: a
 // writer the machine is not scheduling falls behind with every call short, and the spill would cost it CPU it does
 // not have while it waits on the spiller. When the blocked call returns, the writer delivers the spill before memory,
-// and the spill keeps the backlog at `after` until it is empty, then takes no more. The spill always leaves `floor`
+// and the spill keeps the backlog at `after` until the writer finds it empty, then takes no more. The spill always leaves `floor`
 // bytes free on its volume; beyond that memory is the only buffer and overflow is HostLoss. Segments are deleted as they are delivered and at close. A destination on the
 // spill's own volume gets no spill.
 typedef struct {
