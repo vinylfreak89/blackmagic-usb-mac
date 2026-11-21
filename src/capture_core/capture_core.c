@@ -1599,7 +1599,12 @@ int cc_async_sink_test_spill_any_volume = 0;
  * write(): a full filespace once let gigabytes of acknowledged writes pile up as failing write-backs that the
  * system retried until it hung (2026-10-03). A refused flush is a write error like any other: the file stops. */
 size_t cc_async_sink_sync_every = (size_t)256 << 20;
-int cc_async_sink_writer_qos = QOS_CLASS_UTILITY;
+/* The writer's and spiller's class: USER_INITIATED, the USB delivery thread's own (owner, 2026-11-20). UTILITY, chosen
+ * with the tee and never measured, starved under memory pressure: with the compressor churning ~700 MB/s (Chrome
+ * holding 8 GB, a render running) a UTILITY writer to the local disk went up to 346 ms between writes with data waiting
+ * and 19 MB behind, then 154 ms and 8 MB, while a USER_INITIATED one between them never waited over 17 ms (0.7 MB),
+ * the compressor churning harder. Three captures lost data that way while a render ran. */
+int cc_async_sink_writer_qos = QOS_CLASS_USER_INITIATED;
 const char *cc_async_sink_diag_dir = NULL;
 /* A thread's phase clock, written only by that thread (cpu0 is its own); the producer reads ph/t0 and the totals. */
 struct as_th { _Atomic int ph, exited; _Atomic uint64_t t0; uint64_t cpu0; _Atomic uint64_t wall[CC_SINK_NPH], cpu[CC_SINK_NPH];

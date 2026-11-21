@@ -342,7 +342,7 @@ extern ssize_t (*cc_async_sink_test_spill_read)(int fd, void *buf, size_t n, off
 extern int cc_async_sink_test_spill_any_volume;
 int cc_async_sink_test_thread_exited(const cc_async_sink *k, int thread);   /* tests: [0] writer, [1] spiller has ended */   /* spill even onto the destination's own volume */
 extern size_t cc_async_sink_sync_every;            /* bytes between flushes (default 256 MiB); 0: only at close */
-// The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
+// The writer's and spiller's QoS class (default QOS_CLASS_USER_INITIATED); read once when the sink opens.
 extern int cc_async_sink_writer_qos;
 // If set when a sink opens: at close it writes <dir>/<destination name>.tee-diag.csv, one row per tick (1 Hz) and
 // one at each loss episode's first drop: backlogs, bytes written and lost, and for both threads the phase, its age,
