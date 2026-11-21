@@ -54,15 +54,23 @@ static double now_ms_(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t
 static void video_burst(cc_callbacks *cb,int n){
     for(int i=0;i<n;i++){ cc_packet p={CC_EP_VIDEO,(uint16_t)(i%128),(uint32_t)i,0,15360,15360,payload}; cb->on_packet(cb->ctx,&p); }
 }
-/* The diag record's rows: count of each kind, and the w_phase / s_phase / w_state of loss rows (all must match). */
-static void diag_rows(const char *path,int *ticks,int *losses,const char *want_w,const char *want_s,const char *want_wstate){
+/* The diag record's rows: count of each kind, and the w_phase / s_phase / w_state of loss rows (all must match).
+ * Every row carries the writer's scheduled and base priority, and the spiller's when spill_pri (empty when there is no
+ * spiller or it has ended: an unread value is never written as 0). Tick rows carry the load average, the system's swap,
+ * compressor and free memory and this process's page-ins and faults; loss rows leave them empty. */
+static int num_(const char *t,double lo,double hi){ char *e; if(!*t) return 0; double v=strtod(t,&e); return !*e && v>=lo && v<=hi; }
+static void diag_rows(const char *path,int *ticks,int *losses,const char *want_w,const char *want_s,const char *want_wstate,int spill_pri){
     FILE *f=fopen(path,"r"); assert(f); char line[8192]; assert(fgets(line,sizeof line,f) && !strncmp(line,"kind,t_s,mem_mb",15));
     *ticks=*losses=0;
     while(fgets(line,sizeof line,f)){
         char *fld[128]; int nf=0; line[strcspn(line,"\n")]=0;
         for(char *t=line;;){ fld[nf++]=t; char *c=strchr(t,','); if(!c || nf==128) break; *c=0; t=c+1; }   /* empty fields kept */
-        assert(nf==6+2*5+2*2*CC_SINK_NPH);
-        if(!strcmp(fld[0],"tick")){ (*ticks)++; continue; }
+        const int b=6+2*5+2*2*CC_SINK_NPH; assert(nf==b+11);
+        assert(num_(fld[b],0,127) && num_(fld[b+1],0,127));
+        if(spill_pri) assert(num_(fld[b+2],0,127) && num_(fld[b+3],0,127)); else assert(!*fld[b+2] && !*fld[b+3]);
+        int tick=!strcmp(fld[0],"tick");
+        for(int i=b+4;i<b+11;i++) assert(tick?num_(fld[i],0,1e18):!*fld[i]);
+        if(tick){ (*ticks)++; continue; }
         assert(!strcmp(fld[0],"loss")); (*losses)++;
         if(want_w) assert(!strcmp(fld[6],want_w));
         if(want_wstate) assert(!strcmp(fld[7],want_wstate));
@@ -666,7 +674,7 @@ int main(int argc, char **argv){
       assert(st.phase_wall_ns[0][CC_SINK_PH_WRITE]>=(uint64_t)(stalled*0.9e6));
       assert(st.phase_cpu_ns[0][CC_SINK_PH_WRITE]<st.phase_wall_ns[0][CC_SINK_PH_WRITE]/4);   /* blocked, not computing */
       assert(st.diag_path[0] && !st.diag_error && st.diag_rows==5+st.loss_episodes && !st.diag_rows_dropped);
-      int nt,nl; diag_rows(st.diag_path,&nt,&nl,"write","none","waiting"); assert(nt==5 && (uint64_t)nl==st.loss_episodes);
+      int nt,nl; diag_rows(st.diag_path,&nt,&nl,"write","none","waiting",0); assert(nt==5 && (uint64_t)nl==st.loss_episodes);
       char line[4096]; cc_async_sink_format_phases(&st,line,sizeof line); printf("  diag, blocked write: %s\n",line);
       assert(strstr(line,"at the ") && strstr(line,"the writer was: write "));
       unlink(st.diag_path); unlink(s18);
@@ -683,7 +691,7 @@ int main(int argc, char **argv){
        * other suites running), which is the starvation this record exists to show. The run state decides the case. */
       printf("  diag, computing write: runnable at %llu of %llu drops, cpu %.0f%% of the write's wall time\n",(unsigned long long)st.loss_runnable[0],
              (unsigned long long)st.loss_episodes,100.0*st.phase_cpu_ns[0][CC_SINK_PH_WRITE]/(double)st.phase_wall_ns[0][CC_SINK_PH_WRITE]);
-      diag_rows(st.diag_path,&nt,&nl,"write","none","runnable"); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
+      diag_rows(st.diag_path,&nt,&nl,"write","none","runnable",0); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
       unlink(st.diag_path); unlink(s18);
     /* (c) With a spill, a destination stalled and a spill write stalled too: every drop finds the writer in its write
      * and the spiller in its spill write; the record names both. */
@@ -699,7 +707,7 @@ int main(int argc, char **argv){
       assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1);
       assert(st.loss_phase[0][CC_SINK_PH_WRITE]==st.loss_episodes && st.loss_phase[1][CC_SINK_PH_SPILL_WRITE]==st.loss_episodes);
       assert(st.phase_wall_ns[1][CC_SINK_PH_SPILL_WRITE]>=100000000ull);
-      diag_rows(st.diag_path,&nt,&nl,"write","spill_write",NULL); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
+      diag_rows(st.diag_path,&nt,&nl,"write","spill_write",NULL,1); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
       cc_async_sink_format_phases(&st,line,sizeof line); printf("  diag, stalled spill: %s\n",line);
       unlink(st.diag_path); unlink(s18);
       cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0;
@@ -716,7 +724,7 @@ int main(int argc, char **argv){
       bw_set(1);
       assert(cc_async_sink_close(as,&st)==CC_OK && st.loss_episodes>=1 && st.spill_error==EIO);
       for(int p=0;p<CC_SINK_NPH;p++) assert(!st.loss_phase[1][p]);
-      diag_rows(st.diag_path,&nt,&nl,"write","exited",NULL); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
+      diag_rows(st.diag_path,&nt,&nl,"write","exited",NULL,0); assert(nt==3 && (uint64_t)nl==st.loss_episodes);
       unlink(st.diag_path); unlink(s18);
       cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0;
     /* (d) What the producer pays: a tick with the record on against off, and the writer's phase clock (two reads). */

@@ -1605,8 +1605,10 @@ const char *cc_async_sink_diag_dir = NULL;
 struct as_th { _Atomic int ph, exited; _Atomic uint64_t t0; uint64_t cpu0; _Atomic uint64_t wall[CC_SINK_NPH], cpu[CC_SINK_NPH];
                 mach_port_t port; };   /* port: a send right of our own (taken at open, released at close), so the name
                                         * keeps naming this thread after it exits and is never reused while sampled */
-struct as_throw { uint8_t ph, state; uint16_t usage; uint32_t age_ms, kcpu_ms; uint32_t wall_ms[CC_SINK_NPH], cpu_ms[CC_SINK_NPH]; };
-struct as_row { uint8_t kind; uint32_t t_ms; uint64_t mem, disk, written, lost; struct as_throw th[2]; };
+struct as_throw { uint8_t ph, state, pri_ok, curpri, basepri; uint16_t usage; uint32_t age_ms, kcpu_ms; uint32_t wall_ms[CC_SINK_NPH], cpu_ms[CC_SINK_NPH]; };
+/* sys (tick rows only, bit per source read): 1 the load average, 2 the system's VM counters, 4 this process's page-ins
+ * and faults. A source that was not read prints empty, never 0. */
+struct as_row { uint8_t kind, sys; uint16_t load100; uint32_t t_ms, comp_pg, free_pg, t_pageins, t_faults; uint64_t mem, disk, written, lost, swapins, swapouts; struct as_throw th[2]; };
 #define AS_ROWS_CAP ((size_t)65536)
 static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
 static const char *const as_ph_names_[CC_SINK_NPH]={"other","idle","take_wait","lock","copy","release","write","fsync",
@@ -1713,7 +1715,8 @@ static void as_flush_loss_(struct cc_async_sink *k, int e){
 /* The first drop of a run of dropped packets (nothing pending on either endpoint): one loss episode, and what the
  * writer was doing at that moment. */
 /* One thread's state for a diag row: relaxed loads of its phase clock and one thread_info call (the kernel's run state,
- * recent CPU usage and CPU time). No lock, no allocation. */
+ * recent CPU usage, CPU time, and its scheduled and base priority: a thread demoted or clamped below its class shows a
+ * lower priority than its QoS gives, one merely outrun by others does not). No lock, no allocation. */
 static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, uint64_t now){
     memset(r,0,sizeof *r);
     struct as_th *t=&k->th[i];
@@ -1725,11 +1728,11 @@ static void as_sample_th_(struct cc_async_sink *k, int i, struct as_throw *r, ui
         r->wall_ms[p]=(uint32_t)(atomic_load_explicit(&t->wall[p],memory_order_relaxed)/1000000);
         r->cpu_ms[p]=(uint32_t)(atomic_load_explicit(&t->cpu[p],memory_order_relaxed)/1000000);
     }
-    thread_basic_info_data_t bi; mach_msg_type_number_t n=THREAD_BASIC_INFO_COUNT;
-    if(thread_info(t->port,THREAD_BASIC_INFO,(thread_info_t)&bi,&n)==KERN_SUCCESS){
-        r->state=(uint8_t)bi.run_state; r->usage=(uint16_t)bi.cpu_usage;
-        r->kcpu_ms=(uint32_t)((uint64_t)bi.user_time.seconds*1000+(uint64_t)bi.user_time.microseconds/1000
-                              +(uint64_t)bi.system_time.seconds*1000+(uint64_t)bi.system_time.microseconds/1000);
+    thread_extended_info_data_t ei; mach_msg_type_number_t n=THREAD_EXTENDED_INFO_COUNT;
+    if(thread_info(t->port,THREAD_EXTENDED_INFO,(thread_info_t)&ei,&n)==KERN_SUCCESS){   /* the basic info, plus priorities */
+        r->state=(uint8_t)ei.pth_run_state; r->usage=(uint16_t)ei.pth_cpu_usage;
+        r->kcpu_ms=(uint32_t)((ei.pth_user_time+ei.pth_system_time)/1000000);           /* nanoseconds */
+        r->pri_ok=1; r->curpri=(uint8_t)ei.pth_curpri; r->basepri=(uint8_t)ei.pth_priority;
     }
 }
 /* A diag row (kind 0 tick, 1 loss) from both threads' states; producer only. */
@@ -1746,6 +1749,16 @@ static void as_row_(struct cc_async_sink *k, int kind, const struct as_throw th[
     r->written=atomic_load_explicit(&k->written,memory_order_relaxed);
     r->lost=atomic_load_explicit(&k->lost_by[0],memory_order_relaxed)+atomic_load_explicit(&k->lost_by[1],memory_order_relaxed);
     r->th[0]=th[0]; r->th[1]=th[1];
+    r->sys=0;
+    if(!kind){                           /* once a second: the machine's CPU load and memory, and this process's paging */
+        double la; if(getloadavg(&la,1)==1){ r->load100=(uint16_t)(la*100>65535?65535:la*100); r->sys|=1; }
+        mach_port_t h=mach_host_self(); vm_statistics64_data_t v; mach_msg_type_number_t c=HOST_VM_INFO64_COUNT;
+        if(host_statistics64(h,HOST_VM_INFO64,(host_info64_t)&v,&c)==KERN_SUCCESS){
+            r->swapins=v.swapins; r->swapouts=v.swapouts; r->comp_pg=v.compressor_page_count; r->free_pg=v.free_count; r->sys|=2; }
+        mach_port_deallocate(mach_task_self(),h);
+        task_events_info_data_t te; c=TASK_EVENTS_INFO_COUNT;
+        if(task_info(mach_task_self(),TASK_EVENTS_INFO,(task_info_t)&te,&c)==KERN_SUCCESS){ r->t_pageins=(uint32_t)te.pageins; r->t_faults=(uint32_t)te.faults; r->sys|=4; }
+    }
 }
 static void as_episode_(struct cc_async_sink *k){
     if(k->pend_pk[0] || k->pend_pk[1]) return;
@@ -2475,6 +2488,7 @@ static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
     const char *tn[2]={"w","s"};
     for(int i=0;i<2;i++) fprintf(f,",%s_phase,%s_state,%s_usage_pct,%s_phase_age_ms,%s_cpu_ms",tn[i],tn[i],tn[i],tn[i],tn[i]);
     for(int i=0;i<2;i++) for(int p=0;p<CC_SINK_NPH;p++) fprintf(f,",%s_wall_ms_%s,%s_cpu_ms_%s",tn[i],as_ph_names_[p],tn[i],as_ph_names_[p]);
+    fprintf(f,",w_curpri,w_basepri,s_curpri,s_basepri,load1,sys_swapins,sys_swapouts,compressor_mb,free_mb,obs_pageins,obs_faults");
     fputc('\n',f);
     for(size_t j=0;j<k->nrows;j++){
         const struct as_row *r=&k->rows[j];
@@ -2482,6 +2496,11 @@ static void as_write_diag_(struct cc_async_sink *k, cc_async_sink_stats *st){
         for(int i=0;i<2;i++){ const struct as_throw *t=&r->th[i];
             fprintf(f,",%s,%s,%.1f,%u,%u",cc_async_sink_phase_name(t->ph),as_state_name_(t->state),t->usage/10.0,t->age_ms,t->kcpu_ms); }
         for(int i=0;i<2;i++) for(int p=0;p<CC_SINK_NPH;p++) fprintf(f,",%u,%u",r->th[i].wall_ms[p],r->th[i].cpu_ms[p]);
+        for(int i=0;i<2;i++){ if(r->th[i].pri_ok) fprintf(f,",%u,%u",r->th[i].curpri,r->th[i].basepri); else fprintf(f,",,"); }
+        if(r->sys&1) fprintf(f,",%.2f",r->load100/100.0); else fprintf(f,",");
+        if(r->sys&2) fprintf(f,",%llu,%llu,%.1f,%.1f",(unsigned long long)r->swapins,(unsigned long long)r->swapouts,
+                             (double)r->comp_pg*vm_page_size/1e6,(double)r->free_pg*vm_page_size/1e6); else fprintf(f,",,,,");
+        if(r->sys&4) fprintf(f,",%u,%u",r->t_pageins,r->t_faults); else fprintf(f,",,");
         fputc('\n',f);
     }
     int bad=ferror(f); int e=errno;

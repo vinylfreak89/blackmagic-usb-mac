@@ -48,5 +48,8 @@ int main(int argc,char **argv){
            argv[3],nbusy,(t1-t0)/1e9,(unsigned long long)late,rc,(unsigned long long)st.lost_packets[0],(unsigned long long)st.lost_packets[1],st.high_water/1e6,
            (unsigned long long)st.writes,st.writes?st.write_ns/1e6/(double)st.writes:0.0,st.max_write_ns/1e6,(unsigned long long)st.slow_writes,st.max_ready_gap_ns/1e6,
            (unsigned long long)st.loss_episodes,(unsigned long long)st.loss_in_write,st.max_in_write_at_loss_ns/1e6,st.max_wake_backlog/1e6,st.released_bytes/1e6,(unsigned long long)st.release_failures,(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)-t1)/1e9);
+    printf("writer time (wall/cpu s):");
+    for(int p=0;p<CC_SINK_NPH;p++) if(st.phase_wall_ns[0][p]>=500000000ull) printf(" %s %.1f/%.1f",cc_async_sink_phase_name(p),st.phase_wall_ns[0][p]/1e9,st.phase_cpu_ns[0][p]/1e9);
+    printf("\n");
     return 0;
 }
