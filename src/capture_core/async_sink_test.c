@@ -127,8 +127,8 @@ static ssize_t short_write(int fd,const void *b,size_t n){
 static _Atomic int drain_calls;
 static ssize_t drain_write(int fd,const void *b,size_t n){ struct timespec d={0,40000000}; nanosleep(&d,NULL); atomic_fetch_add(&drain_calls,1); return write(fd,b,n); }
 static ssize_t counting_spill(int fd,const void *b,size_t n,off_t off);
-/* A spill that takes 20 ms per write (about 3 MB/s in 64 KiB chunks), counted as counting_spill counts. */
-static ssize_t slow_spill(int fd,const void *b,size_t n,off_t off){ struct timespec d={0,20000000}; nanosleep(&d,NULL); return counting_spill(fd,b,n,off); }
+/* A spill that takes 100 ms per write (about 0.65 MB/s in 64 KiB chunks), counted as counting_spill counts. */
+static ssize_t slow_spill(int fd,const void *b,size_t n,off_t off){ struct timespec d={0,100000000}; nanosleep(&d,NULL); return counting_spill(fd,b,n,off); }
 /* Wait (1 ms steps, 20 s at most, then fail) until the sink has delivered `bytes` to its destination. */
 static void delivered(cc_async_sink *k,uint64_t bytes,const char *what){
     for(int i=0;cc_async_sink_progress(k)<bytes;i++){
@@ -545,11 +545,12 @@ int main(int argc, char **argv){
     /* 7d. after a stall, a spill slower than the writer does not set the writer's pace: once the writer finds the spill
      * empty it goes back to memory. Without that the spiller took again before the writer got the lock, its own new
      * chunk counted as something on disk, and the writer delivered at the spiller's rate for as long as memory stayed
-     * over `after` (review, round 2: the 15:50 funnel, brought back by any stall). Spill writes take 20 ms here (about
-     * 3 MB/s) against a writer at ~30 MB/s; one 64 MiB segment, so no segment roll lets the writer slip past. */
+     * over `after` (review, round 2: the 15:50 funnel, brought back by any stall). Spill writes take 100 ms here
+     * against 2 ms destination calls, a margin no plausible wake latency closes (review, round 3: at 20 ms a loaded
+     * machine could push the in-flight chunks past the bound); one 64 MiB segment, so no roll lets the writer past. */
     { char r7d[256],s7d[256]; snprintf(r7d,sizeof r7d,"%s/ref7d.tpc",dir); snprintf(s7d,sizeof s7d,"%s/latch7d.tpc",dir);
       { cc_tagged_sink *t; cc_callbacks c; assert(cc_tagged_sink_open(&t,r7d,"latch")==CC_OK); cc_tagged_sink_callbacks(t,&c);
-        put_range(&c,0,1001); assert(cc_tagged_sink_close(t)==CC_OK); }
+        put_range(&c,0,501); assert(cc_tagged_sink_close(t)==CC_OK); }
       cc_async_sink_spill sl={sdir,1,1u<<20,64u<<20,300000000ull};
       int qos_was=cc_async_sink_writer_qos; cc_async_sink_writer_qos=QOS_CLASS_USER_INITIATED;
       cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=blocked_write; bw_set(0); atomic_store(&in_gate,0);
@@ -557,11 +558,11 @@ int main(int argc, char **argv){
       assert(cc_async_sink_open_spill(&as,s7d,"latch",64u<<20,65536,&sl)==CC_OK && cc_async_sink_spill_state(as)==1);
       cc_async_sink_callbacks(as,&ca);
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-      uint64_t fed=24+strlen("latch")+put_range(&ca,0,1001);   /* 10 MB behind the stall */
+      uint64_t fed=24+strlen("latch")+put_range(&ca,0,501);    /* 5 MB behind the stall */
       uint64_t m_stall=0;
       for(int i=0;;i++){ pthread_mutex_lock(&sp_m); m_stall=sp_moved; pthread_mutex_unlock(&sp_m);
                          if(m_stall>=(512u<<10)) break; assert(i<20000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
-      cc_async_sink_test_write=short_write; bw_set(1);   /* the stall ends with 9+ MB still in memory */
+      cc_async_sink_test_write=short_write; bw_set(1);   /* the stall ends with 4+ MB still in memory */
       delivered(as,fed,"7d after the stall");
       pthread_mutex_lock(&sp_m); uint64_t m_end=sp_moved; pthread_mutex_unlock(&sp_m);
       assert(cc_async_sink_close(as,&st)==CC_OK); cc_async_sink_writer_qos=qos_was;
