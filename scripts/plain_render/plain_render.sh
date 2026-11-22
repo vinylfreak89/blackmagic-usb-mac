@@ -78,7 +78,6 @@ mkfifo "$D/v.fifo" "$D/a.fifo"; date
 # the old size and crawl while the client reads each block before writing it (2026-10-21, both seen). Creating and truncating to 0
 # clears the mark; ffmpeg then writes into that same file (-y).
 empty_in_place(){ : > "$1" && truncate -s 0 "$1" && [ "$(stat -f %z "$1")" = 0 ] || { echo "REFUSE: could not empty $1 in place"; exit 2; }; }
-empty_in_place "$PART"
 # Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc, or
 # PLAIN_RENDER_SIDECAR when the source is a stream with no sidecar beside it, as capture_patch's render is): the relay
 # never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off
@@ -108,6 +107,9 @@ if [ -n "${PLAIN_RENDER_FIRST_LINE:-}" ]; then FL="$PLAIN_RENDER_FIRST_LINE"; ec
 elif [ -p "$SRC" ]; then echo "REFUSE: $SRC is a FIFO; measure the capture it comes from and pass PLAIN_RENDER_FIRST_LINE=F1,F2"; exit 2
 else FL=$(python3 "$HERE/measure_first_line.py" "$SRC" "$D" 2>"$D/first_line.log") || { echo "REFUSE: could not measure the first picture line; see $D/first_line.log"; exit 2; }
   cat "$D/first_line.log"; fi
+# The partial is made only now, when ffmpeg is about to write it: a refusal before this point (a sidecar or first line that
+# cannot be read) leaves nothing on the share (2026-11-22: two 0-byte .partial.mov stubs from renders refused at the sidecar).
+empty_in_place "$PART"
 python3 "$HERE/audio_relay.py" "$D" "$D/a.fifo" 2>"$D/audio_relay.log" & AP=$!
 python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
   -thread_queue_size 64 -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
