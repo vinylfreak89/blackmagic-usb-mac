@@ -53,6 +53,10 @@ class Stretch:
             R.tx[(ep, seq)] = [k0, k1, bi]
         self.vseqs = sorted(s for e, s in R.tx if e == 0x83); self.aseqs = sorted(s for e, s in R.tx if e == 0x84)
         self.vnpk = npk_of(R.blocks, 0x83); self.anpk = npk_of(R.blocks, 0x84)
+        # an audio transfer's usual bytes: 6 records of 24 a packet, or 4 records more (one more packet of 8 than of 4). Taken
+        # from the packets a transfer holds, which the capture core sets (80 until 2026-10-16, 128 since): fixed at 80's
+        # 11520/11616, every transfer of a 128-packet capture looked unusual and each audio window ran to the stretch's edges
+        self.a_usual = (144 * self.anpk, 144 * self.anpk + 96)
         self.L, self.Rr = R.pcm(); self.mono = (self.L + self.Rr).astype(np.float64)
         self.samp_rec = np.nonzero(~R.isr)[0]         # record index of each sample
     # ---- helpers on the target's region
@@ -267,8 +271,8 @@ def build_cluster(S, vgs, ags, est_off, name, k_limit=1 << 60):
         while (0x84, p1) not in R.tx and p1 < S.aseqs[-1]: p1 += 1
         assert p0 > S.aseqs[1] and p1 < S.aseqs[-2], 'audio gap too close to the edge of the saved stretch'
         for _ in range(2):
-            while p0 - 1 in S.aseqs[2:] and any(S.astats(s)[1] not in (11520, 11616) or S.astats(s)[2] for s in range(max(S.aseqs[2], p0 - 3), p0)): p0 -= 1
-            while p1 + 1 in S.aseqs[:-2] and any(S.astats(s)[1] not in (11520, 11616) or S.astats(s)[2] for s in range(p1 + 1, min(S.aseqs[-2], p1 + 4))): p1 += 1
+            while p0 - 1 in S.aseqs[2:] and any(S.astats(s)[1] not in S.a_usual or S.astats(s)[2] for s in range(max(S.aseqs[2], p0 - 3), p0)): p0 -= 1
+            while p1 + 1 in S.aseqs[:-2] and any(S.astats(s)[1] not in S.a_usual or S.astats(s)[2] for s in range(p1 + 1, min(S.aseqs[-2], p1 + 4))): p1 += 1
         kA = R.tx[(0x84, p0)][0]; kB = R.tx[(0x84, p1)][1]
         ra0 = [s for s, k in R.apk if k == kA][0] // 24; ra1 = ([s for s, k in R.apk if k == kB][0] + R.recs[kB][7]) // 24
         s0 = int(R.sidx[ra0]); s1 = int(R.sidx[ra1 - 1]) + (0 if R.isr[ra1 - 1] else 1)      # samples [s0, s1) are in the window
