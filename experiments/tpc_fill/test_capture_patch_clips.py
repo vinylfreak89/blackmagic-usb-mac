@@ -19,7 +19,8 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            smaller offset after it and at the gap with that offset, the three filled by the sound, every later counter
            lowered by 5 again; the assembler's writes split into 1 MB runs. The run-ahead cases below run with the glitch
            bridge off (PATCH_GLITCH_BRIDGE=0): the cluster fills they test still run where a clip lines up on one side only
-  run-ahead-bridged  the run-ahead case with the glitch bridge on (as the patch runs): the clip lines up before the glitch
+  run-ahead-bridged  the run-ahead glitch with no host loss (a host loss beside it makes the stretch a gap, placed whole by
+           the gap path) and the glitch bridge on (as the patch runs): the clip lines up before the glitch
            at +1000 and after it at +995, so the stretch comes from the clip whole (bridge.plan_glitch, owner 2026-11-22),
            seams at its edges (no scene cut near), every later counter lowered by 5
   run-ahead-wrecked  the same with the counters run 40 ahead (5:52 of 2026-11-22 13-11-20: 592 ahead across a stretch of
@@ -367,8 +368,8 @@ def main():
     # run-ahead-bridged and run-ahead-wrecked: the same, the glitch bridged whole from the clip
     for NAME, ahead in (('run-ahead-bridged', 5), ('run-ahead-wrecked', 40)):
         S = os.path.join(S0, NAME); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
-        broken = run_ahead(src, T + '.ra', ahead=ahead); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
-        print('%s: units %s broken in place, counters after them raised by %d, a host loss at 60%%' % (NAME, broken, ahead))
+        broken = run_ahead(src, T, ahead=ahead); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+        print('%s: units %s broken in place, counters after them raised by %d, no host loss' % (NAME, broken, ahead))
         run_case(NAME, S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)), expect_log='bridged whole')
     S = os.path.join(S0, 'run-ahead-placed'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
