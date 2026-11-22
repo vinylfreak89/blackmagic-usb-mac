@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""checked_read.py FILE [--out PATH] [--report JSON] [--bytes-from COPY]
+"""checked_read.py FILE [--out PATH] [--report JSON] [--bytes-from COPY] [--from OFFSET]
 
 Reads FILE from a JuiceFS volume sequentially and writes it to --out (default stdout, e.g. a FIFO a replay reads), passing
 on each piece only after its bytes are proven to be the stored block's bytes. Exit 0 when every byte was proven; exit 3
@@ -29,6 +29,8 @@ So the proof is made at read time, against the store:
     CHECKED_READ_GIVE_UP_S (25 h, past B2's daily reset at 00:00 UTC) without a piece going through. Whoever reads --out
     simply waits. (2026-11-18: a render stopped at 81 of 86.5 GB when B2's daily download cap answered 403.)
 FILE is read through JuiceFS's own FUSE mount, so the bytes checked are exactly what JuiceFS returned.
+--from OFFSET starts at that byte (a multiple of the volume's block size, so every piece is still proven by the listed SHA-1
+of a whole block, never a download) and writes only the rest of the file: a resumed upload reads only what is left.
 --bytes-from COPY reads the bytes from a local copy of FILE instead (same size), still proving each piece against FILE's layout
 and the store's listing: a render from the copy needs no downloads, and the copy itself is proven identical to the stored file.
 
@@ -223,15 +225,17 @@ def main():
                   glob.glob(os.path.join(cfg['Chunk']['CacheDir'], '')) and [cfg['Chunk']['CacheDir']] or [])
     st = os.stat(src); ino, size = st.st_ino, st.st_size
     r = Redis(os.environ.get('JFS_META', 'redis://127.0.0.1:6379/1'))
-    lay = layout(r, ino, size); plan = list(pieces(lay, bs))
-    if sum(p[1] for p in plan) != size: die('layout covers %d of %d bytes' % (sum(p[1] for p in plan), size))
+    start = int(opt.get('--from', 0))
+    if start < 0 or start > size or start % bs: die('--from %d is not a multiple of the block size (%d) within the file (%d bytes)' % (start, bs, size))
+    lay = layout(r, ino, size); plan = list(pieces(from_offset(lay, start), bs))
+    if sum(p[1] for p in plan) != size - start: die('layout covers %d of %d bytes from offset %d' % (sum(p[1] for p in plan), size - start, start))
     data_src = opt.get('--bytes-from', src)
     if data_src != src and os.path.getsize(data_src) != size: die('%s is %d bytes, %s is %d' % (data_src, os.path.getsize(data_src), a[0], size))
     def reopen():
         f = os.open(data_src, os.O_RDONLY); fcntl.fcntl(f, F_NOCACHE, 1); return f
     fd = reopen()
     out = open(opt['--out'], 'wb', buffering=0) if '--out' in opt else sys.stdout.buffer
-    stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0, proven_by_download=0,
+    stats = dict(file=a[0], bytes_from=data_src, inode=ino, size=size, start=start, pieces=len(plan), proven_by_listing=0, proven_by_cache=0, proven_by_staging=0, proven_by_download=0,
                  holes=0, retried=0, relayouts=[], mismatches=[], waits=[], bytes_written=0, started=time.strftime('%F %T'))
     t0 = time.time(); last = t0; piece_no = -1; relaid = {}; patience = Patience(stats)
     try:
@@ -280,7 +284,7 @@ def main():
                 stats['proven_by_' + how] += 1
                 out.write(data); stats['bytes_written'] += ln; patience.went_through()
                 if time.time() - last >= 30:
-                    last = time.time(); print('checked_read: %.1f of %.1f GB proven, %.1f MB/s' % (stats['bytes_written'] / 1e9, size / 1e9, stats['bytes_written'] / 1e6 / (last - t0)), file=sys.stderr, flush=True)
+                    last = time.time(); print('checked_read: %.1f of %.1f GB proven, %.1f MB/s' % ((start + stats['bytes_written']) / 1e9, size / 1e9, stats['bytes_written'] / 1e6 / (last - t0)), file=sys.stderr, flush=True)
             except Stalled as e:
                 # the volume or the store did not answer: close the file (JuiceFS repeats a handle's error until the handle
                 # has been idle), wait, reopen, and try the same piece again; give up after GIVE_UP_S without progress
@@ -299,13 +303,13 @@ def main():
         if fd is not None: os.close(fd)
         try: out.close()
         except BrokenPipeError: pass
-    stats['complete'] = stats['bytes_written'] == size and not any(m.get('attempt') == 4 or 'reason' in m for m in stats['mismatches'])
+    stats['complete'] = stats['bytes_written'] == size - start and not any(m.get('attempt') == 4 or 'reason' in m for m in stats['mismatches'])
     stats['seconds'] = round(time.time() - t0, 1); stats['listing_seconds'] = round(truth.seconds, 1); stats['listings'] = len(truth.listed); stats['downloaded_bytes'] = truth.fetched_bytes
     if '--report' in opt: json.dump(stats, open(opt['--report'], 'w'), indent=1)
     stats['pieces'] = len(plan)
     print('checked_read: %s: %d pieces, %d by listed SHA-1, %d by cache copy, %d by downloaded block (%.0f MB), %d by staged copy, %d holes; %d chunks compacted during the read; %d mismatching reads; %s' % (
         a[0], len(plan), stats['proven_by_listing'], stats['proven_by_cache'], stats['proven_by_download'], truth.fetched_bytes / 1e6, stats['proven_by_staging'], stats['holes'], len(stats['relayouts']), len(stats['mismatches']),
-        'ALL BYTES PROVEN' if stats['complete'] else 'STOPPED: %d of %d bytes written' % (stats['bytes_written'], size)), file=sys.stderr, flush=True)
+        ('ALL BYTES PROVEN' + (' from offset %d' % start if start else '')) if stats['complete'] else 'STOPPED: %d of %d bytes written' % (stats['bytes_written'], size - start)), file=sys.stderr, flush=True)
     sys.exit(0 if stats['complete'] else (0 if stats.get('reader_closed') else 3))
 
 if __name__ == '__main__': main()

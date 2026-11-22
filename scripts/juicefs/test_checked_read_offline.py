@@ -7,7 +7,9 @@ told to fail. Exercised:
      CLOSED while it waits (checked with lsof during the wait), reopens and proves every byte;
   3. a store that never answers: the reader gives up after CHECKED_READ_GIVE_UP_S, exit 3, nothing written past the piece;
   4. the listing failing twice: a wait, not a setup error; every byte proven;
-  5. a real mismatch (bytes that never match) still stops with exit 3 and never waits."""
+  5. a real mismatch (bytes that never match) still stops with exit 3 and never waits;
+  6. --from: a block-aligned start writes exactly the rest of the file, every piece proven by a listed SHA-1 (no download);
+     a start past the end or not on a block boundary is refused (exit 2) before anything is written."""
 import hashlib, json, os, socket, stat, subprocess, sys, tempfile, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__)); CR = os.path.join(HERE, 'checked_read.py')
@@ -65,9 +67,9 @@ sys.exit(2)
                 CHECKED_READ_RETRY_WAIT_S='0.3', CHECKED_READ_RETRY_LONG_WAIT_S='0.3')
     want = hashlib.sha256(data).hexdigest(); fails_ = 0
 
-    def run(tag, env=None, watch_wait=False):
+    def run(tag, env=None, watch_wait=False, extra=(), start=0):
         out, rep = os.path.join(d, tag + '.out'), os.path.join(d, tag + '.json')
-        p = subprocess.Popen([sys.executable, CR, '/Volumes/zpool/capture.tpc', '--out', out, '--report', rep],
+        p = subprocess.Popen([sys.executable, CR, '/Volumes/zpool/capture.tpc', '--out', out, '--report', rep, *extra],
                              env=dict(base, **(env or {})), stderr=subprocess.PIPE, text=True)
         closed_during_wait = None; err = []
         for line in p.stderr:
@@ -76,7 +78,8 @@ sys.exit(2)
                 l = subprocess.run(['lsof', '-p', str(p.pid)], capture_output=True, text=True).stdout
                 closed_during_wait = src not in l
         p.wait(timeout=120)
-        r = json.load(open(rep)); same = os.path.exists(out) and hashlib.sha256(open(out, 'rb').read()).hexdigest() == want
+        if not os.path.exists(rep): return p.returncode, None, False, ''.join(err), None
+        r = json.load(open(rep)); same = os.path.exists(out) and hashlib.sha256(open(out, 'rb').read()).hexdigest() == hashlib.sha256(data[start:]).hexdigest()
         print('%s: exit %d, %d bytes written, waits %d, mismatches %s, output identical %s%s' % (
             tag, p.returncode, r['bytes_written'], len(r['waits']), [m.get('reason') or 'attempt %d' % m['attempt'] for m in r['mismatches']], same,
             '' if closed_during_wait is None else ', file closed during the wait %s' % closed_during_wait))
@@ -97,6 +100,14 @@ sys.exit(2)
         assert c == 0 and same and len(r['waits']) == 2 and 'listing' in r['waits'][0]['reason'], err
         c, r, same, err, _ = run('real-mismatch', {'CHECKED_READ_TEST_FLIP': '3,4'})
         assert c == 3 and not r['waits'] and r['bytes_written'] == 3 * BS and len(r['mismatches']) == 4, err
+        c, r, same, err, _ = run('from-block-7', extra=('--from', str(7 * BS)), start=7 * BS)
+        assert c == 0 and same and r['start'] == 7 * BS and r['bytes_written'] == len(data) - 7 * BS and r['complete'], err
+        assert r['proven_by_listing'] == r['pieces'] == 14 and r['downloaded_bytes'] == 0, r
+        assert 'ALL BYTES PROVEN from offset %d' % (7 * BS) in err, err
+        c, r, same, err, _ = run('from-end', extra=('--from', str(21 * BS)), start=21 * BS)
+        assert c == 2 and r is None and 'not a multiple' in err, err          # past the end of the file
+        c, r, same, err, _ = run('from-unaligned', extra=('--from', str(7 * BS + 4096)), start=7 * BS + 4096)
+        assert c == 2 and r is None and 'not a multiple of the block size' in err, err
         print('checked_read offline: all tests passed')
     finally:
         srv.close()
