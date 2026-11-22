@@ -23,6 +23,11 @@
 # clip whose sound is in the stretch is placed at each cluster from the picture either side of it, searching around the
 # offsets the stretch's line-ups and its sliding window found; the planner builds each cluster from the first clip, in the
 # order given (the tape's), that has it placed, and leaves the rest as they are.
+# Once a clip is placed, it can serve only glitches within its own length of that place (owner, 2026-11-22: "once a
+# particular clip is placed, there's no reason to check past the length of that particular patch"). A glitch out of reach of
+# every clip, each already placed, is passed over without reading its stretch: a 1.1-minute clip placed at 5:52 of a
+# 44-minute capture otherwise had every later glitch read (0.4-2.3 GB each) to learn it does not fit there. Gaps,
+# disconnects and the end are always tried, since each needs a clip.
 import hashlib, os
 import joins as J
 import slide as SL
@@ -33,6 +38,8 @@ from stretches import event_groups, stretch_range
 
 JOIN_EDGE_ROWS = 600          # a Hole this close to a part's end is the loss before its disconnect
 RUN_AHEAD_MAX = 2000          # counts a glitch may run ahead (a lock loss of about a minute)
+REACH_MARGIN = 300            # picture units past a placed clip's length still tried: the line-up looks up to 130 units outside
+                              # a stretch (slide_place), and a glitch's stretch rows start before its first damaged unit
 LINEUP_LEAD = 120_000_000     # bytes read before a gap or glitch: the picture compares units 10-130 before it (joins.picture),
                               # ~105 MB at ~0.81 MB a unit. With the 45 MB the planner reads (~55 units) only 10 fields could
                               # be compared, so the 10 agreeing best matches a dim or low-contrast passage needs were out of reach:
@@ -55,6 +62,28 @@ def hole_groups(csv, damage=False, flagged=False):
     if damage: return [(g[0], g[-1]) for g in groups if not any(r in holes for r in g) and any(r in bad for r in g)], nrows
     if flagged: return [(g[0], g[-1], any(r in bad for r in g)) for g in groups if any(r in holes for r in g)], nrows
     return [(g[0], g[-1]) for g in groups if any(r in holes for r in g)], nrows
+
+def picture_rows(csv):
+    """per sidecar row, 1 where it is a picture unit (it has a counter), 0 otherwise (the Shuttle's short, unframed or
+    other-format rows): a clip's length is in picture units, and only those count when measuring how far it reaches"""
+    out = []; hdr = None
+    with open(csv) as f:
+        for line in f:
+            if line.startswith('#'): continue
+            r = line.rstrip('\n').split(',')
+            if hdr is None: iC = r.index('counter_extended'); hdr = r; continue
+            out.append(1 if r[iC] else 0)
+    return out
+
+def reach_rows(pic, a, b, units):
+    """(first row, last row) of the stretch a clip of `units` picture units can cover when it covers rows a-b: outward from
+    them until that many picture units have passed on each side. Rows that are not picture units do not count, so the reach
+    only grows past them (a clip's length leaves out the Shuttle's broken units as the sidecar's counters do)."""
+    lo, n = a, 0
+    while lo > 0 and n < units: lo -= 1; n += pic[lo]
+    hi, n = b, 0
+    while hi < len(pic) - 1 and n < units: hi += 1; n += pic[hi]
+    return lo, hi
 
 def places(parts, log):
     """[dict(kind, part, label, load: () -> (region, counter before, counter after or None))]"""
@@ -117,7 +146,24 @@ def locate(parts, donors, log):
     found = {}                                          # place index -> [(donor, pairing, off, basis)]
     heard = {}                                          # clip -> glitch places whose stretch its sound or line-up is in
     pl = places(parts, log)
+    pics = {}                                           # part -> picture_rows of its sidecar, read when a clip is first placed in it
+    reach = {}                                          # clip -> [(part, first row, last row)] it can cover from where it is placed
+    def placed_here(D, p):
+        units = len(feats[D][0]) + REACH_MARGIN
+        def pic(k): return pics.setdefault(k, picture_rows(parts[k][1]))
+        if p['kind'] == 'gap': spans = [(p['part'], *reach_rows(pic(p['part']), p['rows'][0], p['rows'][1], units))]
+        else:                                           # the end of a part, and across a disconnect the start of the next one
+            pk = pic(p['part']); spans = [(p['part'], *reach_rows(pk, len(pk) - 1, len(pk) - 1, units))]
+            if p['kind'] == 'join': pn = pic(p['part'] + 1); spans.append((p['part'] + 1, *reach_rows(pn, 0, 0, units)))
+        reach.setdefault(D, []).extend(spans)
+    def out_of_reach(p):
+        """a glitch no clip can serve: every clip is placed, and none of their reaches overlaps its rows"""
+        if not p.get('optional') or any(D not in reach for D in donors): return False
+        return not any(k == p['part'] and lo <= p['rows'][1] and p['rows'][0] <= hi for D in donors for k, lo, hi in reach[D])
     for i, p in enumerate(pl):
+        if out_of_reach(p):
+            log('%s: passed over: past the reach of every clip (each placed already: %s)' % (p['label'], '; '.join(
+                '%s rows %s' % (os.path.basename(D), ', '.join('%d-%d' % (lo, hi) for _, lo, hi in reach[D])) for D in donors))); continue
         c0, s0 = FullFile.calls, FullFile.short
         try: R, before, after = p['load']()
         except ValueError as e:
@@ -144,7 +190,7 @@ def locate(parts, donors, log):
                 if not ok:
                     log('%s: not %s (offsets %s searched; %s)' % (p['label'], os.path.basename(D), sorted(centers),
                         '; '.join('%d-%d: %s' % (c['lo'], c['hi'], c['why']) for c in cls[:4]) or 'it reaches none of the clusters')); continue
-                found.setdefault(i, []).append(dict(donor=D, clusters=cls, span=SL.donor_span(df)))
+                found.setdefault(i, []).append(dict(donor=D, clusters=cls, span=SL.donor_span(df))); placed_here(D, p)
                 steps = sorted({(c['before'][1], c['after'][1]) for c in ok})
                 log('%s: %s placed at %d of the %d clusters it reaches (offsets %s)' % (p['label'], os.path.basename(D), len(ok), len(cls),
                     ', '.join('%+d' % a if a == b else '%+d to %+d' % (a, b) for a, b in steps)))
@@ -166,7 +212,7 @@ def locate(parts, donors, log):
                     kind, off, off_after, basis = slide_place(p, R, before, after, df, ch, tf, quiet.append)
                 except ValueError as e2:
                     log('%s: not %s (%s; sliding window: %s)' % (p['label'], os.path.basename(D), e, e2)); continue
-            found.setdefault(i, []).append((D, kind, off, basis, off_after, SL.donor_span(df)))
+            found.setdefault(i, []).append((D, kind, off, basis, off_after, SL.donor_span(df))); placed_here(D, p)
             log('%s: %s lines up by %s (pairing %s, donor counter = capture %+d%s)' % (p['label'], os.path.basename(D), basis, kind, off,
                 '; after it %+d: the capture\'s counters ran %d ahead' % (off_after, (off - off_after) % 65536) if off_after is not None else ''))
         del R
