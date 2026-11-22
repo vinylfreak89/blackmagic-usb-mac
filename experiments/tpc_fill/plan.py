@@ -137,7 +137,8 @@ for g, grp in enumerate(groups):
         minis.append((a0, bytes(R.b[a0 - R.p0:m['file_from'] - R.p0]), bytes(R.b[m['file_to'] - R.p0:a1 - R.p0]),
                       bytes(R.b[m['file_from'] - R.p0:m['file_to'] - R.p0]) if m.get('by_sound') else None))
     del S, R, b; gc.collect()
-    cum = sum(e['counter_shift']['counts'] for gg, es in plan.items() if int(gg) < g for e in es if e.get('counter_shift'))   # earlier stretches' run-ahead
+    cum = sum(e['counter_shift']['counts'] for gg, es in plan.items() if gg.isdigit() and int(gg) < g for e in es if e.get('counter_shift'))   # earlier stretches' run-ahead
+    cum += int(os.environ.get('FILL_SHIFT_BEFORE', '0'))   # and that of the glitch bridges before this stretch (capture_patch.py)
     for m, (a0, pre, post, orig_mid) in zip(mods, minis):
         post_orig = bytes(post); post = bytearray(post); p = 0
         while p < len(post):

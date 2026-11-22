@@ -281,6 +281,24 @@ def row_counter(csv, row):
             n += 1
     return best[1] if best else None
 
+def glitch_bridge_of(gp):
+    """(clip, first, last, offset before, offset after) when a glitch stretch placed cluster by cluster (locate.cluster_map)
+    has one clip lined up before its first cluster and after the cluster that reaches its end, at a smaller offset after it
+    (its counters ran ahead, by at most RUN_AHEAD_MAX); otherwise None. first/last: the first cluster's first unit and the
+    last unit the clusters reach, as the capture counts them"""
+    from locate import RUN_AHEAD_MAX
+    cm = gp.get('cmap')
+    if not cm or not cm.get('clusters'): return None
+    cl = cm['clusters']; first = cl[0]['lo']; rel = lambda c: (c - first) % 65536
+    last = max((c['hi'] for c in cl), key=rel)
+    for k, clip in enumerate(cm['clips']):
+        b4 = [ch['before'] for ch in cl[0]['choices'] if ch['clip'] == k and ch['before']]
+        af = [ch['after'] for c in cl if c['hi'] == last for ch in c['choices'] if ch['clip'] == k and ch['after']]
+        if not b4 or not af or b4[0][0] != af[0][0]: continue
+        offA, offB = b4[0][1], af[0][1]
+        if 0 < (offA - offB) % 65536 <= RUN_AHEAD_MAX: return clip['donor'], first, last, offA, offB
+    return None
+
 NOMINAL_FIRST = (23, 286)    # the 480-line aperture's nominal first lines; a render cropped at the measured first line places each
                              # field by the difference (applied_d / frame_d), where the live session, uncropped, logged 0
 
@@ -481,6 +499,32 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             except ValueError as e: fail(str(e))
         L0 = stage(W, 'locate', inputs, loc); joins_d = L0['joins']; append_d = L0['append']; auto_gaps = L0['gaps']
         for c, where in sorted(L0['placed'].items()): log('clip %s: %s' % (c, where))
+    # 0c. a glitch stretch whose counters ran ahead, with one clip lined up on both sides of it (a smaller offset after it):
+    # bridged whole from that clip (bridge.plan_glitch; owner, 2026-11-22), not filled cluster by cluster. A stretch the
+    # bridge cannot be measured for keeps the cluster fills, with the reason logged. PATCH_GLITCH_BRIDGE=0 turns it off (tests of
+    # the cluster fills at a run-ahead, which still run where a clip lines up on one side only).
+    if auto_gaps and len(parts) == 1 and os.environ.get('PATCH_GLITCH_BRIDGE', '1') != '0':
+        import bridge as B
+        from stretches import event_groups as eg0, stretch_range as sr0
+        _, nrows0 = eg0(parts[0][1]); size0 = os.path.getsize(truth(T)); kept = []
+        for k, gp in enumerate(auto_gaps):
+            gb = glitch_bridge_of(gp)
+            if gb is None: kept.append(gp); continue
+            D, first, last, offA, offB = gb
+            lo, hi = sr0(gp['rows'], size0 / nrows0, size0, 0)
+            def pg(D=D, first=first, last=last, offA=offA, offB=offB, lo=lo, hi=hi, k=k):
+                try: return B.measure(truth(T), B.plan_glitch(truth(T), truth(D), first, last, offA, offB, lo, hi, log), name='bridge-glitch-%d' % k)
+                except ValueError as e: return dict(error=str(e))
+            r = stage(W, 'glitch-bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, gap={x: gp[x] for x in ('rows', 'donor', 'off')}, ends=[first, last, offA, offB]), pg)
+            where = 'the glitch stretch at %d:%02d (units %d-%d, counters %d ahead)' % (gp['rows'][0] / 29.97 // 60, gp['rows'][0] / 29.97 % 60, first, last, (offA - offB) % 65536)
+            if 'error' in r: log('%s: not bridged whole (%s): filled cluster by cluster' % (where, r['error'])); kept.append(gp); continue
+            r['group_rows'] = list(gp['rows']); bridges.append(r)
+            log('%s: bridged whole from %s, units %d-%d of the patched capture' % (where, os.path.basename(D), r['units'][0], r['units'][1]))
+        auto_gaps = kept
+        bb = sorted(bridges, key=lambda b: b['file_from'])
+        for a, b in zip(bb, bb[1:]):
+            if a['file_to'] > b['file_from']: fail('%s (units %d-%d) and %s (units %d-%d) overlap: bridging them as one is not built yet' % (
+                a['name'], a['units'][0], a['units'][1], b['name'], b['units'][0], b['units'][1]))
     # 0b. the joins and an append: measured, then the parts read as one capture (VT) with one live sidecar (LIVE)
     VT, LIVE, part_rows, part_at = T, ORIG['csv'], [0], [0]
     jparts = list(parts)                                 # the parts read, an appended clip's tail last
@@ -596,6 +640,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if app_at is not None: env['FILL_APPEND_AT'] = str(app_at)
             if app_at is not None and g in by_picture: env['FILL_APPEND_BY_PICTURE'] = '1'
             if off_after is not None: env['FILL_OFF_AFTER'] = str(off_after)
+            env['FILL_SHIFT_BEFORE'] = str(sum(b['counter_shift']['counts'] for b in bridges if b.get('counter_shift') and b['group_rows'][1] < groups[g][0]))
             r = subprocess.run([sys.executable, 'plan.py', VT, LIVE, work, str(g), str(g)] + ([str(rng[0]), str(rng[1])] if rng else []), cwd=HERE, env=env)
             if r.returncode != 0: fail('plan.py failed on the event at row %d (exit %d)' % (groups[g][0], r.returncode))
         P = json.load(open(os.path.join(work, 'plan.json'))) if events else {}
@@ -617,7 +662,8 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         for b in bridges: log('%s: bridges units %d-%d whole from %s' % (b['name'], b['units'][0], b['units'][1], os.path.basename(b['donor'])))
         return dict(entries=[{k: e[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=e['rep'].get('video_units_filled', []), counter_jump=e['rep'].get('counter_jump'),
                                                                                                              clip=e['rep'].get('clip')) for e in ents]
-                    + [{k: b[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=[b['units']], counter_jump=None, clip=os.path.basename(b['donor'])) for b in bridges],
+                    + [{k: b[k] for k in ('name', 'bytes', 'file_from', 'file_to', 'kv', 'ka', 'sha256')} | dict(units=[b['units']], clip=os.path.basename(b['donor']),
+                       counter_jump=dict(after_unit=b['after_unit'], to=b['to_unit'], ahead=b['ahead']) if b.get('ahead') else None) for b in bridges],
                     left=[dict(name=e['name'], why=e['skipped']) for g, *_ in events for e in P.get(str(g), []) if e.get('skipped')])
     pl = stage(W, 'plan', dict(inputs, events=events, bridges=[b['sha256'] for b in bridges]), plan)
     for x in pl.get('left', []): log('%s left as it is: %s' % (x['name'], x['why']))

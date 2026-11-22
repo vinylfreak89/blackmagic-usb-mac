@@ -184,13 +184,13 @@ def stream(T, D, b):
     record-aligned bytearrays; its return value: dict(kv, ka, headers, resyncs)"""
     tA, dA, dB, tB = b['tA'], b['dA'], b['dB'], b['tB']
     last = {0x83: tA['v'][0], 0x84: tA['a'][0]}; cut = {0x83: tA['v'][1], 0x84: tA['a'][1]}
-    out = []; size = 0
+    out = []; size = 0; gone = 0                          # gone: bytes yielded so far
     def take(r):
         nonlocal size
         out.append(r); size += len(r)
     def drain():
-        nonlocal out, size
-        o = out; out = []; size = 0; return o
+        nonlocal out, size, gone
+        o = out; gone += size; out = []; size = 0; return o
     # P
     for pos, h, pay in walk(T, b['file_from'], max(last.values()) + 1):
         t, ep = h[1], h[2]
@@ -219,6 +219,7 @@ def stream(T, D, b):
         if size > (32 << 20): yield from drain()
     for r in C.flush(): take(r)
     yield from drain()
+    s_at = gone                                           # where the capture's records after seam B begin in the stream
     # S
     first = {0x83: tB['v'], 0x84: tB['a']}
     seq2 = {ep: Seq(seq[ep].cur + 1) for ep in EPS}
@@ -248,7 +249,7 @@ def stream(T, D, b):
         if cnt != n or not s or s[0] != uA or s[1] != uL or s[2] is not None:
             raise ValueError('the recapture\'s %s moved: %d, first %s, last %s, break %s; the bridge needs units %d-%d, one each' % (
                 kind, cnt, s[0] if s else None, s[1] if s else None, s[2] if s else None, uA, uL))
-    return dict(kv=seq2[0x83].delta, ka=seq2[0x84].delta, headers=C.headers, resyncs=C.resyncs)
+    return dict(kv=seq2[0x83].delta, ka=seq2[0x84].delta, headers=C.headers, resyncs=C.resyncs, s_at=s_at)
 
 # ------------------------------------------------------------------ the seams, measured
 def seam(path, counter, lo, hi):
@@ -289,8 +290,11 @@ def measure(T, b, name='bridge-0'):
         try: d = next(g)
         except StopIteration as e: res = e.value; break
         h.update(d); n += len(d)
+    # a glitch bridge (plan_glitch): the capture's units after seam B are numbered on from the recapture's, lowered by the
+    # counts the capture ran ahead, from the stream position where they begin (the assembler's renumbering, renum.py)
+    cs = dict(at=res['s_at'], counts=b['ahead']) if b.get('ahead') else None
     return dict(b, name=name, bytes=n, sha256=h.hexdigest(), kv=res['kv'], ka=res['ka'], headers=res['headers'], resyncs=res['resyncs'],
-                filled=True, structure_ok=True, rep=dict(name=name))
+                counter_shift=cs, filled=True, structure_ok=True, rep=dict(name=name))
 
 # ------------------------------------------------------------------ the job's planning
 # Measured 2026-11-20 on 08-50-37 and its recapture 10-10-12: two passes of one tape differ by 11-14 codes of mean absolute
@@ -412,3 +416,60 @@ def plan(T, D, ep, log, window_s=60, rate=807_500):
     b = dict(kind='bridge', donor=D, tA=tA, dA=dA, dB=dB, tB=tB, file_from=min(tA['v'][0], tA['a'][0]), file_to=whole_transfer_after(T, tB),
              counter_delta=-sgn(off), seq_start=seq_start(tA), units=[uA, (uB - 1) % 65536], offset=sgn(off))
     return b
+
+# ------------------------------------------------------------------ a glitch whose counters ran ahead, bridged whole
+# The Shuttle losing lock can wreck seconds of picture while the sound plays on, and count units the tape never had: at
+# 5:52 of 2026-11-22 13-11-20 the sound held 151 units across 573 counts, the picture between was broken pieces, and a
+# replay of the same tape (14-10-36) lined up at +3976 before the stretch and +3384 after it, 592 counts apart. Filling it
+# cluster by cluster kept the wreckage between the clusters; the owner: the replay fixed it, so the stretch comes from the
+# replay whole (2026-11-22). Seams at the nearest clean cut either side inside the clip's reach, as for a lost stretch; with
+# no cut there, at the stretch's edges: the two passes measured 1.9 codes of luma apart before it and 0.06 after, which the
+# owner judged invisible in a test render. The capture's units after seam B are renumbered down by the counts it ran ahead.
+# The clip's own broken units inside the bridge stay as the Shuttle sent them (they have their headers; the render holds
+# a slot it cannot fill), and the count of them is logged.
+
+def luma_step(tf, df, off, units):
+    """mean signed luma difference, capture minus clip, over the capture's whole units given (None if none are in both)"""
+    v = [float((np.stack(tf[c]).astype(np.int16) - np.stack(df[(c + off) % 65536])).mean()) for c in units if c in tf and (c + off) % 65536 in df]
+    return (sum(v) / len(v), len(v)) if v else (None, 0)
+
+def plan_glitch(T, D, first, last, offA, offB, lo, hi, log, window_s=60, rate=807_500):
+    """a measured bridge over the glitch stretch whose capture counters run from `first` (its last whole unit before the
+    damage) to `last` (its first whole unit after it), bytes about [lo, hi) of T; recapture D lines up at offA before it
+    and offB after it (donor = capture + off), offA - offB the counts the capture ran ahead"""
+    ahead = (offA - offB) % 65536
+    span = int(window_s * 29.97 * rate)
+    tb, tb_at = fields_at(T, max(0, lo - span), lo + (8 << 20), log)
+    ta, ta_at = fields_at(T, max(0, hi - (8 << 20)), min(os.path.getsize(T), hi + span), log)
+    df, df_at = fields_at(D, 0, os.path.getsize(D), log)
+    tb = {c: v for c, v in tb.items() if sgn(c - first) <= 0}; ta = {c: v for c, v in ta.items() if sgn(c - last) >= 0}
+    inclip = lambda f, off: {c: v for c, v in f.items() if (c + off) % 65536 in df}   # the clip may reach only part of each window
+    check_offset(inclip(tb, offA), df, offA, log, 'before'); check_offset(inclip(ta, offB), df, offB, log, 'after')
+    def clean_cuts_in(f, c):
+        return clean_cuts({k: f[k] for k in ((c + j) % 65536 for j in range(-10, 11)) if k in f})
+    # seam A: the first unit taken from the recapture; seam B: the first unit the capture has again. Each must be a whole
+    # unit in both passes, with the unit before it whole too (the seam cuts at the unit's marker and resync record)
+    okA = lambda c: c in tb and (c - 1) % 65536 in tb and (c + offA) % 65536 in df and (c + offA - 1) % 65536 in df
+    okB = lambda c: c in ta and (c + offB) % 65536 in df and (c + offB - 1) % 65536 in df
+    cutA = [c for c in clean_cuts(tb) if okA(c) and (c + offA) % 65536 in clean_cuts_in(df, (c + offA) % 65536)]
+    cutB = [c for c in clean_cuts(ta) if okB(c) and (c + offB) % 65536 in clean_cuts_in(df, (c + offB) % 65536)]
+    edgeA = [c for c in tb if okA(c)]; edgeB = [c for c in ta if okB(c)]
+    if not edgeA: raise ValueError('no unit before the stretch (from %d) is whole in both the capture and the clip' % first)
+    if not edgeB: raise ValueError('no unit after the stretch (to %d) is whole in both the capture and the clip' % last)
+    uA = max(cutA or edgeA, key=lambda c: sgn(c - first)); uB = min(cutB or edgeB, key=lambda c: sgn(c - last))
+    nD = (uB + offB - uA - offA) % 65536
+    bad = [c for c in ((uA + offA + k) % 65536 for k in range(nD)) if c not in df]
+    sa = luma_step(tb, df, offA, [(uA - k) % 65536 for k in range(1, 31)]); sb = luma_step(ta, df, offB, [(uB + k) % 65536 for k in range(30)])
+    log('bridge: seam A at unit %d (%s, %d before the stretch), seam B at unit %d (%s, %d after it); the clip\'s units %d-%d (%d) in place '
+        'of the capture\'s %d counts, which ran %d ahead; luma, capture minus clip: %s before seam A, %s after seam B; the clip\'s own broken '
+        'units inside it: %d%s' % (
+        uA, 'a scene cut' if cutA else 'no scene cut in reach: at the stretch', -sgn(uA - first), uB, 'a scene cut' if cutB else 'no scene cut in reach: at the stretch',
+        sgn(uB - last), (uA + offA) % 65536, (uB + offB - 1) % 65536, nD, (uB - uA) % 65536, ahead,
+        '%+.2f over %d units' % sa if sa[0] is not None else 'not measured', '%+.2f over %d units' % sb if sb[0] is not None else 'not measured',
+        len(bad), ' (%s)' % ', '.join(str(c) for c in bad[:8]) if bad else ''))
+    w = lambda m, c: (max(0, m[c] - (4 << 20)), m[c] + (8 << 20))
+    tA = seam(T, uA, *w(tb_at, uA)); tB = seam(T, uB, *w(ta_at, uB))
+    dA = seam(D, (uA + offA) % 65536, *w(df_at, (uA + offA) % 65536)); dB = seam(D, (uB + offB) % 65536, *w(df_at, (uB + offB) % 65536))
+    return dict(kind='bridge', donor=D, tA=tA, dA=dA, dB=dB, tB=tB, file_from=min(tA['v'][0], tA['a'][0]), file_to=whole_transfer_after(T, tB),
+                counter_delta=-sgn(offA), seq_start=seq_start(tA), units=[uA, (uB - ahead - 1) % 65536], offset=sgn(offA), offset_after=sgn(offB),
+                ahead=ahead, after_unit=(uB - ahead - 1) % 65536, to_unit=uB, seam_luma=[sa[0], sb[0]], clip_broken=bad)

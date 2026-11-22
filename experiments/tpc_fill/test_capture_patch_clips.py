@@ -17,7 +17,15 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
   run-ahead  the Shuttle losing lock at 50%: three units broken in place and every counter after them raised by 5 (it
            counts units the tape never had), and a host loss punched in at 60%, one clip: placed at the glitch with a
            smaller offset after it and at the gap with that offset, the three filled by the sound, every later counter
-           lowered by 5 again; the assembler's writes split into 1 MB runs
+           lowered by 5 again; the assembler's writes split into 1 MB runs. The run-ahead cases below run with the glitch
+           bridge off (PATCH_GLITCH_BRIDGE=0): the cluster fills they test still run where a clip lines up on one side only
+  run-ahead-bridged  the run-ahead case with the glitch bridge on (as the patch runs): the clip lines up before the glitch
+           at +1000 and after it at +995, so the stretch comes from the clip whole (bridge.plan_glitch, owner 2026-11-22),
+           seams at its edges (no scene cut near), every later counter lowered by 5
+  run-ahead-wrecked  the same with the counters run 40 ahead (5:52 of 2026-11-22 13-11-20: 592 ahead across a stretch of
+           wrecked picture)
+  run-ahead-excess-bridged  the run-ahead-excess case, bridged: the clip's sound replaces the 7 samples too many, so the
+           sound comes out exactly the source's
   run-ahead-placed  the same, the clip's placement given (--placed TIME CLIP same 1000:995) instead of found
   glitch-excess  the glitch with one sample too many in the sound of a broken unit (2026-11-18: a 1603-sample interval
            beside a +512 unit): the clip's sound replaces it
@@ -208,7 +216,7 @@ def freeze(src, dst, i0, i1):
     R2 = load(dst, 0, len(b)); w2 = [o for o, c, fm, ok in R2.marks if ok and fm == 0xe801]
     assert all(bytes(R2.v[w2[i] + 48:w2[i] + UNIT]) == pic for i in range(i0, i1 + 1)), 'freeze did not land'
 
-def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None, audio_trim=0, moved_in=None, left=None):
+def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None, audio_trim=0, moved_in=None, left=None, expect_log=None):
     W = os.path.join(S, 'work-' + label)
     r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W] + (args or [x for c in clips for x in ('--donor', c)]),
                        capture_output=True, text=True, env=env)
@@ -217,6 +225,7 @@ def run_case(label, S, T, clips, good, gL, gR, env, expect_fail=None, args=None,
         assert r.returncode != 0 and expect_fail in r.stdout, (label, 'should have failed with %r' % expect_fail, r.stdout[-1500:])
         print('%s: refused as it should be' % label); return
     assert r.returncode == 0, (label, r.stdout[-3000:], r.stderr[-3000:])
+    if expect_log: assert expect_log in r.stdout, (label, 'expected %r in the log' % expect_log, r.stdout[-3000:])
     res = json.load(open(os.path.join(W, 'result.json')))
     got, pL, pR = units(res['patched']['tpc'])
     if audio_trim: gL, gR = gL[:-audio_trim], gR[:-audio_trim]       # samples the case dropped from the stream's very end
@@ -264,7 +273,8 @@ def beside_half(src, S0, good, nwhole, before=False):
         return {c: hashlib.sha256(bytes(R.v[o + 6:o + UNIT])).hexdigest() for o, c, fm, ok in R.marks if ok and fm == 0xe801}, R.pcm()
     (tp, (tL, tR)), (sp, _) = pics(T), pics(src)
     c = clip(src, S, 'clipB'); W = os.path.join(S, 'work')
-    r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W, '--donor', c], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'capture_patch.py'), 'run', T, '--work', W, '--donor', c], capture_output=True, text=True,
+                       env=dict(os.environ, PATCH_GLITCH_BRIDGE='0'))
     assert r.returncode == 0, (NAME, r.stdout[-3000:], r.stderr[-3000:])
     assert 'by the sound' in r.stdout and 'counters ran ahead' in r.stdout, (NAME + ': not filled gap by gap', r.stdout[-3000:])
     if before: assert 'beside the spans, each one of the live ones there' in r.stdout and ' (0 beside' not in r.stdout, (NAME + ': no rows beside the fills', r.stdout[-3000:])
@@ -353,7 +363,13 @@ def main():
     broken = run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra')
     csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
     print('run-ahead: units %s broken in place, counters after them raised by 5, a host loss at 60%%' % broken)
-    run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)))
+    run_case('run-ahead', S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20), PATCH_GLITCH_BRIDGE='0'))
+    # run-ahead-bridged and run-ahead-wrecked: the same, the glitch bridged whole from the clip
+    for NAME, ahead in (('run-ahead-bridged', 5), ('run-ahead-wrecked', 40)):
+        S = os.path.join(S0, NAME); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+        broken = run_ahead(src, T + '.ra', ahead=ahead); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+        print('%s: units %s broken in place, counters after them raised by %d, a host loss at 60%%' % (NAME, broken, ahead))
+        run_case(NAME, S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)), expect_log='bridged whole')
     S = os.path.join(S0, 'run-ahead-placed'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
     # the time into the capture of the damaged row nearest the middle (run_ahead breaks units at 50%; the capture's first
@@ -372,12 +388,15 @@ def main():
     S = os.path.join(S0, 'run-ahead-excess'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T); c = add_samples(T, broken[1], 7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     print('run-ahead-excess: units %s broken in place, counters after them raised by 5, 7 samples too many after resync %d' % (broken, c))
-    run_case('run-ahead-excess', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ), audio_trim=7, moved_in=interval_of(c, 7))
+    run_case('run-ahead-excess', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ, PATCH_GLITCH_BRIDGE='0'), audio_trim=7, moved_in=interval_of(c, 7))
+    S = os.path.join(S0, 'run-ahead-excess-bridged'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = run_ahead(src, T); c = add_samples(T, broken[1], 7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    run_case('run-ahead-excess-bridged', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ), expect_log='bridged whole')
     # run-ahead-drift: the run-ahead glitch, the seven resyncs before it 6 samples early
     S = os.path.join(S0, 'run-ahead-drift'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T); move_resyncs(T, range(broken[1] - 4, broken[1] + 3), -6); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
     print('run-ahead-drift: units %s broken in place, counters after them raised by 5, resyncs %d-%d 6 samples early' % (broken, broken[1] - 4, broken[1] + 2))
-    run_case('run-ahead-drift', S, T, [clip(src, S, 'clipD')], good, gL, gR, dict(os.environ))
+    run_case('run-ahead-drift', S, T, [clip(src, S, 'clipD')], good, gL, gR, dict(os.environ, PATCH_GLITCH_BRIDGE='0'))
     # split: a disconnect, and the second part stopped early; one clip for both
     S = os.path.join(S0, 'split'); os.makedirs(S); T, P2 = os.path.join(S, 'T.mov.raw.tpc'), os.path.join(S, 'T.mov.raw.part2.tpc')
     lost, K, t_cut = split(src, T, P2, lose_video_pkts=48000)      # 6 s lost, as at the first 2026-10-23 disconnect (195 units)

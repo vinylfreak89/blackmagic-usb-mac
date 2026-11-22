@@ -71,10 +71,13 @@ def main():
     T, LIVE, W, FL, OUT = sys.argv[1:6]
     P = json.load(open(os.path.join(W, 'plan', 'plan.json'))); pv = os.path.join(W, 'preview'); os.makedirs(pv, exist_ok=True)
     groups, nrows = event_groups(LIVE); size = capture_size(T); per = size / nrows
-    res = []; cum = 0; bad = []
+    res = []; cum = cum_fills = 0; bad = []
+    # a glitch bridge lowers every counter after it (bridge.plan_glitch): a stretch after one is numbered as the patched capture has it
+    bshift = [(e['file_to'], e['counter_shift']['counts']) for k, es in P.items() if not k.isdigit() for e in es if e.get('counter_shift')]
     for g in sorted((k for k in P if k.isdigit()), key=int):   # a bridge (bridge.py) is checked by the final render, not here
         ents = [e for e in P[g] if e.get('filled')]
         if not ents: continue
+        cum = cum_fills + sum(n for ft, n in bshift if ft <= min(e['file_from'] for e in ents)) if bshift else cum
         lo = max(0, min(e['file_from'] for e in ents) - LEAD); hi = min(size, max(e['file_to'] for e in ents) + LEAD)
         p0, b = read_region(T, lo, hi - lo)
         orig, patched = os.path.join(pv, 'g%s.orig.tpc' % g), os.path.join(pv, 'g%s.patched.tpc' % g)
@@ -96,7 +99,7 @@ def main():
         print('stretch at %s: %d ranges filled; blue before %s, after %s' % (rec['at'], len(ents),
               ', '.join('%d slots between %s and %s' % (x['slots'], *x['between']) for x in rec['blue_before']) or 'none',
               ', '.join('%d slots between %s and %s%s' % (x['slots'], *x['between'], ' AT A PATCH' if x['at_a_patch'] else ' NEW' if x['new'] else '') for x in rec['blue_after']) or 'none'), flush=True)
-        cum += sum(e['counter_shift']['counts'] for e in ents if e.get('counter_shift'))
+        cum_fills += sum(e['counter_shift']['counts'] for e in ents if e.get('counter_shift')); cum = cum_fills
     json.dump(dict(stretches=res, blue_at_patches=len(bad)), open(OUT, 'w'), indent=1)
     if bad: sys.exit('PREVIEW FAILED: %d run%s of blue at patched units or new with the patch (%s)' % (len(bad), '' if len(bad) == 1 else 's', '; '.join('%s: %d slots between %s and %s' % (a, x['slots'], *x['between']) for a, x in bad)))
     print('PREVIEW OK: no blue at any patched unit, none new')

@@ -213,8 +213,11 @@ pos = base; ov = oa = 0
 for m in mods:
     copy(pos, m['file_from'], ov, oa); segs.append(dict(kind='copy', src=[pos, m['file_from']], dst_end=at(), ov=ov, oa=oa))
     if m.get('kind') == 'bridge':
-        d0 = at(); res = bridge_range(m)
-        segs.append(dict(kind='bridge', name=m['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], donor=m['donor'], headers=res['headers'], resyncs=res['resyncs']))
+        d0 = at()
+        if m.get('counter_shift'): Z.shift(d0 + m['counter_shift']['at'], m['counter_shift']['counts'])   # a glitch bridge: the capture after it
+        res = bridge_range(m)
+        segs.append(dict(kind='bridge', name=m['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], donor=m['donor'], headers=res['headers'], resyncs=res['resyncs'],
+                         counter_shift=m.get('counter_shift')))
         pos = m['file_to']; ov += m['kv']; oa += m['ka']; continue
     d = bytearray(data_of(m)); nrec += shift(d, ov, oa); d0 = at()
     if m.get('counter_shift'): Z.shift(d0 + m['counter_shift']['at'], m['counter_shift']['counts'])
