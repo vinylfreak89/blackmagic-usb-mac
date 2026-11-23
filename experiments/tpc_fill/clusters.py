@@ -12,6 +12,9 @@
 # side's decided one, with fewer votes or a smaller margin (a majority, SIDE_MIN at least), agrees with it. Still picture on
 # both sides takes the offset the stretch's own line-up decided (its sound and the picture over the whole stretch), when it
 # decided one. Anything else is not decided, and the builder leaves that cluster as it is.
+# Each side's own decision is kept as well (own): a cluster right behind another has hardly any units of its own before it
+# (2026-11-23, 13-11-20 at 44:38: 1 unit, 2 fields), so it is not placed, but the clip decided after it (24 of 34 fields, no
+# rival) still tells where the clip runs on once the stretch is over, which is what bridging the stretch whole needs.
 import numpy as np
 from gaps import find_gaps, cluster_gaps, unwrap
 
@@ -81,11 +84,12 @@ def place(R, tf, df, centers, decided=()):
             res[side] = _side(*_vote(units, tf, df, kset, centers))
         (sb, ob, db), (sa, oa, da) = res['before'], res['after']
         if sb == 'none' and sa == 'none': continue                                  # the clip is not here
+        own = {k: list(o) for k, (sd, o) in (('before', (sb, ob)), ('after', (sa, oa))) if sd == 'ok'}   # each side decided alone
         why = ''
         if sb == 'ok' and sa == 'ok': pass
         elif sb == 'ok' and (sa == 'still' or (sa == 'lean' and oa == ob)): oa = ob
         elif sa == 'ok' and (sb == 'still' or (sb == 'lean' and ob == oa)): ob = oa
         elif sb == 'still' and sa == 'still' and len(decided) == 1: ob = oa = decided[0]; why = '; still on both sides: the stretch\'s line-up, %s %+d' % decided[0]
         else: ob = oa = None
-        out.append(dict(cl, before=list(ob) if ob else None, after=list(oa) if oa else None, why='before: %s; after: %s%s' % (db, da, why)))
+        out.append(dict(cl, before=list(ob) if ob else None, after=list(oa) if oa else None, own=own, why='before: %s; after: %s%s' % (db, da, why)))
     return out

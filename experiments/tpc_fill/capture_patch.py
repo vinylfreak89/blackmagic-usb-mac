@@ -296,8 +296,11 @@ def glitch_bridge_of(gp):
     cl = cm['clusters']; first = cl[0]['lo']; rel = lambda c: (c - first) % 65536
     last = max((c['hi'] for c in cl), key=rel)
     for k, clip in enumerate(cm['clips']):
-        b4 = [ch['before'] for ch in cl[0]['choices'] if ch['clip'] == k and ch['before']]
-        af = [ch['after'] for c in cl if c['hi'] == last for ch in c['choices'] if ch['clip'] == k and ch['after']]
+        # each side as the cluster was placed, or decided alone when the cluster was not (its other side, inside the stretch,
+        # too short to tell: clusters.place)
+        side = lambda ch, s: ch[s] or ch.get('own', {}).get(s)
+        b4 = [side(ch, 'before') for ch in cl[0]['choices'] if ch['clip'] == k and side(ch, 'before')]
+        af = [side(ch, 'after') for c in cl if c['hi'] == last for ch in c['choices'] if ch['clip'] == k and side(ch, 'after')]
         if not b4 or not af or b4[0][0] != af[0][0]: continue
         offA, offB = b4[0][1], af[0][1]
         if 0 < (offA - offB) % 65536 <= RUN_AHEAD_MAX: return clip['donor'], first, last, offA, offB

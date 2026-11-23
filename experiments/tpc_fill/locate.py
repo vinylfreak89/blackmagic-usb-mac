@@ -255,7 +255,7 @@ def cluster_map(ds, p):
             m = [x for x in cmap['clusters'] if set(x['gaps']) & set(c['gaps'])]
             if not m: m = [dict(lo=c['lo'], hi=c['hi'], gaps=list(c['gaps']), choices=[])]; cmap['clusters'].append(m[0])
             m[0]['gaps'] = sorted(set(m[0]['gaps']) | set(c['gaps']))
-            m[0]['choices'].append(dict(clip=k, before=c['before'], after=c['after'], why=c['why']))
+            m[0]['choices'].append(dict(clip=k, before=c['before'], after=c['after'], own=c.get('own', {}), why=c['why']))
     first = next((d, c) for d in ds for c in d['clusters'] if c['before'])
     return dict(part=p['part'], rows=p['rows'], donor=first[0]['donor'], pairing=first[1]['before'][0], off=first[1]['before'][1],
                 basis='cluster by cluster', off_after=None, donor_span=first[0]['span'], cmap=cmap)
