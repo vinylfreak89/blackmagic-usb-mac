@@ -839,6 +839,22 @@ def swap(W):
             t = R['original_times'][k]; os.utime(truth(O[k]), ns=(t['atime_ns'], t['mtime_ns']))
             if os.stat(truth(O[k])).st_mtime_ns != t['mtime_ns']: fail('the date of %s did not take' % O[k])
         log('dates of the capture and sidecar set to the originals\'')
+        # The share keeps listing the deleted originals' sizes: smaller for up to an hour (the Mac's attribute cache), and
+        # larger for good when a replacement is smaller (JuiceMount's size mark; 2026-11-23, the fill patch of this capture
+        # left the share listing 640 KB past its end, which readers took as data). A refresh fixes the first; only a
+        # truncate through the share to the verified length lowers the second. Both leave the file on JuiceFS as it is.
+        step = 'make the share list the new sizes'
+        if on_share(O['tpc']):
+            sys.path.insert(0, os.path.join(REPO, 'scripts', 'juicefs')); import share_refresh
+            want = {O['tpc']: R['bytes'], O['mov']: os.path.getsize(truth(O['mov'])), O['csv']: len(sc)}
+            bad = share_refresh.wait_sizes(want)
+            for p, n in bad.items():
+                if n > want[p]: os.truncate(p, want[p]); log('the share listed %s at %d bytes, %d past its end: truncated to its length through the share' % (p, n, n - want[p]))
+            if bad: bad = share_refresh.wait_sizes(want)
+            for p, n in want.items():
+                if os.path.getsize(truth(p)) != n: fail('%s is %d bytes on JuiceFS after the share refresh, not %d' % (p, os.path.getsize(truth(p)), n))
+            if bad: R['share_listing'] = bad; log('WARNING: the share still lists %s; JuiceFS holds the right sizes' % ', '.join('%s at %d bytes (not %d)' % (p, n, want[p]) for p, n in bad.items()))
+            else: log('the share lists the capture, render and sidecar at their new sizes')
     except Failed: raise
     except Exception as e: fail('during "%s": %r (the steps logged above it were done)' % (step, e))
     if on_share(O['tpc']):                     # the share leaves a deleted or renamed-away name's ._ entry listed
