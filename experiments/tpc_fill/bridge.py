@@ -375,12 +375,13 @@ def fields_at(path, lo, hi, log):
     log('fields: %d whole units in bytes %d-%d of %s' % (len(out), lo, hi, os.path.basename(path)))
     return out, at_
 
-def plan(T, D, ep, log, window_s=60, rate=807_500):
-    """a measured bridge over loss stretch ep (teeloss.episodes) from recapture D, at the nearest clean cut either side"""
+def plan(T, D, ep, log, window_s=60, rate=807_500, window=None):
+    """a measured bridge over loss stretch ep (teeloss.episodes) from recapture D, at the nearest clean cut either side
+    (window=(lo, hi): D is a long recapture read only in those bytes)"""
     span = int(window_s * 29.97 * rate)
     tb, tb_at = fields_at(T, max(0, ep['from_offset'] - span), ep['from_offset'], log)
     ta, ta_at = fields_at(T, ep['to_offset'], min(os.path.getsize(T), ep['to_offset'] + span), log)
-    df, df_at = fields_at(D, 0, os.path.getsize(D), log)
+    df, df_at = fields_at(D, *(window or (0, os.path.getsize(D))), log)
     first, last = ep['first'], ep['last']
     if first is None or last is None: raise ValueError('the stretch begins before the capture\'s first picture unit')
     cb_t = clean_cuts({c: v for c, v in tb.items() if sgn(c - first) <= 0}); ca_t = clean_cuts({c: v for c, v in ta.items() if sgn(c - last) > 0})
@@ -433,7 +434,7 @@ def luma_step(tf, df, off, units):
     v = [float((np.stack(tf[c]).astype(np.int16) - np.stack(df[(c + off) % 65536])).mean()) for c in units if c in tf and (c + off) % 65536 in df]
     return (sum(v) / len(v), len(v)) if v else (None, 0)
 
-def plan_glitch(T, D, first, last, offA, offB, lo, hi, log, window_s=60, rate=807_500):
+def plan_glitch(T, D, first, last, offA, offB, lo, hi, log, window_s=60, rate=807_500, window=None):
     """a measured bridge over the glitch stretch whose capture counters run from `first` (its last whole unit before the
     damage) to `last` (its first whole unit after it), bytes about [lo, hi) of T; recapture D lines up at offA before it
     and offB after it (donor = capture + off), offA - offB the counts the capture ran ahead"""
@@ -441,7 +442,7 @@ def plan_glitch(T, D, first, last, offA, offB, lo, hi, log, window_s=60, rate=80
     span = int(window_s * 29.97 * rate)
     tb, tb_at = fields_at(T, max(0, lo - span), lo + (8 << 20), log)
     ta, ta_at = fields_at(T, max(0, hi - (8 << 20)), min(os.path.getsize(T), hi + span), log)
-    df, df_at = fields_at(D, 0, os.path.getsize(D), log)
+    df, df_at = fields_at(D, *(window or (0, os.path.getsize(D))), log)
     tb = {c: v for c, v in tb.items() if sgn(c - first) <= 0}; ta = {c: v for c, v in ta.items() if sgn(c - last) >= 0}
     inclip = lambda f, off: {c: v for c, v in f.items() if (c + off) % 65536 in df}   # the clip may reach only part of each window
     check_offset(inclip(tb, offA), df, offA, log, 'before'); check_offset(inclip(ta, offB), df, offB, log, 'after')

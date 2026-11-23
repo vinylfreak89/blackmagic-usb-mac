@@ -37,7 +37,7 @@ ENV = dict(donor=DONOR_MOD.AFT, off=OFF, off_after=OFF_AFTER, pairing=PAIRING)
 def use_clip(path, pairing, off, off_after):
     """build.py's clip and offsets for the next build_cluster"""
     import build as BB
-    DONOR_MOD.AFT = path; DONOR_MOD.A_SIZE = os.path.getsize(path)
+    DONOR_MOD.AFT = path; DONOR_MOD.A_SIZE = os.path.getsize(path); DONOR_MOD.WINDOW = DONOR_MOD.WINDOWS.get(path)
     BB.OFF, BB.OFF_AFTER, BB.PAIRING = off, off_after, pairing
 os.makedirs(WORK, exist_ok=True)
 def rss(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

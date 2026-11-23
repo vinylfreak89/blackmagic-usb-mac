@@ -136,12 +136,14 @@ def slide_place(p, R, before, after, df, ch, tf, log):
     return kind, off, off_after, 'sliding window (sound in %d windows, r >= %.3f; picture %d of %d fields agree, the next answer %d)' % (
         sum(g['windows'] for g in near), min(g['r'] for g in near), g0['votes'], g0['of'], g0['rival'])
 
-def locate(parts, donors, log):
-    """{'joins': [donor per disconnect], 'append': donor or None, 'gaps': [dict(part, rows, donor, pairing, off)], 'placed': ...}"""
-    feats = {}
+def locate(parts, donors, log, windows=None):
+    """{'joins': [donor per disconnect], 'append': donor or None, 'gaps': [dict(part, rows, donor, pairing, off)], 'placed': ...}
+    windows: {clip: (lo, hi)} for clips read only in those bytes (a long recapture, around where the capture ends)"""
+    feats = {}; windows = windows or {}
     for D in donors:
-        log('reading donor %s' % os.path.basename(D)); c0, s0 = FullFile.calls, FullFile.short
-        feats[D] = (J.donor_fields(D), J.donor_audio(D))
+        w = windows.get(D)
+        log('reading donor %s%s' % (os.path.basename(D), ' bytes %d-%d' % w if w else '')); c0, s0 = FullFile.calls, FullFile.short
+        feats[D] = (J.donor_fields(D, w), J.donor_audio(D, w))
         log('  %d whole picture units; %d reads, %d returned short and were read on' % (len(feats[D][0]), FullFile.calls - c0, FullFile.short - s0))
     found = {}                                          # place index -> [(donor, pairing, off, basis)]
     heard = {}                                          # clip -> glitch places whose stretch its sound or line-up is in

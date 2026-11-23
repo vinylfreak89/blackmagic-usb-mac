@@ -18,6 +18,10 @@ side of a glitch (units the Shuttle sent broken, as when it loses lock for a mom
 when that is decisive and by sound otherwise (snow, held cels); where both can tell they must agree. Every clip must fit
 somewhere, no place may get two clips, and every disconnect and every gap needs one (a gap with no clip is named before
 any work is done: a patched capture with a hole left in it would fail the replay check at the end); a glitch needs none.
+A clip longer than the line-up can hold (STREAMED_MAX; 2026-11-22: a 103 GB recapture of the rest of a tape whose capture
+stopped partway) is read only around where a one-part capture ends, found by its sound (joins.end_window): it can be
+appended, and serve gaps and glitches within that stretch. It holds every 16-bit counter more than once, so its counters
+are looked for there (the cut, the planner's donor reads, the cut unit's sidecar row), never from the start of the file.
 
 Before that, a one-part capture is searched for stretches its own writer lost (teeloss.py: the HostLoss records the
 plugin writes where its memory ring overflowed; the live sidecar shows nothing there, because the live path lost
@@ -74,7 +78,7 @@ DONOR_MAX = 4 << 30       # --at: its line-up (lineup) reads the whole donor int
 # GB of donor (coarse fields and the sound), and the line-up's int16 stack and its difference, ~50 MB per GB more. 12 GB
 # of donors in all (~9 minutes of tape) comes to ~4.4 GB on a Mac with ~5 GB to spare (owner, 2026-11-14: an ending
 # recaptured in one 7.8 GB pass).
-STREAMED_MAX = 12 << 30
+STREAMED_MAX = int(os.environ.get('PATCH_STREAMED_MAX', 12 << 30))   # a test lowers it to send a small clip through joins.end_window
 
 def log(m): print(time.strftime('%H:%M:%S ') + m, flush=True)
 class Failed(Exception): pass
@@ -460,10 +464,24 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
     for x in sorted({x for _, x in ats}):
         if os.path.getsize(x) > DONOR_MAX: fail('the --at donor %s is %.1f GB; --at reads it whole, so at most %.0f GB (give it as --donor instead)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
-    streamed = sum(os.path.getsize(x) for x in donors if x not in {d for _, d in ats})
-    if streamed > STREAMED_MAX: fail('the donors come to %.1f GB; at most %.0f GB in all (their line-up needs ~3.2 GB of memory plus ~90 MB per GB)' % (streamed / 1e9, STREAMED_MAX / 1e9))
     st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
     inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, placed=placed, donors={x: st(x) for x in donors})
+    # a clip longer than the line-up can hold (a recapture of the rest of the tape, 2026-11-22: 103 GB) is read only around
+    # where the capture ends, found by its sound (joins.end_window): it can be appended, and serve gaps and glitches near the end
+    windows = {}
+    for D in [x for x in clips if os.path.getsize(x) > STREAMED_MAX]:
+        if len(parts) > 1: fail('%s is %.1f GB, more than the line-up holds (%.0f GB), and %s is in %d parts: a clip that long is read only around the end of a capture in one part' % (
+            os.path.basename(D), os.path.getsize(D) / 1e9, STREAMED_MAX / 1e9, name, len(parts)))
+        def ew(D=D):
+            try: return list(J.end_window(parts[-1][0], D, log))
+            except ValueError as e: return dict(error=str(e))
+        log('%s is %.1f GB, more than the line-up holds: looking for where the capture ends in it' % (os.path.basename(D), os.path.getsize(D) / 1e9))
+        w = stage(W, 'window-%s' % hashlib.sha1(D.encode()).hexdigest()[:8], dict(inputs, donor=D), ew)
+        if isinstance(w, dict): fail('%s is %.1f GB, more than the line-up holds, so it is read only around the end of the capture, and %s' % (
+            os.path.basename(D), os.path.getsize(D) / 1e9, w['error']))
+        windows[D] = tuple(w)
+    streamed = sum((windows[x][1] - windows[x][0]) if x in windows else os.path.getsize(x) for x in donors if x not in {d for _, d in ats})
+    if streamed > STREAMED_MAX: fail('the donors come to %.1f GB; at most %.0f GB in all (their line-up needs ~3.2 GB of memory plus ~90 MB per GB)' % (streamed / 1e9, STREAMED_MAX / 1e9))
     times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
     # 0a. stretches the capture's own writer lost (teeloss.py: the live sidecar does not show them): each is bridged whole
     # from a clip, at the nearest clean scene cut either side (bridge.py); the clips used for it are not placed again
@@ -484,7 +502,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             done = None; why = []
             for D in list(clips):                        # every clip, those that bridged an earlier stretch too
                 def pb(D=D, ep=ep, k=k):
-                    try: return B.measure(truth(T), B.plan(truth(T), truth(D), ep, log), name='bridge-%d' % k)
+                    try: return B.measure(truth(T), B.plan(truth(T), truth(D), ep, log, window=windows.get(D)), name='bridge-%d' % k)
                     except ValueError as e: return dict(error=str(e))
                 r = stage(W, 'bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, episode=ep, donor=D), pb)
                 if 'error' in r: why.append('%s: %s' % (os.path.basename(D), r['error'])); continue
@@ -506,9 +524,9 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     if clips:
         import locate as Lc
         def loc():
-            try: return Lc.locate(parts, clips, log)
+            try: return Lc.locate(parts, clips, log, windows)
             except ValueError as e: fail(str(e))
-        L0 = stage(W, 'locate', inputs, loc); joins_d = L0['joins']; append_d = L0['append']; auto_gaps = L0['gaps']
+        L0 = stage(W, 'locate', dict(inputs, windows=windows) if windows else inputs, loc); joins_d = L0['joins']; append_d = L0['append']; auto_gaps = L0['gaps']
         for c, where in sorted(L0['placed'].items()): log('clip %s: %s' % (c, where))
     # 0c. a glitch stretch whose counters ran ahead, with one clip lined up on both sides of it (a smaller offset after it):
     # bridged whole from that clip (bridge.plan_glitch; owner, 2026-11-22), not filled cluster by cluster. A stretch the
@@ -524,7 +542,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             D, first, last, offA, offB = gb
             lo, hi = sr0(gp['rows'], size0 / nrows0, size0, 0)
             def pg(D=D, first=first, last=last, offA=offA, offB=offB, lo=lo, hi=hi, k=k):
-                try: return B.measure(truth(T), B.plan_glitch(truth(T), truth(D), first, last, offA, offB, lo, hi, log), name='bridge-glitch-%d' % k)
+                try: return B.measure(truth(T), B.plan_glitch(truth(T), truth(D), first, last, offA, offB, lo, hi, log, window=windows.get(D)), name='bridge-glitch-%d' % k)
                 except ValueError as e: return dict(error=str(e))
             r = stage(W, 'glitch-bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, gap={x: gp[x] for x in ('rows', 'donor', 'off')}, ends=[first, last, offA, offB]), pg)
             where = 'the glitch stretch at %d:%02d (units %d-%d, counters %d ahead)' % (gp['rows'][0] / 29.97 // 60, gp['rows'][0] / 29.97 % 60, first, last, (offA - offB) % 65536)
@@ -541,9 +559,10 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     jparts = list(parts)                                 # the parts read, an appended clip's tail last
     if append_d:
         def ma():
-            try: return J.measure_append(parts[-1][0], append_d, J.donor_fields(append_d), J.donor_audio(append_d), log)
+            w = windows.get(append_d)
+            try: return J.measure_append(parts[-1][0], append_d, J.donor_fields(append_d, w), J.donor_audio(append_d, w), log, window=w)
             except ValueError as e: return dict(error=str(e))
-        app = stage(W, 'append', inputs, ma)
+        app = stage(W, 'append', dict(inputs, windows=windows) if windows else inputs, ma)
         if 'error' in app:
             if 'does not run past the end' in app['error']: log('clip %s covers the end of the capture but %s: nothing to append' % (os.path.basename(append_d), app['error'].split(': ', 1)[-1])); append_d = None
             else: fail('append (%s): %s' % (os.path.basename(append_d), app['error']))
@@ -642,6 +661,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if os.path.exists(os.path.join(work, 'plan.json')): os.remove(os.path.join(work, 'plan.json'))
         for g, D, pairing, off, rng, app_at, off_after, span, cmap in events:
             env = dict(os.environ, DONOR=D, FILL_OFF=str(off), FILL_PAIRING=pairing)   # (a bridge is not planned here: bridge.py measured it)
+            if windows: env['FILL_DONOR_WINDOWS'] = json.dumps({k: list(v) for k, v in windows.items()})
             for k in ('FILL_OFF_AFTER', 'FILL_APPEND_AT', 'FILL_APPEND_BY_PICTURE', 'FILL_DONOR_SPAN', 'FILL_CLUSTERS', 'FILL_CLUSTERS_ONLY'): env.pop(k, None)
             if cmap:
                 os.makedirs(work, exist_ok=True); cp = os.path.join(work, 'clusters-%d.json' % g); json.dump(cmap, open(cp, 'w'), indent=1)

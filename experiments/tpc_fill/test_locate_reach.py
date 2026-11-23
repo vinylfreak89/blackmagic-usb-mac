@@ -22,8 +22,8 @@ def run(csv, glitches, home, units):
         if rows is not None: d.update(rows=list(rows), optional=True, run_ahead=False)
         return d
     L.places = lambda parts, log: [place(None, 'the end')] + [place(g, 'the glitch at row %d' % g[0]) for g in glitches]
-    L.J.donor_fields = lambda D: [D] * units[D]                  # a clip of units[D] picture units
-    L.J.donor_audio = lambda D: None
+    L.J.donor_fields = lambda D, w=None: [D] * units[D]                # a clip of units[D] picture units
+    L.J.donor_audio = lambda D, w=None: None
     L.J.fields = lambda R: None
     L.SL.sounds_here = lambda R, ch: False
     L.SL.donor_span = lambda df: (0, len(df))

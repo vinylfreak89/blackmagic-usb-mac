@@ -58,11 +58,11 @@ def give_back():
     each chunk, 1.6-1.7 GB (peak 3.2 GB). Measured 2026-11-14."""
     if _relief: _relief(None, 0)
 
-def donor_fields(D):
-    """fields of every whole unit of the donor, read in chunks"""
-    out = {}; size = os.path.getsize(D); at = 0
-    while at < size:
-        R = load(D, at, min(DONOR_CHUNK, size - at) + (2 << 20)); out.update(fields(R)); at += DONOR_CHUNK; del R; give_back()
+def donor_fields(D, window=None):
+    """fields of every whole unit of the donor (window=(lo, hi): of its bytes lo-hi only), read in chunks"""
+    out = {}; lo, hi = window or (0, os.path.getsize(D)); at = lo
+    while at < hi:
+        R = load(D, at, min(DONOR_CHUNK, hi - at) + (2 << 20)); out.update(fields(R)); at += DONOR_CHUNK; del R; give_back()
     return out
 
 def match(tf, refs, df, log, best=None):
@@ -91,10 +91,10 @@ AUDIO_MIN_R = 0.8; AUDIO_MARGIN = 0.8; AUDIO_MIN_RMS = 2000.0       # correlatio
 # and 4, which pair one field apart). So the nearest donor resync can name the unit next to the right one: at the second
 # 2026-10-23 disconnect the sound said 14673 where all 26 picture best matches said 14674. Picture decides the unit.
 
-def donor_audio(D):
-    """[(mono samples, resyncs [(sample index, counter)])] of the donor, in chunks that overlap by half a chunk, so any
-    stretch of up to a quarter chunk of sound (~2.8 s at 22.6 MB/s) lies whole in at least one"""
-    out = []; size = os.path.getsize(D); at = 0
+def donor_audio(D, window=None):
+    """[(mono samples, resyncs [(sample index, counter)])] of the donor (window=(lo, hi): of its bytes lo-hi only), in chunks
+    that overlap by half a chunk, so any stretch of up to a quarter chunk of sound (~2.8 s at 22.6 MB/s) lies whole in at least one"""
+    out = []; lo, size = window or (0, os.path.getsize(D)); at = lo
     while True:
         R = load(D, at, min(DONOR_CHUNK, size - at)); L, Rr = R.pcm()
         out.append(((L + Rr).astype(np.float64), [(s, c) for _, s, c in R.resyncs])); del R, L, Rr; give_back()
@@ -296,24 +296,65 @@ def line_up_before(R, c_end, df, chunks, log, after=False, sound_alone=False, so
 
 APPEND_HOLE = 8           # units: the donor is cut this far past the target's last whole unit; the hole between is filled from it
 
-def measure_append(pa, D, df, chunks, log):
+# A recapture longer than the line-up can hold in memory (2026-11-22: a 103 GB pass of a tape whose 64 GB capture stopped
+# partway) is read only around where the capture ends. That place is found by sound: the capture's last ~68 s
+# (TEMPLATE_CHUNKS) against ~1.4 s of the recapture (PROBE) every PROBE_STEP. Every stretch of the recapture holding the
+# whole template holds a probe (the step is shorter than the template less a probe), and a recapture that starts inside
+# the template holds the first probe. The first probe that matches decisively (AUDIO_MIN_R, runner-up under AUDIO_MARGIN of
+# it) places the end; the window around it then goes through the ordinary line-up, picture and sound, which decides.
+ENVI = lambda k, d: int(os.environ.get(k, d))         # the tests scale these to a 30 s fixture (test_capture_patch_window.py)
+TEMPLATE_CHUNKS = ENVI('PATCH_TEMPLATE_CHUNKS', 6); PROBE = 32 << 20; PROBE_STEP = ENVI('PATCH_PROBE_STEP', 1 << 30)
+WINDOW_BEFORE = ENVI('PATCH_WINDOW_BEFORE', 4 << 30); WINDOW_AFTER = ENVI('PATCH_WINDOW_AFTER', 1 << 30)   # ~5 min of tape before the end (the line-up and glitches near it), ~45 s after
+
+def end_window(pa, D, log):
+    """(lo, hi) bytes of donor D around where the capture part pa ends, or ValueError"""
+    size = os.path.getsize(pa); xs = []
+    for k in range(TEMPLATE_CHUNKS, 0, -1):
+        at = max(0, size - k * DONOR_CHUNK)
+        R = load(pa, at, min(DONOR_CHUNK, size - at)); L, Rr = R.pcm(); xs.append((L + Rr).astype(np.float32)); del R, L, Rr; give_back()
+        if at == 0: break
+    x = np.concatenate(xs); x = x - x.mean(); del xs
+    e = np.concatenate([[0.0], np.cumsum(x.astype(np.float64) ** 2)])
+    dsize = os.path.getsize(D); probes = 0
+    for q in range(0, max(1, dsize - PROBE // 2), PROBE_STEP):
+        R = load(D, q, min(PROBE, dsize - q)); L, Rr = R.pcm(); y = (L + Rr).astype(np.float64); p0, nb = R.p0, len(R.b); del R, L, Rr
+        probes += 1
+        if len(y) < 4800 or len(y) >= len(x): continue
+        y = y - y.mean(); ey = float((y * y).sum())
+        if np.sqrt(ey / len(y)) < AUDIO_MIN_RMS: continue                   # silence places nothing
+        n = 1 << int(np.ceil(np.log2(len(x) + len(y))))
+        c = np.fft.irfft(np.fft.rfft(x, n) * np.conj(np.fft.rfft(y, n)), n)[:len(x) - len(y) + 1]
+        ex = e[len(y):] - e[:len(e) - len(y)]; r = c / np.sqrt(ex * ey + 1e-9)
+        k = int(np.argmax(r)); rb = float(r[k]); r[max(0, k - 1602):k + 1603] = -1; runner = float(r.max()) if len(r) else 0.0
+        if rb < AUDIO_MIN_R or runner > AUDIO_MARGIN * rb: continue
+        est = p0 + int((len(x) - k) * nb / len(y))                          # the capture's end, in the donor's bytes
+        if est > dsize: raise ValueError('its sound at byte %d matches the capture\'s last %.0f s, but the capture ends past its end' % (p0, len(x) / 48000))
+        lo, hi = max(0, est - WINDOW_BEFORE), min(dsize, est + WINDOW_AFTER)
+        log('  %s: its sound at byte %d matches the capture\'s last %.0f s at r %.3f (runner-up %.3f; %d probes): the capture ends near its byte %d; read bytes %d-%d' % (
+            os.path.basename(D), p0, len(x) / 48000, rb, runner, probes, est, lo, hi))
+        return lo, hi
+    raise ValueError('none of its sound (%d probes of %.1f s, one every %.0f s) is in the capture\'s last %.0f s' % (
+        probes, PROBE / 22.6e6, PROBE_STEP / 22.6e6, len(x) / 48000))
+
+def measure_append(pa, D, df, chunks, log, window=None):
     """a donor that carries on past the end of the last part pa: where it lines up with pa's last units, and where it is cut
-    to follow as one more part (the units between are then a gap the filler rebuilds from the same donor)"""
+    to follow as one more part (the units between are then a gap the filler rebuilds from the same donor). window=(lo, hi):
+    df and chunks hold only the donor's bytes lo-hi, and the cut is looked for there"""
     ra = load(pa, max(0, os.path.getsize(pa) - EDGE), EDGE); oa, ca = last_whole(ra)
     log('append to %s: its last whole unit is %d' % (os.path.basename(pa), ca))
     kind, off, basis = line_up_before(ra, ca, df, chunks, log, sound_alone=True)
     if kind != 'same': raise ValueError('the donor pairs fields one field apart from the capture: appended, its picture would run a field off its sound (not supported)')
     cut = (ca + off + APPEND_HOLE) % 65536                          # in the donor's numbering
-    size = os.path.getsize(D); at = 0; where = None
+    at, size = window or (0, os.path.getsize(D)); where = None
     while at < size and where is None:                              # the record holding the cut unit's marker
         R = load(D, at, min(DONOR_CHUNK, size - at) + (2 << 20))
         for o, c, fm, ok in R.marks:
             if c == cut and ok and fm == 0xe801: where = R.recs[R.vpk[R.vrec_of(o)][1]][0]; break
         at += DONOR_CHUNK; del R
     if where is None: raise ValueError('the donor has no whole unit %d (%d past the target\'s end): it does not run past the end' % (cut, APPEND_HOLE))
-    rd = load(D, where, min(EDGE, size - where))
+    rd = load(D, where, min(EDGE, os.path.getsize(D) - where))
     log('append: donor %s lines up by %s (pairing %s, donor counter = target %+d); it follows from donor byte %d (its unit %d, %.1f GB to its end)' % (
-        os.path.basename(D), basis, kind, off, where, cut, (size - where) / 1e9))
+        os.path.basename(D), basis, kind, off, where, cut, (os.path.getsize(D) - where) / 1e9))
     return dict(pairing=kind, off_before=off, off_after=off, counter_delta=(-off) % 65536, last_before=ca, relocked_after=(cut - off) % 65536,
                 units_by_offset=APPEND_HOLE, basis=basis, append=True, donor_start=where, donor_cut_counter=cut,
                 seq_last={str(e): v for e, v in seqs(ra, True).items()}, seq_first={str(e): v for e, v in seqs(rd, False).items()})
@@ -338,7 +379,7 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
     hdr = None; last_ce = last_ord = last_row = None; rows = 0
     with open(out_csv, 'w') as out:
         for k, part in enumerate(parts):
-            csv = part[1]; d16 = specs[k]['counter_delta']; dext = None; dord = None
+            csv = part[1]; d16 = specs[k]['counter_delta']; dext = None; dord = None; first = None
             app = joins[k - 1].get('append') if k else False
             if app:                                          # the seam: the planner's event, the gate's excluded span
                 seam = list(last_row); seam[ix['drop_reason']] = 'Hole'
@@ -346,13 +387,18 @@ def spec_and_sidecar(parts, joins, out_spec, out_csv, donors):
                 seam[ix['published']] = '0'; last_ord += 1; seam[ix['ordinal']] = str(last_ord); out.write(','.join(seam) + '\n'); rows += 1
             if k:                                            # the part's first counter, for the extended shift of all its rows
                 with open(csv) as f:
-                    h = None
+                    h = None; cand = []; n = 0
                     for line in f:
                         if line.startswith('#'): continue
                         if h is None: h = line.rstrip('\n').split(','); ce = h.index('counter_extended'); continue
-                        v = line.rstrip('\n').split(',')[ce]
-                        if v and (not app or int(v) % 65536 == joins[k - 1]['donor_cut_counter']):     # an append: from the cut unit
-                            first = int(v); dext = last_ce + ((first + d16 - last_ce) % 65536) - first; break
+                        v = line.rstrip('\n').split(',')[ce]; n += 1
+                        if v and not app: first = int(v); break
+                        if v and int(v) % 65536 == joins[k - 1]['donor_cut_counter']: cand.append((n, int(v)))   # an append: from the cut unit
+                # an append: the cut unit's row is the one with its counter nearest where the cut lies in the donor's bytes (a
+                # recapture of more than 65,536 units holds every 16-bit counter more than once)
+                if app and cand: first = min(cand, key=lambda x: abs(x[0] - n * start(k) / os.path.getsize(part[0])))[1]
+                if app and not cand: first = None
+                if first is not None: dext = last_ce + ((first + d16 - last_ce) % 65536) - first
                 if dext is None: raise ValueError('%s has no row with %s' % (csv, 'the cut unit %d' % joins[k - 1]['donor_cut_counter'] if app else 'a counter'))
             skip = bool(app)
             with open(csv) as f:
