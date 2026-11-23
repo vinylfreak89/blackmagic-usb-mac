@@ -303,9 +303,11 @@ NOMINAL_FIRST = (23, 286)    # the 480-line aperture's nominal first lines; a re
                              # field by the difference (applied_d / frame_d), where the live session, uncropped, logged 0
 
 def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
-    """the rebuilt sidecar numbered as the live one, compared row by row; written to OUTCSV. filled16: [(first, last, hint)],
-    16-bit counters of each patched span (as the patched capture numbers them) and an extended counter near it (a long
-    capture's 16-bit counter wraps every 36.4 minutes, so the counter alone does not say which unit is meant). jumps:
+    """the rebuilt sidecar numbered as the live one, compared row by row; written to OUTCSV. filled16: [(first, last, hint)]
+    or [(first, last, hint, allowed)], 16-bit counters of each patched span (as the patched capture numbers them) and an
+    extended counter near it (a long capture's 16-bit counter wraps every 36.4 minutes, so the counter alone does not say
+    which unit is meant); allowed: the span's 16-bit counters a bridge took from the clip broken (the clip's own device
+    damage, kept as the Shuttle sent it), which may be absent or carry device drop reasons, never a host loss. jumps:
     [(after, to, ahead, hint)] each run-ahead glitch's last filled unit and the first unit after it, as the live capture
     numbers them, and the counts the patched capture lowered every later counter by: the live rows are renumbered the same
     way before the comparison, and the live rows of the units the Shuttle counted but the tape never had are left out"""
@@ -342,13 +344,14 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
     for r in new: r[ORD] = str(int(r[ORD]) + O)
     N = {int(r[CE]): r for r in new if r[CE]}
     # each patched span in extended counters: the live counter that the span's 16-bit counters name
-    spans = []
-    for a16, b16, hint in filled16:
+    spans = []; allow = {}
+    for a16, b16, hint, *al in filled16:
         cand = [c for c in L if c % 65536 == a16 % 65536] + [c for c in N if c % 65536 == a16 % 65536]
         if not cand: fail('patched unit %d is in neither sidecar' % a16)
         a = min(cand, key=lambda c: abs(c - hint)) if hint is not None else min(cand)
         if hint is not None and abs(a - hint) > 30000: fail('patched unit %d is nowhere near where its fill is (%d)' % (a16, hint))
         b = a + ((b16 - a16) % 65536); spans.append((a, b))
+        if al: allow.update({c: True for c in range(a, b + 1) if c % 65536 in set(al[0])})
     GAP = set(); AFTER = set()
     for a, b in spans: GAP |= set(range(a - 6, b + 12)); AFTER |= set(range(a - 6, b + 310))   # the live engine reset at each hole
     # each session's own history: the anchor vote carries over until its next confident frame, which can be thousands of units
@@ -372,6 +375,10 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
     log('sidecar: columns differing outside the patched spans and the first 300 units: %s%s' % (diff, ' (placement compared after the first-line crop of %+d/%+d lines)' % (
         f1 - NOMINAL_FIRST[0], f2 - NOMINAL_FIRST[1]) if (f1, f2) != NOMINAL_FIRST else ''))
     bad = [c for a, b in spans for c in range(a, b + 1) if c not in N or N[c][DR] != 'None' or N[c][PUB] != '1']
+    kept = [c for c in bad if c in allow and (c not in N or N[c][DR] not in ('None', 'Hole', 'RingFullTail'))]
+    if kept: log('sidecar: %d unit(s) of the clip\'s own damage inside the bridge, kept as the Shuttle sent them: %s' % (
+        len(kept), ', '.join('%d (%s)' % (c, N[c][DR] if c in N else 'absent') for c in kept[:10])))
+    bad = [c for c in bad if c not in kept]
     if bad: fail('the rebuilt sidecar is not clean at the patched units: %s' % bad[:10])
     def events(R):
         prev = None; out = []
@@ -386,10 +393,14 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
     # left as it is beside a fill (a run-ahead, filled gap by gap by the sound) keeps its rows: each must be one the live had
     ev_live = [e for e in events(live) if e[0] not in GAP and not edge(e[0])]
     ev_new = [e for e in events(new) if e[0] not in GAP and not edge(e[0])]
-    in_new = collections.Counter(e for e in events(new) if e[0] in GAP and not edge(e[0]))
+    # a bridge's clip units the plan found broken bring their own device rows (a wrong-length unit), never a host loss's
+    clipdev = lambda e: e[1].lstrip('-').isdigit() and int(e[1]) in allow and e[2] not in ('Hole', 'RingFullTail')
+    in_new = collections.Counter(e for e in events(new) if e[0] in GAP and not edge(e[0]) and not clipdev(e))
     in_live = collections.Counter(e for e in events(live) if e[0] in GAP and not edge(e[0]))
-    log('sidecar: non-picture rows live %d (%d outside the patched spans), rebuilt %d (%d beside the spans, each one of the live ones there)' % (
-        len(events(live)), len(ev_live), len(ev_new) + sum(in_new.values()), sum(in_new.values())))
+    nclip = sum(1 for e in events(new) if e[0] in GAP and not edge(e[0]) and clipdev(e))
+    log('sidecar: non-picture rows live %d (%d outside the patched spans), rebuilt %d (%d beside the spans, each one of the live ones there%s)' % (
+        len(events(live)), len(ev_live), len(ev_new) + sum(in_new.values()) + nclip, sum(in_new.values()),
+        ', and %d of the clip\'s own broken units inside a bridge' % nclip if nclip else ''))
     if ev_new != ev_live: fail('the rebuilt sidecar\'s non-picture rows differ from the live ones outside the patched spans: first live %s / rebuilt %s' % (
         next((a for a, b in zip(ev_live, ev_new) if a != b), ev_live[len(ev_new):][:1]), next((b for a, b in zip(ev_live, ev_new) if a != b), ev_new[len(ev_live):][:1])))
     if in_new - in_live: fail('the rebuilt sidecar has non-picture rows beside the patched spans that the live one does not: %s' % sorted(in_new - in_live)[:8])
@@ -720,7 +731,10 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         read_back(PATCH['tpc'], expect, A, PATCH['mov'], NEWLOG, W, FL, LIVE=LIVE)
     hint = lambda e: row_counter(LIVE, int(e['file_from'] / per))            # the live row nearest the fill: which wrap it is in
     jumps = [(e['counter_jump']['after_unit'], e['counter_jump']['to'], e['counter_jump']['ahead'], hint(e)) for e in pl['entries'] if e.get('counter_jump')]
-    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e)) for e in pl['entries'] for u in e['units']], OUTCSV, FL, jumps)
+    # a bridge's clip units the plan found broken, in the patched capture's numbering (clip unit - offset): taken from the
+    # bridge measurement, which every run makes or reuses, not from the plan record, which an earlier run may have stored
+    cb = {b['name']: [(d - b['offset']) % 65536 for d in b.get('clip_broken', [])] for b in bridges}
+    sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e), cb.get(e['name'], [])) for e in pl['entries'] for u in e['units']], OUTCSV, FL, jumps)
     hd, tl = digests(truth(PATCH['tpc']), expect)
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
     stats = {p: st(p) for pc in parts for p in pc}                 # as this run read them: swap deletes nothing that changed since

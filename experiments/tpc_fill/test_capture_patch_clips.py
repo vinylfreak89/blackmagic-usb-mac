@@ -25,6 +25,10 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
            seams at its edges (no scene cut near), every later counter lowered by 5
   run-ahead-wrecked  the same with the counters run 40 ahead (5:52 of 2026-11-22 13-11-20: 592 ahead across a stretch of
            wrecked picture)
+  run-ahead-bridged-clip-damaged  run-ahead-bridged with the clip's own unit of the glitch's third counter starting 2880
+           bytes early, so the unit before it is short and it is long, each with its header (5:52 of 2026-11-22 13-11-20:
+           the replay had 7 wrong-length units inside the bridge): the bridge takes them as the clip has
+           them, the sidecar check accepts exactly those, every other unit and sample is the source's
   run-ahead-excess-bridged  the run-ahead-excess case, bridged: the clip's sound replaces the 7 samples too many, so the
            sound comes out exactly the source's, but for the 7 samples add_samples drops at the stream's end
   run-ahead-placed  the same, the clip's placement given (--placed TIME CLIP same 1000:995) instead of found
@@ -113,6 +117,18 @@ def run_ahead(src, dst, at_frac=0.5, ahead=5):
     c3 = whole[i + 3][1]; at = min(p for p, c, _ in renum.items(bytes(b)) if c == c3)
     assert all(c < c3 for p, c, _ in renum.items(bytes(b)) if p < at), 'a counter of the units after the glitch comes before its first'
     open(dst, 'wb').write(renum.renumber(b, [(at, -ahead)])); return [whole[i + j][1] for j in range(-1, 4)]
+
+def move_marker(path, counter, by=2880):
+    """the unit numbered `counter` starting `by` bytes early, in place: its 48-byte header written over the end of the unit
+    before it, its old marker destroyed, so the unit before it is short and it is long by `by`, each keeping its own header
+    (the Shuttle's wrong-length units, as the replay had inside the bridge at 5:52 of 2026-11-22 13-11-20)"""
+    from region import load
+    b = bytearray(open(path, 'rb').read()); R = load(path, 0, len(b))
+    so = next(o for o, c, fm, ok in R.marks if ok and fm == 0xe801 and c == counter % 65536)
+    def put(at, data):
+        for j, x in enumerate(data): q = at + j; k = R.vpk[R.vrec_of(q)]; b[R.recs[k[1]][0] + 24 + (q - k[0])] = x
+    hdr = bytes(R.v[so:so + 48]); put(so, b'\x11' * 4); put(so - by, hdr)
+    open(path, 'wb').write(b)
 
 def add_samples(path, counter, n):
     """the Shuttle sending n samples too many: n copies of a sample record inserted in the audio stream after the resync of
@@ -371,6 +387,12 @@ def main():
         broken = run_ahead(src, T, ahead=ahead); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
         print('%s: units %s broken in place, counters after them raised by %d, no host loss' % (NAME, broken, ahead))
         run_case(NAME, S, T, [clip(src, S, 'clipR')], good, gL, gR, dict(os.environ, ASSEMBLE_RENUM_RUN=str(1 << 20)), expect_log='bridged whole')
+    S = os.path.join(S0, 'run-ahead-bridged-clip-damaged'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
+    broken = run_ahead(src, T); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
+    c = clip(src, S, 'clipK'); move_marker(c, broken[2] + 1000); cc = c.replace('.mov.raw.tpc', '.mov.registration.csv'); os.remove(cc); sidecar(c, cc, S)
+    print('run-ahead-bridged-clip-damaged: units %s broken in place, counters after them raised by 5; the clip\'s unit %d starts early, %d is short' % (broken, broken[2] + 1000, broken[1] + 1000))
+    run_case('run-ahead-bridged-clip-damaged', S, T, [c], good, gL, gR, dict(os.environ), left={broken[1]: None, broken[2]: None},
+             expect_log="of the clip's own damage inside the bridge, kept as the Shuttle sent them")
     S = os.path.join(S0, 'run-ahead-placed'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     run_ahead(src, T + '.ra'); punch(T + '.ra', T, at_frac=0.6); os.remove(T + '.ra'); csv = os.path.join(S, 'T.mov.registration.csv'); sidecar(T, csv, S)
     # the time into the capture of the damaged row nearest the middle (run_ahead breaks units at 50%; the capture's first
