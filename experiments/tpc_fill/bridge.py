@@ -16,6 +16,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from region import load, UNIT
 PIECE = 192 << 20
+FIELDS_MAX = 2 << 30      # fields held by one fields_at (~42 KB a unit: ~50,000 units), beside its ~0.7 GB piece being parsed
 
 def fields(path, lo, hi, log=print):
     """{counter16: (field1, field2)} uint8 arrays (118 x 180) of the whole units starting in [lo, hi) of the file"""
@@ -358,7 +359,7 @@ def check_offset(tf, df, off, log, name):
 
 def fields_at(path, lo, hi, log):
     """fields() and each unit's marker file offset (a seam window): ({counter: fields}, {counter: record offset})"""
-    out = {}; at_ = {}; at = lo
+    out = {}; at_ = {}; at = lo; held = 0
     while at < hi:
         R = load(path, at, min(PIECE + 2 * UNIT, os.path.getsize(path) - at))
         for o, c, fm, ok in R.marks:
@@ -368,10 +369,11 @@ def fields_at(path, lo, hi, log):
                     if at_[c] == fo: continue                     # the same unit, read again where pieces overlap
                     raise ValueError('%s has unit counter %d twice (it runs past one 16-bit wrap, 36 min): not supported' % (os.path.basename(path), c))
                 u = np.frombuffer(bytes(R.v[o + 48:o + UNIT]), np.uint8).reshape(525, 1440)
-                out[c] = (u[20:256:2, 1::8].copy(), u[283:519:2, 1::8].copy()); at_[c] = fo
+                out[c] = (u[20:256:2, 1::8].copy(), u[283:519:2, 1::8].copy()); at_[c] = fo; held += out[c][0].nbytes + out[c][1].nbytes
         at += PIECE; del R
-        import resource
-        if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > (3500 << 20): raise ValueError('reading the fields passed 3.5 GB of memory')
+        # the fields this read holds, not the process's peak (ru_maxrss): run after the clips' line-up in one process, that
+        # peak was already ~3.5 GB and refused a bridge that passes in a process of its own at a 1.5 GB peak (2026-11-23, run-ahead-bridged-clip-damaged)
+        if held > FIELDS_MAX: raise ValueError('the fields read from %s passed %.1f GB' % (os.path.basename(path), FIELDS_MAX / 1e9))
     log('fields: %d whole units in bytes %d-%d of %s' % (len(out), lo, hi, os.path.basename(path)))
     return out, at_
 
