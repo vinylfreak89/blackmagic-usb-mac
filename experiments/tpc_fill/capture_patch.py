@@ -66,7 +66,7 @@ read-back. Every step is logged; DIR/result.json holds what was proven.
 The rebuilt sidecar comes from plain_render's replay (registration and H-retiming off), so a target whose live capture
 ran with either on fails the decision-column gate, by name, rather than getting a sidecar that describes another setting.
 """
-import collections
+import bisect, collections
 import hashlib, json, os, re, signal, subprocess, sys, threading, time
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE); sys.path.insert(1, os.path.join(REPO, 'scripts', 'juicefs'))
@@ -365,15 +365,30 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
     f1, f2 = (int(x) for x in first_line.split(',')) if first_line else NOMINAL_FIRST
     crop = {ix[h]: d for h, d in (('applied_d1', f1 - NOMINAL_FIRST[0]), ('frame_d1', f1 - NOMINAL_FIRST[0]),
                                   ('applied_d2', f2 - NOMINAL_FIRST[1]), ('frame_d2', f2 - NOMINAL_FIRST[1])) if h in ix}
-    def same(i, n, l):
-        if i in crop and n.lstrip('-').isdigit() and l.lstrip('-').isdigit(): return int(n) - crop[i] == int(l)
-        return n == l
+    # each live session's placement convention. A sidecar the plugin wrote logged the uncropped placement: the rebuilt value is
+    # it moved by the crop. A sidecar an earlier patch published is its render's, already cropped at the first line measured
+    # then (2026-11-23: 2026-11-22 13-11-20, patched and swapped the night before, then appended to, failed here on all 78,793
+    # of its rows, each exactly the crop off, while the appended clip's rows matched). Which convention holds is measured per
+    # stretch between patched spans (an appended clip's rows come from another session), and must hold for every row of it.
+    isnum = lambda x: x.lstrip('-').isdigit()
+    starts = sorted(a for a, b in spans); seg = lambda c: bisect.bisect_right(starts, c)
+    CONV = (('a live session\'s, moved by the crop', crop), ('already at this crop (a sidecar an earlier patch published)', {i: 0 for i in crop}))
     missing = sorted(set(L) - set(N)); added = sorted(set(N) - set(L))
-    diff = {}; first = min(N)
+    diff = {}; first = min(N); tally = {}
     for c in N:
         if c in AFTER or c not in L or c - first < 300: continue
         for i, h in enumerate(lh):
-            if not same(i, N[c][i], L[c][i]): diff[h] = diff.get(h, 0) + 1
+            n, l = N[c][i], L[c][i]
+            if i in crop and isnum(n) and isnum(l):
+                t = tally.setdefault(seg(c), [c, c, 0, [collections.Counter() for _ in CONV]]); t[1] = c; t[2] += 1
+                for k, (_, off) in enumerate(CONV):
+                    if int(n) - off[i] != int(l): t[3][k][h] += 1
+            elif n != l: diff[h] = diff.get(h, 0) + 1
+    for s_, (c0_, c1_, n_, miss) in sorted(tally.items()):
+        k = min(range(len(CONV)), key=lambda k: (sum(miss[k].values()), k))
+        for h, v in miss[k].items(): diff[h] = diff.get(h, 0) + v
+        log('sidecar: placement of units %d-%d (%d values): %s%s' % (c0_, c1_, n_, CONV[k][0],
+            '' if not miss[k] else ', except %d values' % sum(miss[k].values())))
     kinds = lambda R: {k: sum(1 for r in R if r[DR] == k) for k in sorted(set(r[DR] for r in R))}
     log('sidecar: live %d rows %s | rebuilt %d rows %s | counter shift %d, ordinal shift %d' % (len(live), kinds(live), len(new), kinds(new), D, O))
     log('sidecar: columns differing outside the patched spans and the first 300 units: %s%s' % (diff, ' (placement compared after the first-line crop of %+d/%+d lines)' % (
