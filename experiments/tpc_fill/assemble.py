@@ -107,13 +107,18 @@ def put(b):
     sha.update(b); written += len(b)
 STAGING_MAX = float(os.environ.get('ASSEMBLE_STAGING_MAX_GB', '6')) * (1 << 30)
 METRICS = os.environ.get('JUICEFS_METRICS', 'http://127.0.0.1:9568/metrics')
+STATS = os.environ.get('JUICEFS_STATS', os.path.expanduser('~/.juicemount/fuse-internal/.stats'))
 def staged_bytes():
-    """bytes JuiceFS has written to the local disk and not yet uploaded (its own counter), or None if it cannot be read"""
+    """bytes JuiceFS has written to the local disk and not yet uploaded (its own counter), or None if it cannot be read.
+    Read from the mount's own .stats file first, the same counters the mount process serves over HTTP: on 2026-11-23 the
+    HTTP listener closed at 12:25 (connection refused, nothing logged) while the mount and its uploads ran on, and this
+    copy stopped at 8.6 of 165.7 GB for want of a number .stats still gave. The HTTP endpoint is the fallback."""
     import urllib.request
-    try: text = urllib.request.urlopen(METRICS, timeout=10).read().decode()
-    except Exception: return None
-    for line in text.splitlines():
-        if line.startswith('juicefs_staging_block_bytes'): return float(line.rsplit(' ', 1)[1])
+    for where in (STATS, METRICS):
+        try: text = open(where).read() if where.startswith('/') else urllib.request.urlopen(where, timeout=10).read().decode()
+        except Exception: continue
+        for line in text.splitlines():
+            if line.startswith('juicefs_staging_block_bytes'): return float(line.rsplit(' ', 1)[1])
     return None
 def throttle():
     """With the destination on the JuiceFS share, hold the copy while the upload backlog is above STAGING_MAX: writes
@@ -125,7 +130,7 @@ def throttle():
     held = None
     while True:
         v = staged_bytes()
-        if v is None: raise SystemExit('STOPPED: JuiceFS\'s upload backlog (%s) cannot be read; not writing on without it' % METRICS)
+        if v is None: raise SystemExit('STOPPED: JuiceFS\'s upload backlog (%s, %s) cannot be read; not writing on without it' % (STATS, METRICS))
         if v < STAGING_MAX:
             if held: print('upload backlog %.1f GB: writing again after %.0f s' % (v / 1e9, time.time() - held), file=sys.stderr, flush=True)
             return
