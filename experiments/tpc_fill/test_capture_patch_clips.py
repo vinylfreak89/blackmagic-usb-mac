@@ -26,7 +26,7 @@ From SOURCE (a byte-complete capture of 30 s or more with sound), in SCRATCH_DIR
   run-ahead-wrecked  the same with the counters run 40 ahead (5:52 of 2026-11-22 13-11-20: 592 ahead across a stretch of
            wrecked picture)
   run-ahead-excess-bridged  the run-ahead-excess case, bridged: the clip's sound replaces the 7 samples too many, so the
-           sound comes out exactly the source's
+           sound comes out exactly the source's, but for the 7 samples add_samples drops at the stream's end
   run-ahead-placed  the same, the clip's placement given (--placed TIME CLIP same 1000:995) instead of found
   glitch-excess  the glitch with one sample too many in the sound of a broken unit (2026-11-18: a 1603-sample interval
            beside a +512 unit): the clip's sound replaces it
@@ -392,7 +392,7 @@ def main():
     run_case('run-ahead-excess', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ, PATCH_GLITCH_BRIDGE='0'), audio_trim=7, moved_in=interval_of(c, 7))
     S = os.path.join(S0, 'run-ahead-excess-bridged'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T); c = add_samples(T, broken[1], 7); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
-    run_case('run-ahead-excess-bridged', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ), expect_log='bridged whole')
+    run_case('run-ahead-excess-bridged', S, T, [clip(src, S, 'clipF')], good, gL, gR, dict(os.environ), audio_trim=7, expect_log='bridged whole')
     # run-ahead-drift: the run-ahead glitch, the seven resyncs before it 6 samples early
     S = os.path.join(S0, 'run-ahead-drift'); os.makedirs(S); T = os.path.join(S, 'T.mov.raw.tpc')
     broken = run_ahead(src, T); move_resyncs(T, range(broken[1] - 4, broken[1] + 3), -6); sidecar(T, os.path.join(S, 'T.mov.registration.csv'), S)
