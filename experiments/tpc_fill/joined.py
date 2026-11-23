@@ -23,8 +23,13 @@ class FullFile(io.FileIO):
     then parsed a silently shortened one (the patch line-up of 2026-11-19 lost clip units that way and placed 1 of 6 clips,
     where a rerun with the cache warm placed 5)."""
     calls = 0; short = 0          # every syscall read, and those that returned less than asked before the end: logged by the line-up
+    # Nor past the file's size: after a capture was replaced by a shorter one through a rename (capture_patch swap), the
+    # share served ~640 KB of the old file's bytes past the new end two hours later (2026-11-23, 2026-11-22 13-11-20: its size
+    # read right, a read from 1000 bytes before the end returned 641,144), and the reader parsed them ("bad record at
+    # 64081011514", the file's size). The size is taken at each read, so a file that grows is read to its new end.
     def read(self, n=-1):
-        if n is None or n < 0: return self.readall()
+        if n is None or n < 0: n = max(0, os.fstat(self.fileno()).st_size - self.tell())
+        n = max(0, min(n, os.fstat(self.fileno()).st_size - self.tell()))
         buf = bytearray(n); mv = memoryview(buf); got = 0
         while got < n:
             k = self.readinto(mv[got:])

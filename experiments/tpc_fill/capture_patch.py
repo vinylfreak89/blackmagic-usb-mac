@@ -464,6 +464,15 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
     for x in sorted({x for _, x in ats}):
         if os.path.getsize(x) > DONOR_MAX: fail('the --at donor %s is %.1f GB; --at reads it whole, so at most %.0f GB (give it as --donor instead)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
+    # every read of the capture and the clips through JuiceMount's own directory (truth), the share's paths kept only to name
+    # and write what the patch makes (ORIG, PATCH). A capture replaced by swap keeps the old file's size on the share: on
+    # 2026-11-23, two hours after 2026-11-22 13-11-20 was swapped for its 640,144-byte shorter patched copy, every open on the
+    # share still gave the old size, the patched content and 640,144 zero bytes after it, which a nudge and a re-read did
+    # not clear; the line-up parsed the zeros ("bad record at 64081011514"). A patched capture is often patched again.
+    parts = [(truth(tp), truth(csv)) for tp, csv in parts]
+    ats = [(t, truth(x)) for t, x in ats]; joins_d = [truth(x) for x in joins_d]; clips = [truth(x) for x in clips]
+    placed = [(t, truth(x), k, o, oa) for t, x, k, o, oa in placed]
+    donors = sorted({x for _, x in ats} | set(joins_d) | set(clips) | {x[1] for x in placed})
     st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
     inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, placed=placed, donors={x: st(x) for x in donors})
     # a clip longer than the line-up can hold (a recapture of the rest of the tape, 2026-11-22: 103 GB) is read only around
@@ -555,7 +564,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if a['file_to'] > b['file_from']: fail('%s (units %d-%d) and %s (units %d-%d) overlap: bridging them as one is not built yet' % (
                 a['name'], a['units'][0], a['units'][1], b['name'], b['units'][0], b['units'][1]))
     # 0b. the joins and an append: measured, then the parts read as one capture (VT) with one live sidecar (LIVE)
-    VT, LIVE, part_rows, part_at = T, ORIG['csv'], [0], [0]
+    VT, LIVE, part_rows, part_at = truth(T), truth(ORIG['csv']), [0], [0]
     jparts = list(parts)                                 # the parts read, an appended clip's tail last
     if append_d:
         def ma():
@@ -653,7 +662,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             log('the events at sidecar rows %d-%d share clip %s and its offset: planned together' % (groups[g][0], groups[g][-1], os.path.basename(D)))
         merged[g] = (g, D, pairing, off, rng, app_at, off_after, span, cmap)
     events = sorted(merged.values(), key=lambda e: e[0])          # in capture order: a run-ahead glitch renumbers what follows it
-    FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
+    FL = stage(W, 'first-line', inputs, lambda: first_line(truth(T), W))['first_line']
     # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
