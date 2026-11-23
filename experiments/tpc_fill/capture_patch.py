@@ -855,6 +855,9 @@ def swap(W):
                 if os.path.getsize(truth(p)) != n: fail('%s is %d bytes on JuiceFS after the share refresh, not %d' % (p, os.path.getsize(truth(p)), n))
             if bad: R['share_listing'] = bad; log('WARNING: the share still lists %s; JuiceFS holds the right sizes' % ', '.join('%s at %d bytes (not %d)' % (p, n, want[p]) for p, n in bad.items()))
             else: log('the share lists the capture, render and sidecar at their new sizes')
+            # and the dates just set, and no ._ entry of the patched names: a listing right in size still showed the render's
+            # date on the capture and the renamed-away ._ entries until the folder was re-read (2026-11-23)
+            for k in ('tpc', 'csv'): share_refresh.reread(O[k])
     except Failed: raise
     except Exception as e: fail('during "%s": %r (the steps logged above it were done)' % (step, e))
     if on_share(O['tpc']):                     # the share leaves a deleted or renamed-away name's ._ entry listed
@@ -863,6 +866,8 @@ def swap(W):
             if os.path.exists(x) and x in (O['tpc'], O['csv']): continue
             try: os.unlink(ad)
             except OSError: pass
+        try: share_refresh.nudge(os.path.dirname(O['tpc']))   # after the ._ deletes: the folder is re-read once, without them
+        except OSError as e: log('WARNING: could not make the share re-read the folder (%r); its listing may show the old ._ entries' % e)
     R['state'] = 'swapped'; R['swapped_at'] = time.time(); json.dump(R, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('SWAPPED: %s is the patched capture' % O['tpc'])
 
