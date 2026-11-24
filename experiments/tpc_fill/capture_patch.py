@@ -811,6 +811,19 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)%s' % (PATCH['tpc'], PATCH['mov'], W, '; swap also removes %s' % ', '.join(os.path.basename(x) for x in replaced) if replaced else ''))
 
 # ------------------------------------------------------------------ swap
+def orphan_stubs(names):
+    """Delete the ._ entry of each name that no longer exists (the share keeps a deleted or renamed-away name's ._ entry);
+    return 'path: why' for each one still there, so a swap reports what it could not remove instead of passing over it."""
+    left = []
+    for x in names:
+        if os.path.exists(x): continue
+        ad = os.path.join(os.path.dirname(x), '._' + os.path.basename(x))
+        try: os.unlink(ad)
+        except FileNotFoundError: pass
+        except OSError as e: left.append('%s: %s' % (ad, e.strerror)); continue
+        if os.path.lexists(ad): left.append('%s: still listed after the delete' % ad)
+    return left
+
 def swap(W):
     R = json.load(open(os.path.join(W, 'result.json')))
     if R['state'] != 'verified': fail('result.json says %s, not verified' % R['state'])
@@ -882,13 +895,12 @@ def swap(W):
     except Failed: raise
     except Exception as e: fail('during "%s": %r (the steps logged above it were done)' % (step, e))
     if on_share(O['tpc']):                     # the share leaves a deleted or renamed-away name's ._ entry listed
-        for x in [O['tpc'], O['csv'], P['tpc'], P['mov']] + R.get('replaced', []):
-            ad = os.path.join(os.path.dirname(x), '._' + os.path.basename(x))
-            if os.path.exists(x) and x in (O['tpc'], O['csv']): continue
-            try: os.unlink(ad)
-            except OSError: pass
+        left = orphan_stubs([O['tpc'], O['csv'], P['tpc'], P['mov']] + R.get('replaced', []))
         try: share_refresh.nudge(os.path.dirname(O['tpc']))   # after the ._ deletes: the folder is re-read once, without them
         except OSError as e: log('WARNING: could not make the share re-read the folder (%r); its listing may show the old ._ entries' % e)
+        left = orphan_stubs([O['tpc'], O['csv'], P['tpc'], P['mov']] + R.get('replaced', []))   # and once more after the re-read
+        if left: R['stubs_left'] = left; log('WARNING: ._ entries of names that no longer exist are still on the share: %s' % '; '.join(left))
+        else: log('no ._ entry of a removed or renamed-away name is left on the share')
     R['state'] = 'swapped'; R['swapped_at'] = time.time(); json.dump(R, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     log('SWAPPED: %s is the patched capture' % O['tpc'])
 
