@@ -285,6 +285,22 @@ def row_counter(csv, row):
             n += 1
     return best[1] if best else None
 
+GLITCH_MARGIN = 40_000_000   # ~50 units: the bytes a row lands at are estimated from the capture's mean bytes per row (at 24:27
+                             # of 2026-11-23 15-13-23 the estimate for unit 4790 was 0.7 MB off); plan_glitch keeps only the
+                             # units on its own side of the stretch by counter, so reading past the estimate costs nothing
+
+def glitch_window(sidecar, rows, first, last, per, size):
+    """(lo, hi) bytes of the capture that plan_glitch reads its two sides from: at the bridged cluster's own first and last
+    units, not at the event group's ends. A group can hold clusters past the clip's reach (2026-11-23, 15-13-23 at 24:27:
+    group rows 43981-44864, counters 4790-5678, the 31 s clip 17-21-14 reaching the first cluster, 4790-5074, only); its end
+    put the after side ~20 s past the clip, 0 units of the capture were in it, and the stretch was filled gap by gap.
+    A message (str) when either unit is not a picture row of the group."""
+    import stretches as S
+    ur = S.unit_rows(sidecar, (first, last), max(0, rows[0] - 400), rows[-1] + 400)
+    miss = [u for u in (first, last) if u % 65536 not in ur]
+    if miss: return 'unit%s %s not among the group\'s picture rows of the live sidecar' % ('s' if len(miss) > 1 else '', ', '.join(map(str, miss)))
+    return max(0, int(ur[first % 65536] * per) + GLITCH_MARGIN), min(size, max(0, int(ur[last % 65536] * per) - GLITCH_MARGIN))
+
 def glitch_bridge_of(gp):
     """(clip, first, last, offset before, offset after) when a glitch stretch placed cluster by cluster (locate.cluster_map)
     has one clip lined up before its first cluster and after the cluster that reaches its end, at a smaller offset after it
@@ -561,17 +577,19 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     # the cluster fills at a run-ahead, which still run where a clip lines up on one side only).
     if auto_gaps and len(parts) == 1 and os.environ.get('PATCH_GLITCH_BRIDGE', '1') != '0':
         import bridge as B
-        from stretches import event_groups as eg0, stretch_range as sr0
+        from stretches import event_groups as eg0
         _, nrows0 = eg0(parts[0][1]); size0 = os.path.getsize(truth(T)); kept = []
         for k, gp in enumerate(auto_gaps):
             gb = glitch_bridge_of(gp)
             if gb is None: kept.append(gp); continue
             D, first, last, offA, offB = gb
-            lo, hi = sr0(gp['rows'], size0 / nrows0, size0, 0)
+            win = glitch_window(parts[0][1], gp['rows'], first, last, size0 / nrows0, size0)
+            if isinstance(win, str): log('the glitch stretch at rows %d-%d: not bridged whole (%s): filled cluster by cluster' % (gp['rows'][0], gp['rows'][-1], win)); kept.append(gp); continue
+            lo, hi = win
             def pg(D=D, first=first, last=last, offA=offA, offB=offB, lo=lo, hi=hi, k=k):
                 try: return B.measure(truth(T), B.plan_glitch(truth(T), truth(D), first, last, offA, offB, lo, hi, log, window=windows.get(D)), name='bridge-glitch-%d' % k)
                 except ValueError as e: return dict(error=str(e))
-            r = stage(W, 'glitch-bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, gap={x: gp[x] for x in ('rows', 'donor', 'off')}, ends=[first, last, offA, offB]), pg)
+            r = stage(W, 'glitch-bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, gap={x: gp[x] for x in ('rows', 'donor', 'off')}, ends=[first, last, offA, offB], window=[lo, hi]), pg)
             where = 'the glitch stretch at %d:%02d (units %d-%d, counters %d ahead)' % (gp['rows'][0] / 29.97 // 60, gp['rows'][0] / 29.97 % 60, first, last, (offA - offB) % 65536)
             if 'error' in r: log('%s: not bridged whole (%s): filled cluster by cluster' % (where, r['error'])); kept.append(gp); continue
             r['group_rows'] = list(gp['rows']); bridges.append(r)
