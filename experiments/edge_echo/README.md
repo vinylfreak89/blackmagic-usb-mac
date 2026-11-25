@@ -42,6 +42,8 @@ All scripts run from a scratch directory that holds the arrays they name (`units
 - **Strength mostly, place a little.** One fixed echo shape carries 75% of the field-to-field change of
   the bar's rise; a second, shift-like shape carries 16%.
 
+**Target (owner, 2026-11-24):** remove the echo only; the tape's own edge over/undershoot stays in the result.
+
 ## Fall model (`model.py`)
 
 Edge response = the tape's own edge (always there) + depth x echo. Echo taps come from the rise part
