@@ -209,6 +209,47 @@ their polarity (dark first after a rise) is that of too little correction; less 
 leaving echo in. Where the two reviews differ: one finds broad picture edges want 1.15 or more of the amount,
 the other 0.9-1.0 on the left edge; one finds removing the lag near blanking alone does not help.
 
+### Reworked: the echo's shapes read from the picture's own edges (`harness.py`)
+
+After the reviews the model was reworked and scored in the picture. The two amounts per field still come from the
+test bar; what they do to an edge is now read from the picture.
+
+- **The fast part is echo, and the bar's reading of it is good** (`shape2.py`). The two test lines of a frame agree
+  on it (correlation 0.90), it lasts about a second (0.61 after 30 frames), it does not follow the test line's own
+  position (0.01), and the place of the picture's dip follows it (-0.83). What failed was the taps.
+- **What the bar's taps did on picture edges.** On left picture edges that stay put for 12+ frames (2,188 tracks,
+  77,143 edges; the slope of the profile on each amount inside a track, so content cancels): per unit of the first
+  amount the picture shows 0.19 / 0.38 / 0.30 / 0.15 at +4 / +6 / +8 / +10 and the removal took 0.25 / 0.48 / 0.45 /
+  0.21, then added 0.05-0.08 from +16 to +24. The second amount in the picture is a short early feature (-0.33,
+  -0.51 at +2, +4, nothing later); the bar's taps for it took half of that and added a level of 0.18 from +24 on.
+- **Method.** Those two slopes are the echo's shapes as the picture shows them. Taps for lags 1..85 are fitted to
+  make them out of the edge itself (each track run back to no echo; rms 0.016 and 0.023 of shapes of 0.083 and
+  0.091). No lag near blanking. A sample at the capture's floor is taken as cut off when the estimate plus its
+  predicted echo lies below the floor, and is then filled from the estimate; otherwise it is blanking and stays.
+- **Known answer** (`harness.py ka`): the weak passage's frames as the clean picture, a made-up system with content
+  at lag 0, the strong passage's amounts with a field's reading noise, cut at the floor. Error against the clean
+  frames, whole picture: 6.8 / 7.8 / 11.0 / 15.4 codes captured, 3.1 / 3.7 / 6.2 / 7.7 after, 2.4 / 2.8 / 5.6 / 7.4
+  with the true system. Left-edge bands 4-13 codes captured, 1.0-3.4 after.
+
+Shapes read from the odd-numbered tracks, scored on the even ones (second clip's removal -> reworked):
+
+| | captured | second clip | reworked |
+|---|---|---|---|
+| what follows the reading, dip (+2..+24) | 0.468 | 0.148 | 0.062 |
+| what follows the reading, bands (+26..+90) | 0.021 | 0.136 | 0.025 |
+| what follows amount 1 / amount 2, dip | 0.166 / 0.180 | 0.082 / 0.136 | 0.022 / 0.021 |
+| bands in codes at readings 0.30-0.45 / 0.45-0.55 / 0.55-0.65 / 0.65-0.75 / 0.75-0.90 | | 3.3 / 4.1 / 9.1 / 20.3 / 31.6 | 1.5 / 1.8 / 2.3 / 4.3 / 6.9 |
+
+Not used in the calibration:
+- Steady edges inside the picture: rises 0.106, falls 0.073 (second clip 0.116, 0.113; captured 0.41, 0.43).
+- The weak passage: what the removal adds is centred on the dip and the edge comes out without a hump at every reading.
+- The test line: bar-top swing 0.045 / 0.038 / 0.050 / 0.059 / 0.069 by reading (second clip 0.036 / 0.037 / 0.050 /
+  0.087 / 0.145; captured about 0.04). The narrow pulse is 0.045-0.141 (captured 0.061-0.171), still poor at strong echo.
+
+What it leaves: after removal the left edge sits 0.15-0.27 of its step below its far level at +6..+8 and is back by
+about +22. That is the edge with the echo run back to nothing (0.81 at +6, 0.85 at +12, 0.95 at +22), and the weak
+passage's edge has the same form. Whether it is the tape's own edge or echo that is never absent is not known.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -268,6 +309,9 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `panel3.py` | stills: captured, straight-line model, two-shape echo |
 | `refit4.py` | the two-shape echo read over its whole length, the second shape's zero corrected; test line by part; removal over a stretch |
 | `left_after.py`, `weak_after.py` | the left picture edge before and after a removal, by reading, in the strong and the weak passage |
+| `harness.py` | scoring in the picture (steady left edges, bands, fill) and on the test line by part; the echo's shapes read from the picture and their taps; known answer; removal of a stretch |
+| `shape2.py` | is the fast-moving second amount echo or the test line's own? |
+| `panel4.py` | stills: captured, second clip's removal, reworked, and both differences |
 | `primary.py` | line position by field and anything before the edges: a change of main copy? |
 | `repeats.py`, `ring.py` | repeating bands on the bar's top after removal; how much of the picture the echo leaves by frequency; division limit against echo left |
 | `nolag.py` | the removal without the lag near blanking |
@@ -286,18 +330,10 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- At readings above about 0.55 the removal leaves repeating bands every 30 samples: a model error near 0.45 MHz,
-  magnified. What the real echo does there that the model misses is not known.
-- The second shape read from the bar does not carry over to the picture; narrow detail is over-corrected about
-  two-fold. Any next model is to be scored in the picture and on every part of the test line, not the bar's rise.
-- Echo is still seen added where the real one weakens (owner, second clip); the lag near blanking is one
-  contributor, not shown to be all of it.
-- Narrow strokes: the 2T pulse is no better after removal at any strength; fine lettering above a reading of
-  0.8 is not clean.
-- Next to blanking the echo does not follow the system read from the bar; the lag near blanking (0.4, 0.8) is
-  still the first model's, and the removal undershoots into the right blanking.
-- The zero of the second shape rests on an assumption (above), checked only on the left edge of one weak passage.
-- Picture rises are hit about a sample earlier than the bar predicts; a quarter of what follows the reading is
-  left on steady picture edges.
-- Whether the almost-no-echo edge's shallow dip is the tape's own.
-- The five-line cleaning threshold was chosen by hand; luma only; one 30 s passage in motion.
+- The reworked removal was calibrated on the left edges of one 30 s passage and has not been watched in motion by
+  the owner. Whether shapes read in one passage hold in another is not tested beyond the weak passage's left edge.
+- What is left after the left edge (above): tape's own edge or echo that is never absent.
+- Narrow strokes: the 2T pulse is not improved at strong echo; fine lettering above a reading of 0.8 is not clean.
+- Bands of 4-7 codes remain above a reading of 0.65.
+- The zero of the second amount rests on the fast part averaging to nothing when the slow part is weak.
+- The five-line cleaning threshold was chosen by hand; luma only.
