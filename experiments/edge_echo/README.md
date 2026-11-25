@@ -366,6 +366,17 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   recording, not to the VCR, and whatever the owner sees in every capture has not been found by this measurement.
   Band-passing a field around 292 kHz to picture the tone shows mostly picture edges ringing in the filter; no
   usable picture of it was made.
+- **The bands the owner sees in every capture from this VCR are a different tone, near 393 kHz** (`tones2d.py`: a
+  two-dimensional spectrum of flat patches; `tones.py` works on line-to-line differences and is nearly blind to a
+  tone that barely changes phase from line to line). The owner pointed at another capture made three days earlier,
+  a commercial tape. 36 frames spread across it: in 14 of 18 frames with a flat patch a tone at 392.0-393.0 kHz
+  stands about 100 times above its column's median (neighbouring frequencies 12), stepping -3 to -23 degrees per
+  line: about 21 slanted bands across the picture. The echo capture has it in all three passages at about 395 kHz,
+  +20 to +25 degrees per line. Size 0.84-0.96 codes peak to peak in both captures, the same at patch levels of 15,
+  19, 27, 124 and 208 codes: it is added to the finished picture, not carried on tape. A September capture through
+  the other chain does not have it (0 of 6 flat frames). A free-running source somewhere in the playback chain
+  (its frequency differs by 0.6% between the two captures); which box is not established.
+  The echo removal about doubles it (gain 1.9-2.2 at 0.35-0.55 MHz).
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
@@ -426,6 +437,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `stair.py` | the echo after each staircase riser, by level: is it the same at every level |
 | `diag.py` | what the removal does to line-to-line content by frequency (the diagonal bands) |
 | `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
+| `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |
