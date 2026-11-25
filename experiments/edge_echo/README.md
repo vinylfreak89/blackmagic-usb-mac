@@ -335,7 +335,27 @@ first passage's edge run back to no echo), and taps are solved for it. No bar an
   fit on the bar's amounts made on the frames that could be read; it reproduces their readings to 0.030 of 0.140.
   Too few steady edges fall in those frames to score them, and the known answer did not exercise that path.
 
-A clip of the 62-minute passage with this reading was sent on 2026-11-25; the owner has not judged it yet.
+A clip of the 62-minute passage with this reading was sent on 2026-11-25. The owner: the bands are still there, and
+in motion there are rolling diagonal bands the removal introduces or enhances. Their question: the echo was added at
+RF and then demodulated, so why invert it as if it were added to the demodulated picture; should the inversion not
+depend on level?
+
+- **The diagonal bands are the capture's own content, about doubled** (`diag.py`, 62 minutes): line-to-line
+  content after / before removal is 1.3 / 1.9 / 2.1-2.2 / 1.6-1.8 / 1.2-1.3 at 0.25-0.35 / 0.35-0.45 / 0.45-0.55 /
+  0.55-0.70 / 0.70-1.0 MHz and 1.0 elsewhere; the exact undoing asks for a gain of 4-10 at 0.45-0.55 MHz.
+- **The echo is not the same at every level, so it is not a linear operation on the picture** (`stair.py`: the
+  staircase's four risers, each about 0.17 of the bar, at four levels, strong-echo fields against weak ones).
+  Each plateau sinks under strong echo, more the higher it sits (3-25% of a riser at +24, up to 0.03-0.04 of the
+  bar); the plateaus carry colour subcarrier and the bar, which does not sink, has none. A level that moves with
+  the echo where subcarrier is present cannot come from a linear operation. The dip as a share of its riser, net
+  of that sinking, readings above 0.75: first passage 0.52 / 0.58 / 0.62 / 0.64 from the lowest riser to the
+  highest and 0.69 on the bar (relatively stronger toward white); 62 minutes 0.79 / 0.86 / 0.85 / 0.82 and 0.76 on
+  the bar (no trend with level; small steps hit harder than the full step).
+- This is why the bar and picture edges disagree and why one calibration cannot serve. "Linear in level" under
+  "What it is" compared steps that all start at blanking and did not test this.
+
+Not yet done: a model of the echo at RF (picture as carrier amplitude, a delayed copy with strength, phase and
+delay, then the detector), fitted to the whole test line.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
@@ -386,6 +406,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 |---|---|
 | `wide.py` | bar shapes learned across the capture; picture calibration over several passages with one held out (failed, see above) |
 | `direct.py` | each frame's echo read from its own left picture edges; known answer, scores, removal |
+| `stair.py` | the echo after each staircase riser, by level: is it the same at every level |
+| `diag.py` | what the removal does to line-to-line content by frequency (the diagonal bands) |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |
@@ -419,7 +441,9 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- The reading from the picture (`direct.py`) is the only one that holds in both passages; not judged by the owner.
+- Every removal here treats the echo as a linear operation on the demodulated picture; `stair.py` shows it is not.
+  A model at RF is the next thing to try.
+- The reading from the picture (`direct.py`) is the only one that holds in both passages; the owner still sees bands.
   Its open points: frames without usable left edges (filled from the bar, unscored); the reference edge is one
   scene type's and is imposed on others beyond about +12; two passages only.
 - Why the bar and picture edges show different echoes is not known.
