@@ -354,6 +354,18 @@ depend on level?
 - This is why the bar and picture edges disagree and why one calibration cannot serve. "Linear in level" under
   "What it is" compared steps that all start at blanking and did not test this.
 
+**Steady tones in the capture itself** (`tones.py`: line-to-line spectrum of the captured luma, each peak's phase
+step per line and per frame). The owner sees diagonal bands in every capture made with this VCR.
+- A comb at 291.85, 792.36, 1293.2, about 1790 and 2292 kHz (spacing 500.5 kHz), 2-4 times the background, steady
+  from line to line (coherence 0.7-0.8) and frame to frame. The 292 kHz member is 46 samples per cycle and steps
+  -162.5 degrees per line: a slanted band about every 21 lines of a field, which rolls. Strongest at 62 minutes,
+  weaker in the first passage, not found in the weak passage three minutes before 62, and not found in a September
+  capture of a commercial tape through the other chain. Cause not identified; not the capture device.
+- 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
+  on tape. 9 times the background in the weak passage, 3 in the first.
+- 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
+- The removal multiplies content by 1.2-1.3 at 0.25-0.35 MHz and by about 2 at 0.35-0.55 MHz (above).
+
 Not yet done: a model of the echo at RF (picture as carrier amplitude, a delayed copy with strength, phase and
 delay, then the detector), fitted to the whole test line.
 
@@ -408,6 +420,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `direct.py` | each frame's echo read from its own left picture edges; known answer, scores, removal |
 | `stair.py` | the echo after each staircase riser, by level: is it the same at every level |
 | `diag.py` | what the removal does to line-to-line content by frequency (the diagonal bands) |
+| `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |
