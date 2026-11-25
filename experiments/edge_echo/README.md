@@ -287,6 +287,56 @@ Colour: in the capture the test line has no colour at all (U and V at neutral on
 no per-field reference like the bar. Steady saturated left edges were too few here (3 tracks) to say whether colour
 follows the luma echo.
 
+### After the second passage: what the bar can and cannot say, and a reading from the picture itself
+
+Three ways of carrying a description across passages were tried and each failed with a passage held out
+(`wide.py`; bands on the held-out passage's left edges, codes, by reading):
+
+| description | scored on | bands |
+|---|---|---|
+| the first passage's two shapes, calibrated on both strong passages | 62 min / first | 10-20 / 3-17 |
+| capture-wide bar shapes (below), picture calibration on all three passages | 62 min / first | 10 / 6 / 17 / 19 and 2.6 / 3.4 / 5.4 / 9.8 / 13.8 |
+| the same, calibrated without the scored passage | 62 min / first | 12-26 / 4-40 |
+
+What was learned on the way:
+- **Two bar shapes do describe the bar everywhere, but not the two from one passage.** Over 1,533 bar rises 5 s apart
+  across the capture (`wide.py build`, from the survey's test lines) two shapes leave the bar at its field-to-field
+  noise (0.020 against 0.020) in every passage, 62 minutes included. The first passage's pair pointed elsewhere.
+  Across the capture the second amount runs -0.85 to +0.52 (5-95%: -0.33 to +0.23); the 62-minute passage sits in
+  the lowest twentieth.
+- **The bar and a picture edge do not show the same echo.** Passing the bar's shapes through the kernel that turns
+  the bar's no-echo edge into the picture's misses the picture's measured shapes by 40% (first) and 100% (second).
+  On the bar the second amount moves +8..+12 by 0.3 per unit, inside every passage; on picture edges by 0.03-0.10.
+  It is not the bar's size: picture steps of 170-260 codes behave like smaller ones. Cause not found.
+- **What a picture edge does per unit of a bar amount changes with the echo's state** (the dip per unit of the
+  first amount peaks at +4 in the weak passage, +6 in the first, +2..+4 at 62 minutes), so one calibration cannot
+  serve the capture, and a calibration made inside a narrow, far-off range cannot be run back to no echo.
+- **Bounding the division does not remove the bands** at 62 minutes; it only leaves echo in (limits 0.03-0.3:
+  bands 15-21 codes at the strongest readings, dip left 0.22-0.47 of the step).
+
+**Reading from the picture (`direct.py`).** Each frame's echo is read from that frame's own left picture edges
+(lines that step out of blanking into a flat stretch, pooled by median) against one fixed reference edge (the
+first passage's edge run back to no echo), and taps are solved for it. No bar and no shapes in the reading.
+- Known answer on frames with no echo of their own (210 frames of another tape; this capture's weakest passage
+  cannot serve, its own moving echo is rightly removed and then counted as error): a made-up echo moving in
+  strength (0.03-0.46 of a step), place (4.2-7.8 samples) and width. Error against the clean frames, codes rms by
+  strength: captured 3.9 / 6.6 / 6.7 / 4.7, removed 3.1 / 5.1 / 4.6 / 2.1, removed with the true system 2.7 / 4.5 /
+  4.4 / 1.7. With no echo added the reading changes the frames by 0.65 codes.
+- Read from even rows, scored on odd rows: first passage bands 3.0 / 2.3 / 2.6 / 4.4 / 6.1 codes and 0.073 of the
+  dip still following the reading (the calibrated removal judged fixed there: 1.5 / 1.8 / 2.3 / 4.3 / 6.9, 0.062).
+  62 minutes: 10 / 7 / 12 / 15 codes, 0.082; the edge comes out the same at every reading (0.73-0.74 at +8, 0.81-0.83
+  at +14, 0.94-0.95 at +20).
+- What the band figure at 62 minutes is made of: after removal +14..+44 sits 3-7% lower than captured, mostly the
+  reference edge's slow settle being imposed on a scene whose own left edge is flat by +20 (the bar shows no echo
+  out there in this passage), plus a ripple of 2-3.5% at readings above 0.75.
+- Taking the part beyond +16 from the bar instead (`mix`) scored worse on both passages (62 min 17 / 12 / 21 / 22,
+  first 1.9 / 3.0 / 4.2 / 7.0 / 8.7).
+- Frames with too few such lines (364 of 900 at 62 minutes, 139 of 900 in the first passage) take a straight-line
+  fit on the bar's amounts made on the frames that could be read; it reproduces their readings to 0.030 of 0.140.
+  Too few steady edges fall in those frames to score them, and the known answer did not exercise that path.
+
+A clip of the 62-minute passage with this reading was sent on 2026-11-25; the owner has not judged it yet.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -334,6 +384,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 | script | does |
 |---|---|
+| `wide.py` | bar shapes learned across the capture; picture calibration over several passages with one held out (failed, see above) |
+| `direct.py` | each frame's echo read from its own left picture edges; known answer, scores, removal |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |
@@ -367,8 +419,10 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- The reworked removal holds in the passage it was calibrated on and fails 36 minutes later (above): the echo's
-  place and width move, and the model has no term for that. A description that follows it is the next thing to find.
+- The reading from the picture (`direct.py`) is the only one that holds in both passages; not judged by the owner.
+  Its open points: frames without usable left edges (filled from the bar, unscored); the reference edge is one
+  scene type's and is imposed on others beyond about +12; two passages only.
+- Why the bar and picture edges show different echoes is not known.
 - Colour: no measurement yet of whether it carries the echo beyond the 8 frames under "What it is".
 - What is left after the left edge (above): tape's own edge or echo that is never absent.
 - Narrow strokes: the 2T pulse is not improved at strong echo; fine lettering above a reading of 0.8 is not clean.
