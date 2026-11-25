@@ -52,6 +52,11 @@ All scripts run from a scratch directory that holds the arrays they name (`units
 - The cross-kind comparison of `compare.py` / `left_level.py` ("the echo sits one sample after each
   edge's own overshoot peak", "taps from one kind miss another's by 0.2-0.5") used own edges from the
   same straight line and is not evidence either way.
+- "Read as two amounts the echo comes off the bar to 0.008-0.032 of the no-echo edge": the no-echo edge is
+  picked by lowest reading and is off along the second shape (see "After the first clip"); the figure is
+  agreement with that pick, not with an echo-free edge.
+- The first clip's removal: taps for lags 2..27 (a net level shift after bright edges) and the second shape's
+  zero (a constant false echo). Corrected in `refit4.py`.
 - The bar finder started its search at column 400 and took the 12.5T pulse for the bar where that
   pulse stood above half the bar: a third of fields were dropped, the weaker-echo ones more often
   (median reading 0.38 against 0.47). It now starts at 440 and reads every field.
@@ -100,6 +105,63 @@ change at 0.2-0.6 MHz goes 4.96 -> 6.05 codes on these picture frames; restored 
 noise are not separated by that number. At readings above 0.8 fine white lettering comes out dimmer
 and still doubled.
 
+### After the first clip (`refit4.py`)
+
+The owner watched the clip: the strength is off, and where the real echo weakens the removal adds echo.
+Measured, then two defects of the model above found and corrected; the clip was remade with them.
+
+- **Not timing.** The left picture edge's dip follows the same field's bar reading one for one in every
+  quarter of the field (slope 0.93-1.09, no better with the neighbouring field's reading); the reading
+  moves 0.025 (median) from one field to the next.
+- **The echo is longer than the taps.** Past the dip the bar sits 0.02-0.04 high from +20 to +50 and is
+  back by about +60. Shapes read over 0..+24 and taps for lags 2..27 had a net sum (-0.06, -0.10), so
+  the removal moved the level of everything after a bright edge: the bar's flat top came out 4.6-7.0%
+  of the bar low, at every strength. Shapes over 0..+80, taps 2..75: sum +0.005 / +0.011, bar top
+  +0.1-0.4%.
+- **The zero of the second shape was off.** The "almost no echo" edge is the fields with the lowest
+  reading, and the reading itself moves with the second shape, so that pick sits to one side along it:
+  the second amount is -0.14 to -0.20 at every reading from 0.1 to 0.6, in passages half an hour apart.
+  That constant was being removed from every field as echo. In the weak passage (readings 0.13-0.30,
+  `weak_after.py`) it took 0.03-0.07 off the left edge at +3..+6 and added 0.04-0.05 at +9..+11, a
+  bright band beside the real dip. With the zero put where the second amount heads as the first goes
+  to nothing (-0.198, a line through binned medians), what the removal adds is centred on the dip at +7
+  and the edge comes out without a hump. This rests on the fast part averaging to nothing when the slow
+  part is weak. The weak line used as reference in the bar checks is picked the same way and shares
+  the bias.
+
+Test line by part (`refit4.py tl`: amounts from line 18, removal scored on line 281 against the weak
+line; rms, captured -> removed), taps 2..27 as in the first clip, then as corrected:
+
+| reading | model | staircase | after its fall | 2T pulse | 12.5T pulse | bar rise | bar top |
+|---|---|---|---|---|---|---|---|
+| 0.30-0.45 | first clip | 0.040 -> 0.057 | 0.044 -> 0.052 | 0.045 -> 0.058 | 0.045 -> 0.019 | 0.076 -> 0.022 | 0.011 -> 0.044 |
+| | corrected | 0.035 | 0.031 | 0.054 | 0.012 | 0.023 | 0.009 |
+| 0.60-0.75 | first clip | 0.050 -> 0.065 | 0.094 -> 0.065 | 0.119 -> 0.128 | 0.084 -> 0.037 | 0.165 -> 0.014 | 0.009 -> 0.061 |
+| | corrected | 0.035 | 0.039 | 0.124 | 0.032 | 0.029 | 0.011 |
+| 0.75-0.90 | first clip | 0.054 -> 0.071 | 0.115 -> 0.072 | 0.139 -> 0.169 | 0.100 -> 0.077 | 0.208 -> 0.032 | 0.011 -> 0.071 |
+| | corrected | 0.038 | 0.051 | 0.165 | 0.077 | 0.056 | 0.024 |
+
+Steady picture edges are unchanged by the corrections (rises 0.11, falls 0.11). The narrow 2T pulse is
+not improved by any version (fine lettering). The staircase steps sit 0.03-0.05 of the bar lower
+under strong echo for their whole width while the bar's top does not move: the steps carry colour,
+the bar does not; that is not an echo of a luma edge and nothing here removes it.
+
+### One system for the whole test line (`sysid.py`): tried, not used
+
+Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
+blanking floor; kernels fitted on the whole line with the staircase steps, a sideways slip and an
+offset as extra terms.
+- Known answer (`sysid.py ka`, made-up lines through a made-up system with a floor and noise 2.5 codes):
+  error 9.0 / 12.5 / 24.8 / 28.2 codes captured, 3.4 / 3.8 / 6.2 / 8.6 after. Without the staircase in
+  the fit the kernel's response was off by 0.13-0.3 (the echo is 0.37); with it 0.07-0.10.
+- Without any inversion (`sysid_fwd.py`) the fitted system reproduces the bar and the 12.5T pulse
+  (0.02-0.05) but leaves 0.04-0.06 after the staircase-end fall and 0.03-0.07 at the 2T pulse at every
+  strength, with two shapes or six. Cutting the prediction at the floor explains part of the "fall echo
+  is half the rise's" (a fit of that region alone: 0.049-0.100 uncut, 0.009-0.027 cut); the rest of
+  what happens next to blanking is not one linear system.
+- On the picture it is worse than the bar-rise model (steady edges 0.22 / 0.15) and rings at about
+  2.5 MHz.
+
 Falls on the test line (`falls3.py`), staircase-end fall against its weak-echo shape: reading
 0.50-0.65: 0.126 captured, 0.136 after removal without the lag near blanking, 0.073 with it;
 0.65-0.90: 0.183, 0.186, 0.076. With the lag the fall still ends about 0.07 of the step low.
@@ -141,7 +203,10 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `same_edge.py` | steady picture edges across frames; within-edge split; `ka` |
 | `same_refit.py` | taps read from the bar, the picture or both, each scored on the other edges |
 | `panel3.py` | stills: captured, straight-line model, two-shape echo |
-| `clip.py` | a stretch in motion: two-shape removal over consecutive frames, its checks, woven frames for an encoder |
+| `refit4.py` | the two-shape echo read over its whole length, the second shape's zero corrected; test line by part; removal over a stretch |
+| `left_after.py`, `weak_after.py` | the left picture edge before and after a removal, by reading, in the strong and the weak passage |
+| `sysid.py`, `sysid_fwd.py` | one system for the whole test line with the blanking floor: fit, known answer, forward check, removal (not used) |
+| `clip.py` | a stretch in motion: checks of a removed stretch and woven frames for an encoder (its own `remove` is the first clip's model; `refit4.py remove` writes the same files) |
 | `deghost.py` | left-edge step response, echo taps, left-to-right removal, `ka` |
 | `aware.py` | spectral division, five-line cleaning, noise-aware removal, `ka`, panels |
 | `band.py` | gain of the division by frequency and where line-to-line junk grows |
@@ -155,10 +220,12 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- Picture rises are hit about a sample earlier than the bar predicts; a quarter of what follows the
-  reading is left on picture edges.
-- The lag near blanking is not refitted for the two-shape taps; falls into blanking end about 0.07 low.
+- Narrow strokes: the 2T pulse is no better after removal at any strength; fine lettering above a reading of
+  0.8 is not clean.
+- Next to blanking the echo does not follow the system read from the bar; the lag near blanking (0.4, 0.8) is
+  still the first model's, and the removal undershoots into the right blanking.
+- The zero of the second shape rests on an assumption (above), checked only on the left edge of one weak passage.
+- Picture rises are hit about a sample earlier than the bar predicts; a quarter of what follows the reading is
+  left on steady picture edges.
 - Whether the almost-no-echo edge's shallow dip is the tape's own.
 - The five-line cleaning threshold was chosen by hand; luma only; one 30 s passage in motion.
-- A reading near 0.9 leaves some frequencies almost cancelled; fine lettering above 0.8 is not clean.
-- The removal undershoots into the right blanking.
