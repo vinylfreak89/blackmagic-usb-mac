@@ -146,6 +146,32 @@ not improved by any version (fine lettering). The staircase steps sit 0.03-0.05 
 under strong echo for their whole width while the bar's top does not move: the steps carry colour,
 the bar does not; that is not an echo of a luma edge and nothing here removes it.
 
+### After the second clip
+
+The owner: echo is still added where the real one weakens, and the remade clip shows repeating weaker echoes,
+dark vertical bands, late in the clip (the strong-echo part). Asked whether the tuner changes which copy it
+treats as the main one.
+
+- **No sign of a change of main copy** (`primary.py`; 1,533 test lines across the capture, 3,599 in two
+  passages). If the later copy became the main one, the other would show before each edge. Before the bar's
+  rise and on the bar's top before its fall nothing above 0.02 of the bar is there at any reading; the echo is
+  after the edge everywhere. The test line does sit up to 19 samples early in about 15% of fields, spread out
+  and not at one offset, and the picture's left edge in the same field does not move with it (correlation
+  about 0, edge within half a sample): timing at the top of the field, not a change of reference.
+- **The repeating bands are real and come from undoing a near-cancellation** (`repeats.py`, `ring.py`). At
+  readings 0.75-0.90 the echo leaves 0.13 of the picture at 0.45 MHz (0.04 in the worst field), 0.29 at
+  0.60-0.75, 0.67 at 0.30-0.45. After removal the bar's flat top carries a decaying ripple every 30 samples
+  (-0.10, +0.08, -0.06, +0.04 of the bar at +12, +27, +42, +57), swing 0.12 against 0.04 captured; 0.05 at
+  0.60-0.75; none at 0.30-0.45. Limiting the division trades the ripple for echo left in, with no setting that
+  has neither (strongest fields: swing 0.11 / edge left 0.06 at the present setting; 0.06 / 0.16 limited and
+  without the further passes, which bring the ripple back; captured 0.04 / 0.27). The longer taps made this
+  worse than the first clip.
+- **The lag near blanking delays the predicted echo wherever the picture is not bright** (by half a sample to
+  a sample at mid levels). Without it, and with samples at the floor left as captured (`nolag.py`): steady
+  picture rises 0.085 (0.11 with it), falls unchanged, and the weak passage's left edge comes out smooth at
+  every reading. The left edge in the strong passage scores worse against the weak passage's edge (0.06-0.10
+  against 0.04-0.07), a comparison across different scenes. Not adopted, not settled.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -205,6 +231,9 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `panel3.py` | stills: captured, straight-line model, two-shape echo |
 | `refit4.py` | the two-shape echo read over its whole length, the second shape's zero corrected; test line by part; removal over a stretch |
 | `left_after.py`, `weak_after.py` | the left picture edge before and after a removal, by reading, in the strong and the weak passage |
+| `primary.py` | line position by field and anything before the edges: a change of main copy? |
+| `repeats.py`, `ring.py` | repeating bands on the bar's top after removal; how much of the picture the echo leaves by frequency; division limit against echo left |
+| `nolag.py` | the removal without the lag near blanking |
 | `sysid.py`, `sysid_fwd.py` | one system for the whole test line with the blanking floor: fit, known answer, forward check, removal (not used) |
 | `clip.py` | a stretch in motion: checks of a removed stretch and woven frames for an encoder (its own `remove` is the first clip's model; `refit4.py remove` writes the same files) |
 | `deghost.py` | left-edge step response, echo taps, left-to-right removal, `ka` |
@@ -220,6 +249,10 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
+- At readings above about 0.6 the removal leaves repeating bands every 30 samples; whether to leave part of the
+  echo in there instead is the owner's call.
+- Echo is still seen added where the real one weakens (owner, second clip); the lag near blanking is one
+  contributor, not shown to be all of it.
 - Narrow strokes: the 2T pulse is no better after removal at any strength; fine lettering above a reading of
   0.8 is not clean.
 - Next to blanking the echo does not follow the system read from the bar; the lag near blanking (0.4, 0.8) is
