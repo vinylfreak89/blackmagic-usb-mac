@@ -28,11 +28,43 @@ All scripts run from a scratch directory that holds the arrays they name (`units
   picture edge (correlation 0.96 over 1,006 fields, median difference -0.02), and it is there in
   dark scenes where the picture edge gives nothing. The bar settles at full level from +22 on, which
   confirms the echo's length and that its net is zero.
-- **Falls to blanking are different.** The bar's fall, and the picture's fall into blanking at the
-  right, are about half as fast as the rises, and the bump after them is smeared (0.33 where the
-  mirror of the rise predicts 0.61). So a removal read from rising edges over-subtracts there by
-  about 0.2 of the step. Sliding the echo later to fix that makes steps inside the picture worse,
-  so the cause is in how large falls reached the tape, not in the echo estimate. Not modelled.
+- **Each big edge has its own over/undershoot, echo or not.** Regressing the test line's edges on echo
+  depth over 783 fields splits them into a part that is always there and a part that follows the echo.
+  Always there: the bar's rise overshoots to 1.36-1.38 at +4..+5 samples; the staircase-end fall
+  undershoots to -0.18 at +5..+7. The first estimate (`deghost.py`) counted the rise's overshoot as echo.
+- **The echo after a fall is the rise's echo, mirrored and softened.** Blurred by about 1.75 samples,
+  1.25 samples later and 0.79 as large (rms mismatch 0.043 against 0.232 for a plain mirror). Edges in
+  the picture show the same thing: the half of an edge near dark takes 3.0-3.7 samples, the half near
+  bright 1.4-2.0. The level scale itself is straight (staircase treads evenly spaced).
+- **The "over-subtraction" after falls was mostly not an error.** With the echo removed, a fall into
+  blanking sits 30-38 codes below blanking for about 12 samples at every echo depth: that is the tape's
+  own undershoot, which the capture otherwise clips at blanking.
+- **Strength mostly, place a little.** One fixed echo shape carries 75% of the field-to-field change of
+  the bar's rise; a second, shift-like shape carries 16%.
+
+## Fall model (`model.py`)
+
+Edge response = the tape's own edge (always there) + depth x echo. Echo taps come from the rise part
+only (kept smooth); near blanking the predicted echo is lagged (one-pole coefficient 0.4) and scaled
+(0.8), fading to no change at white. Those two numbers were fitted on the middle third of fields by
+depth and checked on the other two thirds:
+
+| check (test line) | without the lag | with it |
+|---|---|---|
+| staircase-end fall after removal vs the tape's own fall, shallow third (rms) | 0.085 | 0.033 |
+| same, deep third | 0.205 | 0.065 |
+| middle third (fitted) | 0.148 | 0.050 |
+
+The bar's fall (not used) comes out as the tape's own fall. The bar's rise keeps its overshoot, within
+0.05-0.1.
+
+**Not carried over to the picture yet.** `stretch_check.py` pools isolated in-picture steps per
+5-second block (echo depth 0.35-0.70 across blocks): the block-to-block spread of the pooled response
+is 0.06-0.12 before and 0.06-0.11 after, so no gain is shown, and picture rises come out with an
+overshoot of 1.2-1.5 that lasts longer than the test bar's own. The smooth taps reproduce the bar's
+echo only to rms 0.11 per unit of depth, and the check is confounded by the blocks holding different
+picture. The 2T pulse keeps a shoulder (0.2-0.5 of the pulse) because the capture clipped what went
+below blanking.
 
 ## Removal tried
 
@@ -62,10 +94,16 @@ All scripts run from a scratch directory that holds the arrays they name (`units
 | `shift.py` | the "left edge is a gate" idea, scored on right edge and in-picture steps (refuted) |
 | `track.py` | depth and place per field quarter over a stretch, from the left edge |
 | `bar.py` | depth and place per field from the test line's bar, beside `track.py`'s reading |
+| `falls.py`, `falls2.py` | rise and fall times and pooled responses of in-picture steps by size |
+| `testline.py`, `split.py`, `checks.py` | the test line's known edges pooled by depth; always-there part vs echo part; staircase, fixed-shape and mirror checks |
+| `tl_remove.py` | first-version removal run on the pooled test line |
+| `model.py` | the fall model, fitted on one third of fields and checked on the rest |
+| `stretch_check.py`, `panel2.py` | the model on 30 s of picture; stills panel |
 
 ## Open
 
-- Falls into blanking (and probably large falls into dark picture) are not the mirror of rises.
+- Echo taps that hold for picture edges (softer than the test bar, with their own overshoot); a check that is not
+  confounded by picture content.
 - The bar finder misses field 1 in about two thirds of fields.
 - The five-line cleaning threshold was chosen by hand and tried on stills only.
 - Echo depth near 0.9 leaves some frequencies almost cancelled.
