@@ -1,9 +1,10 @@
 # One sequential read: N consecutive video units from a byte offset -> luma of the picture rows (N, len(ROWS), 720) + counters.
+# Last argument: 'vbi' keeps the test-signal rows instead; 'both' keeps the picture rows and the test-signal rows (OUT_vbi.npy).
 import sys, os, resource, numpy as np
 sys.path.insert(0, sys.argv[5]); from tpc_slice import find_boundary, HDR, valid_header
 CAP, START, N, OUT = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
-UNIT = 756_048; MARK = b"\x00\x00\xff\xff"; ROWS = np.r_[10:18, 273:281] if len(sys.argv) > 6 and sys.argv[6] == 'vbi' else np.r_[30:250, 293:513]
-lum = np.lib.format.open_memmap(OUT + '_luma.npy', 'w+', np.uint8, (N, len(ROWS), 720)); ctr = np.zeros(N, np.int64); n = 0; total = 0
+UNIT = 756_048; MARK = b"\x00\x00\xff\xff"; MODE = sys.argv[6] if len(sys.argv) > 6 else ''; VB = np.r_[10:18, 273:281]; ROWS = VB if MODE == 'vbi' else np.r_[30:250, 293:513]
+lum = np.lib.format.open_memmap(OUT + '_luma.npy', 'w+', np.uint8, (N, len(ROWS), 720)); vb = np.lib.format.open_memmap(OUT + '_vbi.npy', 'w+', np.uint8, (N, len(VB), 720)) if MODE == 'both' else None; ctr = np.zeros(N, np.int64); n = 0; total = 0
 with open(CAP, 'rb', buffering=0) as f:
     b0 = find_boundary(f, START); f.seek(b0); buf = bytearray(); v = bytearray()
     while n < N:
@@ -21,7 +22,9 @@ with open(CAP, 'rb', buffering=0) as f:
         while i >= 0 and i + UNIT + 8 <= len(v) and n < N:
             if v[i + UNIT:i + UNIT + 4] == MARK and v[i + 6:i + 8] == b"\x01\xe8":
                 a = np.frombuffer(bytes(v[i + 48:i + UNIT]), np.uint8).reshape(525, 1440)
-                lum[n] = a[ROWS][:, 1::2]; ctr[n] = int.from_bytes(v[i + 4:i + 6], 'little'); n += 1; i += UNIT
+                lum[n] = a[ROWS][:, 1::2]
+                if vb is not None: vb[n] = a[VB][:, 1::2]
+                ctr[n] = int.from_bytes(v[i + 4:i + 6], 'little'); n += 1; i += UNIT
             else: i = v.find(MARK, i + 4)
         if i > 0: del v[:i]
         elif i < 0 and len(v) > 2 * UNIT: del v[:-8]

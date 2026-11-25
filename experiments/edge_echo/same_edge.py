@@ -4,15 +4,17 @@
 # the echo, with the picture content cancelled out.  Done on the captured lines and on the lines after removal:
 #   if the model's echo is right for picture edges, the part that follows the echo is ~0 after removal;
 #   whatever overshoot is left and does not follow the echo is the edge's own.
-# usage: python3 same_edge.py find   (writes same_edges.npz)      python3 same_edge.py fit
+# usage: python3 same_edge.py find [LUMA.npy VBI.npy OUT.npz]  (default: run_luma / vbi_luma -> same_edges.npz)      python3 same_edge.py fit
 import numpy as np, sys, resource
 import model as M, stretch_check as S
 np.set_printoptions(linewidth=260, precision=2, suppress=True)
 t = np.arange(-5, 30)
 def guard():
     if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > 2e9: sys.exit('memory over 2 GB, stopping')
-def find():
-    q, d, w = S.model_from_testline(); lum = np.load('run_luma.npy', mmap_mode='r'); cols = np.arange(720)
+def find(lumf='run_luma.npy', vbif='vbi_luma.npy', outf='same_edges.npz'):
+    v = np.load(vbif, mmap_mode='r')[:, 12]; Rb, _, Tb, idx = M.edges(v); gb = M.gauge(Rb); q, _ = M.taps(*M.split(Rb, gb))
+    d = np.interp(np.arange(v.shape[0]), idx, gb); w = np.interp(np.arange(v.shape[0]), idx, Tb)      # frames without a reading borrow from neighbours
+    lum = np.load(lumf, mmap_mode='r'); cols = np.arange(720)
     meta, cap, aft = [], [], []; open_ = {}; ntid = 0
     for k in range(lum.shape[0]):
         y = lum[k].astype(float) - M.BL; x = S.remove_img(y, q, d[k], w[k]); dd = y[:, 3:] - y[:, :-3]
@@ -37,7 +39,7 @@ def find():
         if k % 50 == 0:
             guard(); print(k, len(meta), flush=True)
             for r in list(open_): open_[r] = [o for o in open_[r] if k - o[1] <= 3]
-    np.savez('same_edges.npz', meta=np.array(meta), cap=np.array(cap, np.float32), aft=np.array(aft, np.float32), d=d, w=w, q=q)
+    np.savez(outf, meta=np.array(meta), cap=np.array(cap, np.float32), aft=np.array(aft, np.float32), d=d, w=w, q=q)
 def pooled(R, dk, tid, keep):
     # within-edge regression: remove each edge's own mean response and mean depth, then one common slope
     Sxy = np.zeros(R.shape[1]); Sxx = 0.0; per = []
@@ -108,4 +110,4 @@ def ka():
     print('true echo part (mean)   ', np.mean(echos, 0)[3:30]); print('within-edge slope       ', slope[3:30]); print('one regression over all ', naive[3:30])
     print('rms error t=2..24: within-edge %.3f, one regression over all %.3f; own edge error %.3f' % (np.sqrt(((slope - np.mean(echos, 0))[m] ** 2).mean()), np.sqrt(((naive - np.mean(echos, 0))[m] ** 2).mean()), np.sqrt(((own - np.mean(owns, 0))[m] ** 2).mean())))
 if __name__ == '__main__':
-    {'find': find, 'fit': fit, 'ka': ka}[sys.argv[1]]()
+    {'find': find, 'fit': fit, 'ka': ka}[sys.argv[1]](*sys.argv[2:])

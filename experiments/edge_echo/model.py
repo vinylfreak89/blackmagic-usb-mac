@@ -10,11 +10,13 @@ def cr(y, lev, a, b, down):
     if i == 0: return None
     return a + i - 1 + (lev - seg[i-1]) / (seg[i] - seg[i-1])
 def edges(v):                         # per field: bar rise, staircase-end fall (each normalised), bar top
+    # the bar is searched from column 440: started at 400, the 12.5T pulse stood above half the bar in a third of
+    # fields (the weaker-echo ones more often) and those fields were dropped
     R, F, T, idx = [], [], [], []
     for k in range(v.shape[0]):
         y = v[k].astype(float) - BL; top = np.median(y[560:680]); st = np.median(y[250:285])
         if top < 120: continue
-        c1 = cr(y, 0.5 * top, 400, 540, False); c3 = cr(y, 0.5 * st, 285, 330, True)
+        c1 = cr(y, 0.5 * top, 440, 540, False); c3 = cr(y, 0.5 * st, 285, 330, True)
         if c1 is None or c3 is None or y[int(c1) - 12:int(c1) - 3].max() > 0.15 * top: continue
         R.append(np.interp(c1 + tr, np.arange(720), y) / top); F.append(np.interp(c3 + tr, np.arange(720), y) / st); T.append(top); idx.append(k)
     return np.array(R), np.array(F), np.array(T), np.array(idx)
