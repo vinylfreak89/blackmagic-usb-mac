@@ -250,6 +250,9 @@ What it leaves: after removal the left edge sits 0.15-0.27 of its step below its
 about +22. That is the edge with the echo run back to nothing (0.81 at +6, 0.85 at +12, 0.95 at +22), and the weak
 passage's edge has the same form. Whether it is the tape's own edge or echo that is never absent is not known.
 
+The owner watched the third clip (this removal over the same 30 s) on 2026-11-25: the repeating bands and the echo
+added at weak strength are fixed. That verdict covers this passage in motion, not the items under Open.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -330,8 +333,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- The reworked removal was calibrated on the left edges of one 30 s passage and has not been watched in motion by
-  the owner. Whether shapes read in one passage hold in another is not tested beyond the weak passage's left edge.
+- The reworked removal was calibrated on the left edges of one 30 s passage, the same one the owner judged. Whether
+  shapes read in one passage hold in another is not tested beyond the weak passage's left edge.
 - What is left after the left edge (above): tape's own edge or echo that is never absent.
 - Narrow strokes: the 2T pulse is not improved at strong echo; fine lettering above a reading of 0.8 is not clean.
 - Bands of 4-7 codes remain above a reading of 0.65.
