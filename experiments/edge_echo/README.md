@@ -92,6 +92,14 @@ What is left after rises is a shortfall of about 0.3 per unit of reading at +3 s
 are hit about a sample earlier than the bar predicts. Pooled, the rises come out with no dip and no
 added overshoot (0.97 at +3, 0.86-0.88 from +6 to +15, 0.97 by +24).
 
+In motion (`clip.py`: the first passage's 900 frames, the same removal with the five-line cleaning,
+both fields, captured over removed): picture rises 0.11, falls 0.10 by the same check. 1.05% of
+output samples land below code 0, nearly all in the last 40 columns, after the picture's fall into
+the right blanking (19% of samples there, 2.5% captured); inside the picture 0.003%. Line-to-line
+change at 0.2-0.6 MHz goes 4.96 -> 6.05 codes on these picture frames; restored picture and added
+noise are not separated by that number. At readings above 0.8 fine white lettering comes out dimmer
+and still doubled.
+
 Falls on the test line (`falls3.py`), staircase-end fall against its weak-echo shape: reading
 0.50-0.65: 0.126 captured, 0.136 after removal without the lag near blanking, 0.073 with it;
 0.65-0.90: 0.183, 0.186, 0.076. With the lag the fall still ends about 0.07 of the step low.
@@ -133,6 +141,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `same_edge.py` | steady picture edges across frames; within-edge split; `ka` |
 | `same_refit.py` | taps read from the bar, the picture or both, each scored on the other edges |
 | `panel3.py` | stills: captured, straight-line model, two-shape echo |
+| `clip.py` | a stretch in motion: two-shape removal over consecutive frames, its checks, woven frames for an encoder |
 | `deghost.py` | left-edge step response, echo taps, left-to-right removal, `ka` |
 | `aware.py` | spectral division, five-line cleaning, noise-aware removal, `ka`, panels |
 | `band.py` | gain of the division by frequency and where line-to-line junk grows |
@@ -150,6 +159,6 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
   reading is left on picture edges.
 - The lag near blanking is not refitted for the two-shape taps; falls into blanking end about 0.07 low.
 - Whether the almost-no-echo edge's shallow dip is the tape's own.
-- The five-line cleaning threshold was chosen by hand; the two-shape removal has been looked at on
-  stills only, luma only.
-- A reading near 0.9 leaves some frequencies almost cancelled.
+- The five-line cleaning threshold was chosen by hand; luma only; one 30 s passage in motion.
+- A reading near 0.9 leaves some frequencies almost cancelled; fine lettering above 0.8 is not clean.
+- The removal undershoots into the right blanking.
