@@ -60,13 +60,39 @@ depth and checked on the other two thirds:
 The bar's fall (not used) comes out as the tape's own fall. The bar's rise keeps its overshoot, within
 0.05-0.1.
 
-**Not carried over to the picture yet.** `stretch_check.py` pools isolated in-picture steps per
-5-second block (echo depth 0.35-0.70 across blocks): the block-to-block spread of the pooled response
-is 0.06-0.12 before and 0.06-0.11 after, so no gain is shown, and picture rises come out with an
-overshoot of 1.2-1.5 that lasts longer than the test bar's own. The smooth taps reproduce the bar's
-echo only to rms 0.11 per unit of depth, and the check is confounded by the blocks holding different
-picture. The 2T pulse keeps a shoulder (0.2-0.5 of the pulse) because the capture clipped what went
-below blanking.
+## On picture edges (`same_edge.py`, `same_refit.py`, `left_level.py`, `compare.py`)
+
+An edge that stays put for 12 or more frames is the same content while the echo strength drifts (0.14-0.15 within
+an edge, median). Regressing its response on strength within each edge cancels the content. Known answer
+(`same_edge.py ka`, made-up edges whose own overshoot grows with strength): true echo recovered to 0.011 rms, where
+one regression over everything is off by 0.44. On 30 s, mid-level edges of about 120 codes (32 rises, 40 falls):
+
+| part of the response that follows the strength (rms, +2..+24) | captured | after `model.py` removal |
+|---|---|---|
+| picture rises | 0.35 | 0.15 |
+| picture falls | 0.36 | 0.09 |
+
+(uncertainty 0.04-0.05, from resampling whole edges)
+
+- **The overshoot left on picture rises is the picture's own**: 1.21-1.25 at +3 samples in the part that does not
+  follow the strength, the same before and after removal.
+- `stretch_check.py`'s "no gain" was the content confound; its block-to-block check is superseded by this one.
+- **The echo is not one fixed filter for every edge.** With a strength reading that leaves each field's own reading
+  out (mean of its four neighbouring fields; `compare.py`), the echo per unit of strength is deepest at: test bar
+  -1.22 at +6 (own overshoot peaks 1.40 at +5); picture rises -0.89 at +4 (1.25 at +3); picture falls -0.96 at +5
+  (1.27 at +4); left blanking edge by the level it lands on -1.11 at +4, -0.84 at +4, -0.92 at +5, -1.44 at +5 (own
+  peaks at +3, +3, +3, +4). In all seven the echo is deepest one sample after the edge's own overshoot peak, not at
+  a fixed delay after the edge's half-way point. Taps read from one kind predict another kind's echo with an error
+  of 0.2-0.5 of that echo (0.07-0.36 on the kind they were read from). No simple rule by landing level.
+- Taps read from the bar's rise and the picture's rises together: picture rises 0.07, picture falls 0.10, bar rise
+  0.20 (0.14 with the bar's own taps). On the picture that is within the uncertainty of the bar's taps.
+- The edge with the echo regressed out keeps a shallow dip (0.83-0.95 of the step) from +7 to +18 in every kind,
+  the bar included: either the tape's own, or echo that does not scale with the reading. The stretch has no field
+  below a strength of 0.29, so it cannot tell which. A stretch where the echo is gone would give the tape's own
+  edge directly.
+
+The 2T pulse keeps a shoulder (0.2-0.5 of the pulse) after removal because the capture clipped what went below
+blanking.
 
 ## Removal tried
 
@@ -101,11 +127,15 @@ below blanking.
 | `tl_remove.py` | first-version removal run on the pooled test line |
 | `model.py` | the fall model, fitted on one third of fields and checked on the rest |
 | `stretch_check.py`, `panel2.py` | the model on 30 s of picture; stills panel |
+| `same_edge.py` | steady picture edges across frames; response split within each edge into its own shape and the part that follows the strength, before and after removal; `ka` |
+| `same_refit.py` | taps read from the bar, the picture or both, each scored on the other edges |
+| `left_level.py`, `compare.py` | left blanking edge by landing level; every kind against one strength reading; taps from one kind tried on the others |
 
 ## Open
 
-- Echo taps that hold for picture edges (softer than the test bar, with their own overshoot); a check that is not
-  confounded by picture content.
+- An echo description that holds across edge kinds (it follows each edge's own overshoot peak, not a fixed delay);
+  a quarter to almost half of the picture's echo is left by the present taps.
+- The tape's own edge with no echo present (needs a stretch where the echo is gone).
 - The bar finder misses field 1 in about two thirds of fields.
 - The five-line cleaning threshold was chosen by hand and tried on stills only.
 - Echo depth near 0.9 leaves some frequencies almost cancelled.
