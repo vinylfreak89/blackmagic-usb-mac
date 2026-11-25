@@ -361,6 +361,11 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   -162.5 degrees per line: a slanted band about every 21 lines of a field, which rolls. Strongest at 62 minutes,
   weaker in the first passage, not found in the weak passage three minutes before 62, and not found in a September
   capture of a commercial tape through the other chain. Cause not identified; not the capture device.
+- Checked on 10 s of another capture made three days earlier (a different tape, same week): no comb, and no steady
+  tone above 1.6 times the background anywhere from 0.08 to 5.5 MHz. On this evidence the comb belongs to this
+  recording, not to the VCR, and whatever the owner sees in every capture has not been found by this measurement.
+  Band-passing a field around 292 kHz to picture the tone shows mostly picture edges ringing in the filter; no
+  usable picture of it was made.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
