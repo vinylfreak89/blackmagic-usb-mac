@@ -6,10 +6,11 @@
 #   python3 harness.py tl NAME [key=value ...]     -> test line by part, amounts from the other field's line
 #   python3 harness.py remove LUMA VBI OUT_removed.npy [key=value ...]   -> a whole stretch removed (also OUT_read.npy)
 #   python3 harness.py ka [NOISE]                  -> known answer for the whole method on made-up captures of the weak passage
-#   python3 harness.py calib [K0 K1 LAM HALF]      -> calib.npz: the two echo shapes as the picture's left edges show them, and taps for them
+#   python3 harness.py calib [K0 K1 LAM HALF OUT TRACKS.npz ...]   -> calib.npz (or OUT), from one or several passages' tracks: the two echo shapes as the picture's left edges show them, and taps for them
 # Variant keys: lag=0|1 (the lag near blanking), floor=0|1 (samples at the floor left as captured), g1=, g2= (gains on the
 # two shapes), g2z= (zero added to amount 2), shift= (taps moved by this many samples), eps=, iters=, step=N (every Nth frame),
-# calib=1 (taps from calib.npz instead of the bar's), even=1 (score even-numbered tracks only)
+# calib=1 (taps from calib.npz instead of the bar's), even=1 (score even-numbered tracks only);
+# lum=, vbi=, tracks= name another passage's files for score and tl (default: the first passage's); cal= another calibration file
 #
 # Scores (all from edges that stay put, so picture content cancels):
 #   slope1, slope2 : what the edge's profile still does per unit of amount 1 / amount 2 (joint regression inside each track),
@@ -54,9 +55,10 @@ def shifted(q, s):                     # taps moved later by s samples (linear i
     if not s: return q
     k = np.arange(len(q)); return np.interp(k - s, k, q, left=0, right=0)
 def variant(kv):
-    d = dict(lag=1, floor=0, g1=1.0, g2=1.0, g2z=0.0, shift=0.0, eps=0.01, iters=3, step=2, calib=0, even=0); d.update({k: float(v) for k, v in (a.split('=') for a in kv)}); return d
+    d = dict(lag=1, floor=0, g1=1.0, g2=1.0, g2z=0.0, shift=0.0, eps=0.01, iters=3, step=2, calib=0, even=0, lum='run_luma.npy', vbi='vbi_luma.npy', tracks='tracks.npz', cal='calib.npz')
+    d.update({k: v if k in ('lum', 'vbi', 'tracks', 'cal') else float(v) for k, v in (a.split('=') for a in kv)}); return d
 def taps(R, m, d):
-    Q = np.load('calib.npz')['Q'] if d.get('calib') else m['Q']       # calib=1: taps read from the picture's own left edges (see cmd_calib)
+    Q = np.load(d.get('cal', 'calib.npz'))['Q'] if d.get('calib') else m['Q']       # calib=1: taps read from the picture's own left edges (see cmd_calib)
     return shifted(d['g1'] * R[1] * Q[0] + d['g2'] * (R[2] + d['g2z']) * Q[1], d['shift'])
 def fit_calib(meta, cap, R, K0=1, K1=85, lam=0.1, verbose=True):
     # The echo's two shapes as the PICTURE shows them: slope of the left edge's profile on the two amounts inside each steady track
@@ -70,10 +72,14 @@ def fit_calib(meta, cap, R, K0=1, K1=85, lam=0.1, verbose=True):
         if verbose: print('shape %d as the picture shows it, t=2..30 step 2: %s' % (i + 1, S[i][(T >= 2) & (T <= 30) & (T % 2 == 0)])); print('   taps reproduce it to rms %.4f (shape rms %.4f); sum of taps %.3f' % (np.sqrt(((Am @ qs - S[i]) ** 2).mean()), np.sqrt((S[i] ** 2).mean()), qs.sum()))
     if verbose: print('the edge with the echo run back to nothing, t=-2..30 step 2:', own[(T <= 30) & (T % 2 == 0)])
     return Q, S, own
-def cmd_calib(K0='1', K1='85', lam='0.1', half='0'):   # half=1: tracks with odd ids only, so the even ones can check it
-    z = np.load('tracks.npz'); meta, cap, R = z['meta'], z['prof'], z['R']
-    if int(half): s_ = meta[:, 0].astype(int) % 2 == 1; meta, cap = meta[s_], cap[s_]
-    Q, S, own = fit_calib(meta, cap, R, int(K0), int(K1), float(lam)); np.savez('calib.npz', Q=Q, S=S, own=own, K0=int(K0), K1=int(K1))
+def cmd_calib(K0='1', K1='85', lam='0.1', half='0', out='calib.npz', *trackfiles):   # half=1: tracks with odd ids only, so the even ones can check it
+    metas, caps, Rs = [], [], []; nf = nt = 0                                    # several track files: one calibration over all of them
+    for f in trackfiles or ('tracks.npz',):
+        z = np.load(f); me = z['meta'].copy(); me[:, 0] = z['meta'][:, 0] + nt; me[:, 1] += nf
+        if int(half): s_ = z['meta'][:, 0].astype(int) % 2 == 1
+        else: s_ = np.ones(len(me), bool)
+        metas.append(me[s_]); caps.append(z['prof'][s_]); Rs.append(z['R']); nf += len(z['R']); nt += int(z['meta'][:, 0].max()) + 1
+    Q, S, own = fit_calib(np.concatenate(metas), np.concatenate(caps), np.concatenate(Rs), int(K0), int(K1), float(lam)); np.savez(out, Q=Q, S=S, own=own, K0=int(K0), K1=int(K1))
 def make_tracks(lum, n=None):          # left edges that stay put (same row, step within 5%) for 12+ frames
     cur = {}; recs = []; tid = 0
     for k in range(n or lum.shape[0]):
@@ -115,7 +121,7 @@ def report(name, meta, cap, rem, R):
                     % (lo, hi, s.sum(), np.ptp(d), np.ptp(d) * np.median(p[s]), np.median(fill), *np.quantile(fill, [.05, .95]), lowest))
     print('\n'.join(rows))
 def cmd_score(name, *kv):
-    d = variant(kv); z = np.load('tracks.npz'); meta, cap, R = z['meta'], z['prof'], z['R']; m = F.build(2, 75, 80, 1, verbose=False); lum = np.load('run_luma.npy', mmap_mode='r')
+    d = variant(kv); z = np.load(d['tracks']); meta, cap, R = z['meta'], z['prof'], z['R']; m = F.build(2, 75, 80, 1, verbose=False); lum = np.load(d['lum'], mmap_mode='r')
     k = meta[:, 1].astype(int); use = (k % int(d['step']) == 0) & ((meta[:, 0].astype(int) % 2 == 0) | (d['even'] == 0)); meta, cap = meta[use], cap[use]; k = k[use]; rem = np.zeros_like(cap)   # even=1: even track ids only
     for f in np.unique(k):
         y = lum[f].astype(float) - M.BL; x = remove_img(y, taps(R[f], m, d), R[f, 3], lag=bool(d['lag']), floor=bool(d['floor']), cleaner=lambda v: clean(v, 220), eps=d['eps'], iters=int(d['iters']))
@@ -167,7 +173,7 @@ def cmd_ka(noise='1'):
     import os; os.remove('ka_luma.npy')
 PARTS = {'staircase': (-420, -172), 'after its fall': (-172, -118), '2T pulse': (-118, -84), '12.5T pulse': (-84, -25), 'bar rise': (-25, 30), 'bar top': (30, 225)}
 def cmd_tl(name, *kv):
-    d = variant(kv); m = F.build(2, 75, 80, 1, verbose=False); tr = m['tr']; X = np.arange(-450, 248); weak = []; v = np.load('vbi_luma.npy', mmap_mode='r'); res = {b: {'cap': [], 'rem': [], 'fl': []} for b in BINS}
+    d = variant(kv); m = F.build(2, 75, 80, 1, verbose=False); tr = m['tr']; X = np.arange(-450, 248); weak = []; v = np.load(d['vbi'], mmap_mode='r'); res = {b: {'cap': [], 'rem': [], 'fl': []} for b in BINS}
     for f in ('lo_vbi.npy', 'lo2_vbi.npy'):
         w = np.load(f, mmap_mode='r')
         for k in range(w.shape[0]):

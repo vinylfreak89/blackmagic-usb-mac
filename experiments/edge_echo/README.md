@@ -253,6 +253,40 @@ passage's edge has the same form. Whether it is the tape's own edge or echo that
 The owner watched the third clip (this removal over the same 30 s) on 2026-11-25: the repeating bands and the echo
 added at weak strength are fixed. That verdict covers this passage in motion, not the items under Open.
 
+### A second passage, 36 minutes later: the shapes do not carry over
+
+30 s from 62 minutes into the capture (900 frames, one read, colour kept as well: `stretch.py ... all`). Readings
+0.46-0.98, median 0.69; the second amount is 0.55-0.85 here (first passage -0.01 to 0.59, median 0.16). Nothing was
+refitted: amounts from the bar as before, shapes from the first passage (`harness.py score/tl/remove ... lum= vbi=
+tracks=`).
+
+| removal, scored on the 62-minute passage's left edges | bands by reading 0.45-0.55 / 0.55-0.65 / 0.65-0.75 / 0.75-0.90, codes |
+|---|---|
+| first passage's shapes (the removal the owner judged fixed there) | 13 / 9 / 24 / 29 |
+| the second clip's model | 10 / 10 / 19 / 26 |
+| shapes read from this passage alone (odd tracks, scored on even) | 12 / 10 / 21 / 34 |
+| shapes read from both passages together | 10 / 6 / 17 / 20 (and the first passage worsens to 3 / 4 / 7 / 12 / 17) |
+
+With the first passage's shapes what follows the reading goes 0.377 -> 0.111 at the dip but 0.065 -> 0.142 in the bands
+(more than captured); the bar-top swing on the test line is 0.064 / 0.101 / 0.149 / 0.216. Shapes read inside this
+passage remove the slopes inside it (0.040 / 0.068 per amount) but the edge "run back to no echo" is not believable
+(1.50 at +2): the amounts here span a narrow range far from zero.
+
+Why: at the same reading the echo is a different shape here. Left edge, reading 0.65-0.75, t = 2..20 step 2:
+
+    first passage  1.15 0.75 0.25 0.41 0.65 0.73 0.78 0.83 0.88 0.93
+    62 minutes     0.91 0.44 0.23 0.47 0.75 0.83 0.86 0.91 0.95 0.99
+
+The dip starts about a sample earlier, is narrower, has no overshoot before it and almost none of the slow recovery
+over +10..+22. The test bar shows the same thing: on its rise at 62 minutes the two shapes leave -0.07 to -0.11 at
++2..+4 and +0.02 to +0.06 from +6 to +40 at every reading (rms 0.032 against 0.018-0.021 in the other passages). So
+the echo has at least a third thing that moves (where it sits and how wide it is), the bar sees it, and two amounts
+times two fixed shapes cannot follow it. The owner's "fixed" holds for the first passage only.
+
+Colour: in the capture the test line has no colour at all (U and V at neutral on both fields' lines), so colour has
+no per-field reference like the bar. Steady saturated left edges were too few here (3 tracks) to say whether colour
+follows the luma echo.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -333,8 +367,9 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- The reworked removal was calibrated on the left edges of one 30 s passage, the same one the owner judged. Whether
-  shapes read in one passage hold in another is not tested beyond the weak passage's left edge.
+- The reworked removal holds in the passage it was calibrated on and fails 36 minutes later (above): the echo's
+  place and width move, and the model has no term for that. A description that follows it is the next thing to find.
+- Colour: no measurement yet of whether it carries the echo beyond the 8 frames under "What it is".
 - What is left after the left edge (above): tape's own edge or echo that is never absent.
 - Narrow strokes: the 2T pulse is not improved at strong echo; fine lettering above a reading of 0.8 is not clean.
 - Bands of 4-7 codes remain above a reading of 0.65.
