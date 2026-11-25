@@ -172,6 +172,43 @@ treats as the main one.
   every reading. The left edge in the strong passage scores worse against the weak passage's edge (0.06-0.10
   against 0.04-0.07), a comparison across different scenes. Not adopted, not settled.
 
+### Two independent reviews of the band explanation (2026-11-25)
+
+The owner did not accept "the bands come from dividing a near-cancellation back out" and had it challenged by
+two reviewers working separately on the same data (their scripts and logs stayed in scratch). Both measured
+in the picture, which the notes above never did.
+
+Agreed by both, and accepted:
+- The removal creates bands in the picture, about 30 samples apart, growing steeply with the reading; the
+  remade clip has about twice the first clip's. On the left picture edge the swing is 2.6-3.1 codes below a
+  reading of 0.55, 7 at 0.55-0.65, 20 at 0.65-0.75, 30 at 0.75-0.90. Below 0.55 there is no alternation,
+  only a small one-signed darkening 20-45 samples after edges (about 1-3% of the step).
+- The near-cancellation is in the capture itself, read without the model: the strongest fields keep about
+  0.18 of the weak line's content near 0.42 MHz (the model said 0.13 at 0.45).
+
+Corrections to the notes above:
+- **The division is not the cause; the model is.** Put through the model's own echo, the weak line comes back
+  with a bar-top swing of 0.003-0.007 up to a reading of 0.75, whatever the division limit or number of passes;
+  the real lines show 0.07 and do not care about the limit either. The bands are the difference between the
+  modelled and the real echo near 0.45 MHz, magnified by the near-cancellation. "No setting has neither"
+  described a limit that only helps by leaving echo in; it says nothing about a better model. At 0.75-0.90
+  about half the ripple is reproduced by the capture's floor alone and cannot be undone.
+- **Narrow detail is over-corrected.** Scaling the subtracted echo: the narrow (2T) pulse is best at 0.40-0.55
+  of the applied amount at every reading and is worse after removal than before at strong echo (0.135
+  captured, 0.16 removed, 0.10 at 0.55); the wide pulse is best at 0.85; the bar's rise at 1.0.
+- **The bar's echo is not the picture's.** After removal the level at the dip on the left picture edge runs
+  0.74-0.97 of the step from second to second, unrelated to the reading (-0.05) and tied to the second amount
+  (-0.40): the second shape read from the bar does not carry over. At 8-13 s (readings 0.35-0.47) the dip is
+  over-filled and 0.74-0.89 of the amount would have been right, while the test line asks for 1.03-1.07.
+- **The reading is a share, not what is seen.** Against the left edge's dip as a share of its step it holds
+  (correlation 0.96); against the dark line's depth in codes it does not (0.69): the weakest reading of the
+  clip (0.34, at 14 s) has a 77-code dark line, readings of 0.61-0.66 at 0-1 s have 48-52 codes.
+
+Where the reviews did not support the owner's reading: the bands are largest at strong echo, not weak, and
+their polarity (dark first after a rise) is that of too little correction; less subtraction lowers them only by
+leaving echo in. Where the two reviews differ: one finds broad picture edges want 1.15 or more of the amount,
+the other 0.9-1.0 on the left edge; one finds removing the lag near blanking alone does not help.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -249,8 +286,10 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- At readings above about 0.6 the removal leaves repeating bands every 30 samples; whether to leave part of the
-  echo in there instead is the owner's call.
+- At readings above about 0.55 the removal leaves repeating bands every 30 samples: a model error near 0.45 MHz,
+  magnified. What the real echo does there that the model misses is not known.
+- The second shape read from the bar does not carry over to the picture; narrow detail is over-corrected about
+  two-fold. Any next model is to be scored in the picture and on every part of the test line, not the bar's rise.
 - Echo is still seen added where the real one weakens (owner, second clip); the lag near blanking is one
   contributor, not shown to be all of it.
 - Narrow strokes: the 2T pulse is no better after removal at any strength; fine lettering above a reading of
