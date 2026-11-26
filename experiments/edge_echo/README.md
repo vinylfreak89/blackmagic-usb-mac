@@ -452,6 +452,11 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
     So no predictor from the captured sound, and the carrier-beat explanation is not confirmed by this; the tally
     of tapes still stands. Not yet tried: a flat passage with loud sound, where a relation, if any, would be
     plain.
+    The sound itself reads as Hi-Fi, as the owner suggested checking: content up to 18-20 kHz in the loud part
+    (10-15 dB above the quiet part's floor there), a noise floor near -71 dBFS over 1-20 kHz against loud passages
+    at -14 dBFS, and hiss that differs between left and right. A linear track would stop near 10 kHz with a floor
+    some 25 dB higher. (Lines at multiples of 60 Hz stand 15-27 times above their surroundings in the quiet part:
+    head switching or mains hum, not separable in 4 s.)
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
