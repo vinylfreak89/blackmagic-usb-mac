@@ -309,6 +309,24 @@ def check_range(mod, G):
         k = rc.index(g['c0'] % 65536)
         for s1, s2 in zip(si[k:k + g['m'] + 1], si[k + 1:k + g['m'] + 2]): assert 0 < s2 - s1 <= 2402, ('resync interval', g['i'], s2 - s1)
 
+STAGING_MAX = float(os.environ.get('TWO_PASS_STAGING_MAX_GB', '6')) * 1e9
+STATS = os.path.expanduser('~/.juicemount/fuse-internal/.stats')
+def hold_for_uploads(data):
+    """with the ranges going to the share, wait before the next one while JuiceFS's upload backlog (staged on the local
+    disk) is above STAGING_MAX, as assemble.py does: uploads run at ~25 MB/s and a capture writes ~23 MB/s, so building on
+    regardless fills the disk and delays the capture's own uploads. Read from the mount's .stats (its HTTP metrics
+    listener has gone away while the mount ran on); an unreadable counter stops the run"""
+    if not data.startswith('/Volumes/zpool/'): return
+    said = False
+    while True:
+        try: v = next(float(l.rsplit(' ', 1)[1]) for l in open(STATS).read().splitlines() if l.startswith('juicefs_staging_block_bytes'))
+        except Exception: print('STOPPED: the upload backlog (%s) cannot be read' % STATS, flush=True); sys.exit(5)
+        if v <= STAGING_MAX:
+            if said: print('%s upload backlog %.1f GB: building on' % (time.strftime('%H:%M:%S'), v / 1e9), flush=True)
+            return
+        if not said: print('%s upload backlog %.1f GB, over %.0f GB: holding' % (time.strftime('%H:%M:%S'), v / 1e9, STAGING_MAX / 1e9), flush=True); said = True
+        time.sleep(15)
+
 def main():
     planf, bth, dth, base_tpc, donor_tpc, work = sys.argv[1:7]
     first = int(sys.argv[7]) if len(sys.argv) > 7 else 0; last = int(sys.argv[8]) if len(sys.argv) > 8 else None
@@ -331,6 +349,7 @@ def main():
         if key in done and os.path.exists(os.path.join(work, done[key][0]['file'])):   # (an absolute file stays absolute)
             assert done[key][0]['rep']['regions'] == ids, ('the work folder was built with other clusters', key)
             prev_end = done[key][0]['file_to']; continue
+        hold_for_uploads(data)
         free = shutil.disk_usage('/').free
         if free < FREE_MIN: print('STOPPED before %s: %.1f GB free on the internal disk, under %.0f GB (a rerun resumes here)' % (key, free / 1e9, FREE_MIN / 1e9), flush=True); sys.exit(4)
         t0 = time.time()
