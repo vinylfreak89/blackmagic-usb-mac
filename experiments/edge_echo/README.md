@@ -395,8 +395,16 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   Last check, at the owner's request: a Hi-Fi tape captured through the OTHER chain (36 spread frames, 199 quiet
   small patches): no tone, 1.3 x against 1.7-1.9 beside it and nothing anywhere from 300 to 500 kHz; fitted size
   0.16-0.27 codes in its quietest frames against 0.84-0.96 where the tone is present. So it takes both: a Hi-Fi
-  tape and this VCR. The tape supplies the carriers and sets the frequency; this VCR lets their beat into the
-  picture and the other one does not.
+  tape and this VCR" was the reading at that point; the next check withdrew it.
+  Then the first tape of the same series (same production house, Hi-Fi, captured on THIS VCR): no tone either (4.0 x
+  against 3.5-4.3 beside it, nothing from 300 to 500 kHz, 0.25 codes fitted in its quietest frame). So a Hi-Fi
+  tape on this VCR is not enough; it depends on the tape. Every tape with the tone is Hi-Fi (two), no tape without
+  Hi-Fi has it (two), and two Hi-Fi tapes from one production house lack it on either chain. Whether the tone is
+  recorded on those two tapes by the machines that made them, or made in playback by this VCR from something those
+  tapes have more of, is not separated: playing a tape that has it on the other deck would.
+  In the flattest frame the tone's frequency moves between 386 and 399 kHz from line to line and its phase moves
+  by 40-50 degrees along one line while its size stays 0.9-1.0 codes: frequency modulation, as sound carriers
+  have and a power supply does not.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
