@@ -680,8 +680,8 @@ the cancellation toward the carrier does not prevent the artifacts.
   level at +6: captured 0.19, taper 0.35 / 0.46, full 0.85; the 2.5 taper leaves ripple 0.138 against 0.035 captured.
 - **Gate.** The full removal's correction (removed minus captured) is applied only where its local size (rms over 17
   samples twice along the line and 3 lines of the field) stands clear of the frame's own floor (10th percentile of that
-  size): share applied = 1 - 9 floor^2 / size^2, never below 0. Flat picture stays as captured, so the division limit
-  can go down to 0.003 ("more boost") without boosting it.
+  size): share applied = 1 - 9 floor^2 / size^2, never below 0. Flat picture stays as captured. A lower division limit
+  (0.003, "more boost") was tried on top of it and withdrawn (below).
 - **Known answer** (`gate.py ka`: 100 echo-free frames of another tape, taps of 352 strong-echo frames of the 62-minute
   passage, noise 0.7 codes, a 393 kHz tone of 0.45 codes, cut off and rounded; removal with the true taps). Error against
   the echo-free frames, codes rms, by the true echo's local size:
@@ -708,7 +708,25 @@ the cancellation toward the carrier does not prevent the artifacts.
 - **Not changed by this:** the reading itself (one reference edge, frames filled from the bar), so what is left at the
   strongest frames' edges and fine lettering is what the full removal left. Edges whose echo is 2-8 codes get part of
   the correction only. A frame with less than a tenth of quiet picture gets a floor that is too high and less removal.
-  Colour untouched. Judged by the owner: pending (one clip of the 62-minute passage).
+  Colour untouched.
+- **Owner on that clip (gated, division limit 0.003):** the earlier artifacts are gone and it still looks good, but
+  "occasional vertical bands of bright and dark that move horizontally across the picture", there at some times and
+  not at others. Found: with the limit at 0.003 a regular pattern of about 27 samples per cycle (the 0.5 MHz region)
+  covers the whole width in the frames where under 0.06 of the picture is left there, and changes from frame to frame.
+  At 0.01 it is not seen. Neither known answer predicted it: with the reading's own error in the taps (even-row
+  reading against all-row reading, `gate.py ka2`), and with the echo also drifting down each frame to the next frame's,
+  0.003 scores best on every count, the error near the cancelled frequency included. What the real picture has that
+  these lack is not identified. The left-edge ripple could not see it either: the taps are fitted to those edges.
+- **A score that does see it** (`gate.py moving`): a part of the picture that stands still (a caption card on black,
+  320 frames), change from frame to frame of what is the same down 180 rows, median frame, codes rms. Captured 0.93;
+  full removal as in the earlier clips 1.60; gated at limit 0.003 1.67, 0.01 1.41, 0.02 1.29, 0.04 1.23. Every removal
+  makes still picture less still, because each frame's taps are read on their own. Taps averaged over 3 / 5 / 9 frames
+  at limit 0.01: 1.15 / 1.10 / 1.10 (1.07 on the rendered clip).
+- **Setting now: gated, limit 0.01, taps averaged over 5 frames.** Left edges as before (same edge at stronger against
+  weaker echo, first passage: 0.0096 against 0.0547 captured; ripple at 62 minutes 0.044 / 0.030 / 0.043 / 0.048
+  against 0.035 / 0.034 / 0.033 / 0.035 captured and 0.039 / 0.037 / 0.066 / 0.087 for the full removal). Flat
+  stretches: 393 kHz amplitude 1.04 against 0.99 captured. Known answer at this limit, true echo over 8 codes: 3.4
+  against 22.3 captured. Judged by the owner: pending (replacement clip of the same stretch).
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
@@ -768,7 +786,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `barread.py` | the echo read from the test line's plain-luma parts with free taps on both sides of the edge; references, known answer, picture scores (same edge at two strengths, what moves together across rows) |
 | `reflect.py`, `reflect_score.py` | one reflection at RF relative to the weakest state: fit to the pooled test lines; three numbers per frame and the picture scores |
 | `reflect_cal.py`, `scene_ref.py` | the test line's per-frame state calibrated to the picture on held-out tracks; a reference edge made for the passage, judged on the test bar |
-| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; known answer, scores, a gated stretch |
+| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, a gated stretch |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
