@@ -858,6 +858,44 @@ five-frame mean of the readings, why is every frame not judged by its own echo?
   neighbouring lines.
 - Judged by the owner: pending.
 
+### Back to one reflection from the test bar, at full strength (`onerefl.py`, 2026-11-26)
+
+Owner on the clip with the bar-led reading and the wide hole: "worse. with everything. it barely fixes any of the
+ghosting on the clip and it still has artifacts"; why picture edges and the rest at all: "find the ghost, subtract out
+its phase"; "I don't understand why we are weakening the fixes"; and, on hearing that the two paths are about equal in
+strength at 14-20 s: "isn't it best to do nothing?"
+
+- **The model:** one reflection per frame, three numbers (strength, phase, delay) from that frame's test bar (the fit
+  of "Reading the echo from the test line", below 1.6 MHz), removed with the division limit 0.01, three passes, gated,
+  thin features kept. No picture edges, no leftover hole.
+- **On an edge nothing was fitted to** (the picture's right border, a falling edge onto black; `gate.py border_ghost`),
+  ghost left as a share of the border's step, near (+1..+9) / far (+11..+44), median over frames, by the reflection's
+  strength from the bar:
+
+  | strength | captured | one reflection, full strength | bar-led picture reading, full strength | the same, wide hole (the clip judged worse) |
+  |---|---|---|---|---|
+  | under 0.8 (48 frames) | 0.18 / 0.06 | 0.09 / 0.08 | 0.18 / 0.15 | 0.18 / 0.12 |
+  | 0.8-0.9 (53) | 0.66 / 0.24 | 0.19 / 0.17 | 0.22 / 0.25 | 0.37 / 0.22 |
+  | 0.9 and over (36) | 0.74 / 0.26 | 0.22 / 0.15 | 0.29 / 0.21 | 0.49 / 0.24 |
+
+  The one-reflection model is the best of the three at every strength, near and far. The picture-edge readings were
+  fitted to the rising left edges and passed their own tests by construction; on this edge they leave the near ghost
+  untouched at low strength and add far ripple. The earlier rejection of the one-reflection kernel ("far ripple 2-5
+  times `direct.py`") was scored on those left edges.
+- **By strength** (`onerefl.py bystrength`): added where the capture is flat, codes rms, 0.09 / 0.12 / 0.23 / 0.47 /
+  0.80 at strength 0.6-0.7 / 0.7-0.8 / 0.8-0.9 / 0.9-1.0 / over 1.0 at 62 minutes (40% of the stretch is under 0.8,
+  40% at 0.8-0.9, 20% above); 0.06-0.11 in the first passage (strength 0.5-0.9). At 0.96 the wall after the left
+  border carries 7.2 codes rms of ripple (captured 1.7). The bar puts the reflection ABOVE the direct signal at
+  18.7-19.4 s (1.03-1.12).
+- **Fade** (`onerefl.py`, `FADE0`): full removal while the strength is under 0.8, none from 1.0 on, linear between.
+  The 0.8 is read off the table above, not measured as an edge of anything.
+- **Owner on four stills at full strength:** "except the edge ringing is back". Measured at strength 0.76 beside the
+  right border: the main bump (0.41 at +5) is gone; left are 0.13 at +17 and 0.07 at +39. The capture has 0.12-0.08
+  at +13..+17 and 0.05 at +39 already: the echo's longer part (noted after the first clip: the bar sits 0.02-0.04
+  high from +20 to +50), which one reflection does not contain, and which reads as a separate ghost once the main one
+  is gone. The fit leaves 2.2% of the bar where 89 free taps leave 1.4%.
+- A three-row clip of the 62-minute stretch (captured / full strength / faded) was sent. Judged by the owner: pending.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -918,6 +956,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `reflect_cal.py`, `scene_ref.py` | the test line's per-frame state calibrated to the picture on held-out tracks; a reference edge made for the passage, judged on the test bar |
 | `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; the wide leftover hole; thin features kept in the echo prediction; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, what is added on flat picture, a gated stretch |
 | `thin_ka.py` | known answer for keeping thin features in the echo prediction: error where the median cleaning cannot predict the echo, elsewhere, and after made-up dropout streaks |
+| `onerefl.py` | the owner's model: one reflection per frame from the test bar, removed at full strength, with the fade near equal strength; three-row clip frames; results by strength |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
