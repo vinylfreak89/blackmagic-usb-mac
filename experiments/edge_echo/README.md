@@ -443,6 +443,14 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
     samples to find it. A blind estimate needs far more samples in step than the tone's wander allows; removing it
     in ordinary picture needs the tone's phase from somewhere else. Untried: if it is the two Hi-Fi carriers
     beating, its phase follows the difference of the two sound channels, which the capture also holds.
+  - That was then tested and found nothing (`tonesound.py`; the same 10 s read again with its sound, `stretch.py
+    ... audio`). On 51,718 flat lines of the title card the tone's frequency (median 392.9 kHz, spread +-4.4 kHz)
+    was set against the captured sound averaged over each line: right minus left, left, right, and their sum, at
+    every offset within +-50 ms. Strongest correlation 0.014; the same with the frequencies shuffled gives 0.012.
+    Limits of the test: the sound under the title card is near silence (about -58 dB, mostly hiss), the only
+    place where lines are flat enough to read the tone's frequency; and whether the captured sound came from the
+    Hi-Fi tracks is not known. So no predictor from the captured sound, and the carrier-beat explanation is not
+    confirmed by this; the tally of tapes still stands.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
@@ -506,6 +514,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
 | `tonesmall.py`, `tonediff.py` | the 393 kHz question in busy picture: many small flat patches; differences of consecutive frames |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
+| `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |
