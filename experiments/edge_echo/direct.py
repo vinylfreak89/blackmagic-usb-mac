@@ -8,6 +8,9 @@
 # same stretch that could be read directly.
 #   python3 direct.py read LUMA.npy AMOUNTS.npy OUT.npz [NMIN [even|all [mix]]]   -> per-frame taps; 'even' reads from even rows only (so odd rows can score it);
 #                                                                     'mix' takes the echo beyond +16 from the bar (default: all of it from the picture)
+#   python3 direct.py readw LUMA.npy AMOUNTS.npy OUT.npz [even]       -> per-frame taps, each frame's own reading WEIGHED by its measured uncertainty against
+#                                                                     the bar's fit (no line-count rule; see read_weighed)
+#   python3 direct.py kaw LUMA.npy AMOUNTS.npy                         -> known answer for readw: frames with 150+ edges, read again from a few of their edges
 #   python3 direct.py score NAME TRACKS.npz LUMA.npy AMOUNTS.npy TAPS.npz [odd]   -> harness.py's scores ('odd': tracks on odd rows only)
 #   python3 direct.py remove LUMA.npy AMOUNTS.npy TAPS.npz OUT_removed.npy          -> a whole stretch (also OUT_read.npy for clip.py)
 #   python3 direct.py ka                                                           -> known answer: a made-up echo that moves in place and strength
@@ -41,6 +44,71 @@ def read(lum, A, own, nmin=20, even=False, verbose=True, far=None, mix=False):
     if verbose: print('%d frames: %d read from their own left edges (%d+ lines; median %d lines), %d from the bar fit' % (n, direct.sum(), nmin, np.median(cnt[direct]) if direct.any() else 0, n - direct.sum()))
     if verbose and direct.any() and mix: mid = (T >= 12) & (T <= 30); print('   +12..+30, picture reading against the bar on the direct frames: picture %s' % np.median(Dn[direct], 0)[mid][::3].round(3), 'bar', np.median(far[direct], 0)[mid][::3].round(3))
     Q = np.zeros((n, K1 + 1)); Q[:, 1:] = (W * Dn + (1 - W) * far) @ Pinv.T; return Q, direct
+K0 = 10; WSLOW = float(__import__('os').environ.get('WSLOW', 3))   # few edges lean on what their step height predicts, worth K0 edges; time constant (frames) of the picture's slow correction
+def edges_of(y, even=False):            # every clean left edge's profile on T, and the edges' step heights
+    e = [x for x in H.left_edges(y) if not even or x[0] % 2 == 0]
+    return (np.array([np.interp(c + T, H.COLS, y[r]) / p for r, p, c in e]), np.array([p for r, p, c in e])) if e else (np.zeros((0, len(T))), np.zeros(0))
+def own_reading(P):                     # pooled edge and the spread among the edges (robust sigma), per sample of T
+    med = np.median(P, 0); return med, 1.4826 * np.median(np.abs(P - med), 0)
+def combine(Dn, S, cnt, ph, X, wslow=None):
+    # The test bar is in every frame and reads the echo the same way whatever the scene: its fit (a straight line in the bar's two
+    # amounts) carries the change from frame to frame.  The picture's own left edges are more exact where a frame has many bright
+    # ones and worthless where it has a few dim ones, so they only CORRECT the bar, slowly: what the frames' own readings say beyond
+    # the bar, averaged over neighbouring frames (weight exp(-|frames apart| / WSLOW)), each frame weighed by its inverse variance.
+    #   Dn: each frame's own departure from the reference edge (nan under 2 edges); S: spread among its edges; cnt: edges; ph: its
+    #   median step height.  Standard error of a pooled median: 1.2533 * spread / sqrt(edges); the spread of a frame with few edges is
+    #   shrunk toward what its step height predicts (noise in codes is the same for a dim edge and a bright one, so the spread goes
+    #   as 1 / step; the constant from the frames with 30+ edges), worth K0 edges.  With no reading near, the correction falls to zero
+    #   (the bar alone), by a prior as wide as the bar's own error.
+    wslow = WSLOW if wslow is None else wslow; have = cnt >= 2; n = len(cnt); k = cnt[:, None].astype(float); many = cnt >= 30
+    a = np.median(S[many] * ph[many, None], 0); Ss = np.sqrt(((k - 1) * np.nan_to_num(S) ** 2 + K0 * (a[None] / np.maximum(ph, 1)[:, None]) ** 2) / np.maximum(k - 1 + K0, 1))
+    se = np.where(have[:, None], 1.2533 * Ss / np.sqrt(np.maximum(k, 1)), np.inf); wf = np.where(have, 1 / np.mean(np.where(np.isfinite(se), se, 1) ** 2, 1), 0)
+    B = np.linalg.lstsq(X[have] * np.sqrt(wf[have])[:, None], Dn[have] * np.sqrt(wf[have])[:, None], rcond=None)[0]; bar = X @ B; r = np.where(have[:, None], np.nan_to_num(Dn) - bar, 0)
+    vb = np.maximum((wf[have, None] * (r[have] ** 2 - se[have] ** 2)).sum(0) / wf[have].sum(), (0.25 * np.median(se[have], 0)) ** 2)
+    iv = np.where(have[:, None], 1 / se ** 2, 0); num = np.zeros_like(r); den = np.zeros_like(r); fr = np.arange(n)
+    for f in range(n):
+        lo, hi = max(0, f - int(6 * wslow) - 1), min(n, f + int(6 * wslow) + 2); kk = np.exp(-np.abs(fr[lo:hi] - f) / max(wslow, 1e-6))[:, None]; num[f] = (kk * iv[lo:hi] * r[lo:hi]).sum(0); den[f] = (kk * iv[lo:hi]).sum(0)
+    c = num / (den + 1 / vb[None]); return bar + c, den / (den + 1 / vb[None]), bar, np.sqrt(vb), se
+def gather(lum, even=False):
+    n = lum.shape[0]; Dn = np.full((n, len(T)), np.nan); S = np.full((n, len(T)), np.nan); cnt = np.zeros(n, int); ph = np.zeros(n); own = np.load('calib.npz')['own']
+    for f in range(n):
+        P, hts = edges_of(lum[f].astype(float) - M.BL, even); cnt[f] = len(P)
+        if len(P) >= 2: med, S[f] = own_reading(P); Dn[f] = med - own; ph[f] = np.median(hts)
+        H.guard()
+    return Dn, S, cnt, ph, own
+def read_weighed(lum, A, even=False, verbose=True):
+    Dn, S, cnt, ph, own = gather(lum, even); n = len(cnt); Dh, w, bar, sb, se = combine(Dn, S, cnt, ph, np.c_[np.ones(n), A[:, 3:5]]); ws = w[:, (T >= 2) & (T <= 40)].mean(1)
+    if verbose: print("%d frames: the picture's correction of the bar carries over half its full weight in %d, under a tenth in %d; the bar's error %.4f (rms +2..+40); time constant %g frames" % (n, (ws > 0.5).sum(), (ws < 0.1).sum(), np.sqrt((sb[(T >= 2) & (T <= 40)] ** 2).mean()), WSLOW))
+    Q = np.zeros((n, K1 + 1)); Q[:, 1:] = Dh @ solver(own).T; return Q, ws
+def cmd_readw(lumf, amf, outf, even=''):
+    Q, ws = read_weighed(np.load(lumf, mmap_mode='r'), np.load(amf), even == 'even'); np.savez(outf, Q=Q, direct=ws > 0.5, weight=ws)
+def cmd_kaw(lumf, amf):
+    # Known answer for readw.  Frames with 150+ clean left edges: their full reading is the truth.  A third of them are read again
+    # from 6, 12 or 22 of their edges picked at random; in the bad case a third of those edges are swapped for edges of a frame from
+    # the other half of the stretch, put 2 samples off; in the last case the frame keeps no edge of its own.  Error against the
+    # truth, rms +2..+40, median and worst tenth: the few edges alone, the bar's fit alone, the line-count rule (22 edges: own
+    # reading; fewer: bar), and readw at several time constants.  Also the taps' change from frame to frame over the whole stretch.
+    # Pass lines, set before the run: readw no worse than the better of the first three in every case's median (5% slack), and no
+    # change of the taps from one frame to the next over 0.2 anywhere in the stretch.
+    lum = np.load(lumf, mmap_mode='r'); A = np.load(amf); n = lum.shape[0]; rng = np.random.default_rng(3); win = (T >= 2) & (T <= 40); Ps = {}
+    Dn, S, cnt, ph, own = gather(lum); Pinv = solver(own)
+    for f in np.nonzero(cnt >= 150)[0]: Ps[f] = edges_of(lum[f].astype(float) - M.BL)
+    X = np.c_[np.ones(n), A[:, 3:5]]; keys = sorted(Ps); test = keys[::3]; rms = lambda v: np.sqrt((v[win] ** 2).mean()); WS = (0, 3, 8, 20, 50)
+    jump = lambda Dh: np.sqrt((np.diff((Dh @ Pinv.T)[:, :29], axis=0) ** 2).sum(1))
+    print('%d frames, %d with 150+ edges, %d of them read again from a few edges' % (n, len(Ps), len(test)))
+    print('taps from one frame to the next (lags 1-29), whole stretch, median / 99th / largest:  ' + ' | '.join('time constant %g: %.3f / %.3f / %.3f' % (w_, np.median(j_), np.percentile(j_, 99), j_.max()) for w_ in WS for j_ in [jump(combine(Dn, S, cnt, ph, X, w_)[0])]))
+    for k, bad in ((6, False), (12, False), (22, False), (22, True), (12, True), (0, False)):
+        D2, S2, c2, p2 = Dn.copy(), S.copy(), cnt.copy(), ph.copy(); truth = {}
+        for f in test:
+            truth[f] = Dn[f].copy()
+            if k == 0: D2[f] = np.nan; S2[f] = np.nan; c2[f] = 0; continue
+            pick = rng.choice(len(Ps[f][0]), k, replace=False); P = Ps[f][0][pick].copy(); p2[f] = np.median(Ps[f][1][pick])
+            if bad:
+                g = keys[(keys.index(f) + len(keys) // 2) % len(keys)]; m = k // 3; Pb = Ps[g][0][rng.choice(len(Ps[g][0]), m, replace=False)]; P[:m] = np.array([np.interp(np.arange(len(T)) + 2.0, np.arange(len(T)), r_) for r_ in Pb])
+            med, S2[f] = own_reading(P); D2[f] = med - own; c2[f] = k
+        outs = [combine(D2, S2, c2, p2, X, w_) for w_ in WS]; bar = outs[0][2]
+        e = np.array([[rms(D2[f] - truth[f]) if k else np.nan, rms(bar[f] - truth[f]), rms((D2[f] if k >= 20 else bar[f]) - truth[f])] + [rms(o[0][f] - truth[f]) for o in outs] for f in test])
+        print('  %2d edges%s: few edges alone %.4f (worst tenth %.4f) | bar alone %.4f (%.4f) | line-count rule %.4f (%.4f) | readw, time constant ' % (k, ', a third wrong' if bad else '              ', *np.c_[np.nanmedian(e[:, :3], 0), np.nanpercentile(e[:, :3], 90, 0)].ravel()) + ', '.join('%g: %.4f (%.4f)' % (w_, np.median(e[:, 3 + i]), np.percentile(e[:, 3 + i], 90)) for i, w_ in enumerate(WS)))
 def removed(y, q, white): return H.remove_img(y, q, white, lag=False, floor=True, cleaner=lambda v: clean(v, 220))
 def cmd_read(lumf, amf, outf, nmin='20', even='', mix=''):
     Q, direct = read(np.load(lumf, mmap_mode='r'), np.load(amf), np.load('calib.npz')['own'], int(nmin), even == 'even', mix=mix == 'mix'); np.savez(outf, Q=Q, direct=direct)
@@ -92,4 +160,4 @@ def cmd_ka(nmin='20', cleanf='clean_luma.npy', start='0', mix=''):
     for (d, b) in sorted(res): print('  %-20s | %-8s | %4d   | %5.2f / %5.2f / %5.2f' % ('read from own edges' if d else 'filled from the fit', ['< 0.3', '0.3-0.5', '0.5-0.7', '> 0.7'][b], len(res[(d, b)]), *np.sqrt(np.mean(res[(d, b)], 0))))
     import os; os.remove('ka_luma.npy')
 if __name__ == '__main__':
-    {'read': cmd_read, 'score': cmd_score, 'remove': cmd_remove, 'ka': cmd_ka}[sys.argv[1]](*sys.argv[2:])
+    {'read': cmd_read, 'readw': cmd_readw, 'kaw': cmd_kaw, 'score': cmd_score, 'remove': cmd_remove, 'ka': cmd_ka}[sys.argv[1]](*sys.argv[2:])

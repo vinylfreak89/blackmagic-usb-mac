@@ -16,6 +16,8 @@
 #   python3 gate.py moving LUMA.npy TAPS.npz [A B [C0 C1 [R0 R1]]]   -> bands that move: frame-to-frame change where the picture stands still, per division limit
 #   python3 gate.py score NAME LUMA.npy TRACKS.npz TAPS.npz AMOUNTS.npy   -> steady left edges (odd rows) and line-to-line change, per method
 #   python3 gate.py flat LUMA.npy TAPS.npz [A B [STEP]]     -> what each method adds where the CAPTURED picture is flat (48 samples within 3 codes)
+#   python3 gate.py more LUMA.npy TAPS.npz                  -> 62-minute stretch only: gain and hole width against the ghost left on black beside the picture's
+#                                                              right border, the wall after the left border, and the still caption card
 #   python3 gate.py remove LUMA.npy AMOUNTS.npy TAPS.npz OUT_removed.npy [EPS [KAPPA]]   -> a whole stretch, gated (also OUT_read.npy for clip.py)
 #   thin : the five-line cleaning replaces a sample that disagrees with its five-line median by the other rows' mean, so features
 #          one or two field rows tall (lettering) drop out of the estimate the echo is predicted from and keep their echo.  With
@@ -153,6 +155,31 @@ def cmd_flat(lumf, tapf, a='0', b='900', step='6'):
     print('%s frames %s-%s every %s, taps over %d frames: flat in the capture %.3f of the picture' % (lumf, a, b, step, STEADY, np.mean(np.concatenate(acc.pop('share of the picture that is flat')))))
     print('  added where the captured picture is flat, codes:      rms | exceeded by 1 sample in 1000')
     for lab, v in acc.items(): v = np.concatenate(v); print('   %-36s                 %.3f | %.2f' % (lab, np.sqrt((v ** 2).mean()), np.percentile(v, 99.9)))
+def border_ghost(img, y):                           # the black right of the picture's right border (62-minute layout: border at col 455, caption from
+    # col 470): rows with bright picture and no caption text, pooled; share of the border's step on cols 452..499.  A falling edge's
+    # echo is a bright bump there, on a known level and not cut off: what is left of it after a removal is read straight off.
+    P = [img[r, 452:500] / np.median(y[r, 425:445]) for r in list(range(15, 170)) + list(range(235, 390)) if np.median(y[r, 425:445]) > 60 and y[r, 500:700].max() < 22]
+    return np.median(P, 0) if len(P) >= 8 else None
+def cmd_more(lumf, tapf):
+    lum = np.load(lumf, mmap_mode='r'); Q = np.load(tapf)['Q']; det = lambda v: v - np.polyval(np.polyfit(np.arange(len(v)), v, 2), np.arange(len(v)))
+    def rem(f, y, gm, sg): v = remove_hole(y, spec(steady(Q, f, STEADY)), gm, sg); m, _ = gate(v - y); return y + m * (v - y)
+    V = [(3, 0.25), (4, 0.25), (5, 0.25), (7, 0.25), (3, 0.15), (5, 0.15), (5, 0.40)]; res = {v: {'g': [], 'w': [], 'c': [], 'gt': []} for v in V}; cap = {'g': [], 'w': [], 'c': []}
+    for f in range(500, 566, 3):
+        y = lum[f].astype(float) - M.BL; c = border_ghost(y, y)
+        if c is None: continue
+        cap['g'].append(c[4:].max())
+        for v in V: o = border_ghost(rem(f, y, *v), y); res[v]['g'].append(o[4:].max()); res[v]['gt'].append(np.abs(o[18:]).max())
+    for f in range(420, 447, 2):
+        y = lum[f].astype(float) - M.BL; cap['w'].append(np.sqrt((det(y[20:60, 32:112].mean(0)) ** 2).mean()))
+        for v in V: res[v]['w'].append(np.sqrt((det(rem(f, y, *v)[20:60, 32:112].mean(0)) ** 2).mean()))
+    for f in range(440, 521):
+        y = lum[f].astype(float) - M.BL; cap['c'].append(y[20:200, 470:700].mean(0))
+        for v in V: res[v]['c'].append(rem(f, y, *v)[20:200, 470:700].mean(0))
+        H.guard()
+    ch = lambda L: np.median(np.sqrt((np.diff(np.array(L), axis=0) ** 2).mean(1)))
+    print('gain hole | right border ghost left on black, share of the step: median, largest (frames 500-565) | its change between samples (rms) | cols 470-500, largest | wall ripple median, largest (420-446) | still card change (440-520)')
+    print('captured  |  %.2f  %.2f | %.3f |   -   | %.2f  %.2f | %.2f' % (np.median(cap['g']), np.max(cap['g']), np.sqrt(np.mean(np.diff(cap['g']) ** 2)), np.median(cap['w']), np.max(cap['w']), ch(cap['c'])))
+    for v in V: r = res[v]; print('%d   %.2f |  %.2f  %.2f | %.3f | %.3f | %.2f  %.2f | %.2f' % (v[0], v[1], np.median(r['g']), np.max(r['g']), np.sqrt(np.mean(np.diff(r['g']) ** 2)), np.max(r['gt']), np.median(r['w']), np.max(r['w']), ch(r['c'])))
 def cmd_score(name, lumf, trackf, tapf, amf):
     z = np.load(trackf); meta, cap, R = z['meta'], z['prof'].astype(float), z['R']; t = np.load(tapf); Q = np.array([steady(t['Q'], f, STEADY) for f in range(len(t['Q']))]); lum = np.load(lumf, mmap_mode='r'); k = meta[:, 1].astype(int)
     use = (k % 2 == 0) & (meta[:, 2].astype(int) % 2 == 1); meta, cap, k = meta[use], cap[use], k[use]; tid = meta[:, 0].astype(int); g = R[k, 0]; rem = {}; bd = {}; sh = []
@@ -190,4 +217,4 @@ def cmd_remove(lumf, amf, tapf, outf, eps='0.01', kappa=str(KAPPA)):
         lo += int((x < 0).sum()); hi += int((x > 255).sum()); out[f] = np.clip(np.rint(x), 0, 255); H.guard()
     out.flush(); np.save(outf.replace('removed', 'read'), np.c_[A[:, 0], A[:, 3:5], A[:, 1], ~direct]); print('%s: %d frames; samples cut off below 0: %d, above 255: %d' % (outf, lum.shape[0], lo, hi))
 if __name__ == '__main__':
-    {'ka': cmd_ka, 'ka2': cmd_ka2, 'moving': cmd_moving, 'flat': cmd_flat, 'score': cmd_score, 'remove': cmd_remove}[sys.argv[1]](*sys.argv[2:])
+    {'ka': cmd_ka, 'ka2': cmd_ka2, 'moving': cmd_moving, 'flat': cmd_flat, 'more': cmd_more, 'score': cmd_score, 'remove': cmd_remove}[sys.argv[1]](*sys.argv[2:])

@@ -814,6 +814,50 @@ stays in the estimate the echo is predicted from. Everything else as before (gat
   0.13 a frame at 62 minutes, 0.02 in the first passage.
 - Judged by the owner: pending.
 
+### The reading led by the test bar; each frame on its own echo (`direct.py readw`, 2026-11-26)
+
+Owner on the clip with thin features kept: no difference seen at a glance; "there is still a ringing problem in both
+this and the old version around 18 seconds"; "you can see a ghost shift position and then shift back". And: why a
+five-frame mean of the readings, why is every frame not judged by its own echo?
+
+- **What happens at 18 s.** The scene is dark, with 12-23 dim left edges a frame (step about 55 codes). The reading
+  switched between the frame's own edges (20+ lines) and the bar's fit from one frame to the next, and the own reading
+  from so few dim edges is sometimes wrong outright (frame 550: tap at lag 1 +0.66 where its neighbours have -0.08).
+  The five-frame mean then carried that into four more frames. Measured on the black beside the picture's right
+  border (a falling edge's echo is a bright bump there, on a known level; `gate.py border_ghost`): the ghost left
+  after removal, share of the border's step, at frames 545 / 548 / 551 / 554: 0.51 / 0.59 / 0.61 / 0.56 with the old
+  reading, 0.52 / 0.53 / 0.49 / 0.50 with the new one (captured 0.83-0.89).
+- **Why there was a mean at all.** A frame's own picture reading alone made still picture change more from frame to
+  frame after removal than in the capture (1.15 against 0.93); the mean hid that. It also smears any real change and
+  spreads one bad frame over five.
+- **The new reading (`readw`).** The test bar is in every frame and reads the echo the same way whatever the scene:
+  its fit (a straight line in the bar's two amounts) carries the change from frame to frame. The picture's own edges
+  only correct it, slowly: what the frames' own readings say beyond the bar, averaged over neighbouring frames (weight
+  exp(-|frames apart| / 3)), each frame weighed by its inverse variance (spread among its edges; a frame with few
+  edges leans on what its step height predicts). No line-count rule. Two simpler weighings were tried first and
+  dropped: per-frame inverse-variance mixing of own reading and bar let frames with 2-8 edges move the taps (their
+  spread understates their error).
+- **Known answer** (`direct.py kaw`; frames with 150+ edges are the truth, a third of them read again from a few of
+  their edges, with a third of those edges wrong, or with none). Error, rms +2..+40, median: 6 edges alone 0.0114,
+  12 alone 0.0090, 22 alone 0.0064, 22 with a third wrong 0.0140, bar alone 0.0125; `readw` 0.0058-0.0059 in every
+  case, with no edges of its own included. Taps from one frame to the next over the whole stretch (lags 1-29),
+  median / 99th / largest: old reading 0.031 / 0.306 / 0.920, `readw` 0.023 / 0.088 / 0.128. Time constants 3 to 50
+  frames all pass; 3 has the lowest error, on test frames whose neighbours are well read.
+- **Each frame on its own echo.** With `readw` and no mean, still picture from frame to frame is 0.94 / 0.99 (deep
+  frames / others) against 0.91 / 0.97 captured; the old reading without the mean gave 1.16 / 1.11. With a five-frame
+  mean on top it is 0.88 / 0.91. The clip sent uses no mean (`STEADY=1`). Left edges unchanged; added where the
+  capture is flat 0.340 rms, 5.1 at 1 in 1000.
+- **More removal is not there** (`gate.py more`, the new reading, no mean). Ghost left on black beside the right
+  border, median / largest over 16.7-18.9 s, then wall ripple median / largest and still-card change: captured 0.71 /
+  0.93, 1.74 / 1.94, 1.03. Gain 3 hole 0.25: 0.44 / 0.56, 1.78 / 2.22, 1.05. Gain 5: 0.40 / 0.56, 1.86 / 3.01, 1.18.
+  Gain 7: 0.39 / 0.56, 1.90 / 3.98, 1.28. Gain 3 hole 0.15: 0.38 / 0.46, 2.11 / 2.83, 1.09. So at this echo strength
+  about 0.6 of a strong edge's ghost stays whatever is done; that is what "ringing" at 18 s still is.
+- **Line timing there.** The picture's right border moves by about 2 samples and its line-to-line jitter doubles
+  (0.7-0.96 samples against 0.3-0.5) at 16.7-17.6 s, while the echo strengthens (captured ghost 0.45 -> 0.9 by 18.6
+  s). The removal works along each line and does not depend on where the line sits; the five-line cleaning does mix
+  neighbouring lines.
+- Judged by the owner: pending.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -862,7 +906,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | script | does |
 |---|---|
 | `wide.py` | bar shapes learned across the capture; picture calibration over several passages with one held out (failed, see above) |
-| `direct.py` | each frame's echo read from its own left picture edges; known answer, scores, removal |
+| `direct.py` | each frame's echo read from its own left picture edges; `readw`: the reading led by the test bar with the picture's edges as a slow correction, and its known answer (`kaw`); scores, removal |
 | `stair.py` | the echo after each staircase riser, by level: is it the same at every level |
 | `diag.py` | what the removal does to line-to-line content by frequency (the diagonal bands) |
 | `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
@@ -910,7 +954,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 ## Open
 
 - The residuals of the picture-read removal (`direct.py`), per the two reviews above: one reference edge imposed on
-  every scene; frames filled from the bar. The 393 kHz region multiplied by about 2 and the ripple far after strong
+  every scene. (Frames filled from the bar: replaced by `readw`, the bar leading in every frame; owner's verdict
+  pending.) The 393 kHz region multiplied by about 2 and the ripple far after strong
   edges are taken out by applying the correction only where a ghost is predicted (`gate.py`); the ripple train after
   strong edges where the echo cancels nearly everything, by leaving a wide hole there instead of a narrow one, at the
   price of less removal in those frames; the owner confirmed the bands gone. None needs the recording VCR.
