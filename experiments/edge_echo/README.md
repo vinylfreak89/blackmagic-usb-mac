@@ -392,6 +392,11 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   is described in the patent literature for the third-order product near 0.9 MHz (US 5,347,405); the plain
   difference near 0.4 MHz, which is what is measured here in luma, was not found described. A companion tone near
   0.94 MHz shows in one flat frame of the Hi-Fi tape only, not in the others: no support from that.
+  Last check, at the owner's request: a Hi-Fi tape captured through the OTHER chain (36 spread frames, 199 quiet
+  small patches): no tone, 1.3 x against 1.7-1.9 beside it and nothing anywhere from 300 to 500 kHz; fitted size
+  0.16-0.27 codes in its quietest frames against 0.84-0.96 where the tone is present. So it takes both: a Hi-Fi
+  tape and this VCR. The tape supplies the carriers and sets the frequency; this VCR lets their beat into the
+  picture and the other one does not.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
