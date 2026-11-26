@@ -533,6 +533,62 @@ Not known: whether the size dependence of the echo is made at RF (a detector unl
 reflection) or by the recorder's size-dependent stage acting on a linear echo. The test line alone does not
 separate them.
 
+### Two reviews of the RF turn (2026-11-26): the request for another tape withdrawn
+
+The owner's objection to the conclusion above ("why do you need it? ... initial tests looked very good but there are
+just a few residual issues to fix") was put to two reviewers working apart, each with the code, the arrays and the
+owner's words: Codex and an adversarial reviewer. Both: a tape from the recording VCR is not needed, and identifying
+the whole chain was the wrong response to "should the inversion depend on level". Their measurements, with what was
+rerun here:
+
+- **The owner's question has a short answer from the chain alone** (`rfmodel.py level`, no tape stage, no fit, no
+  data; rerun here). Plain luma steps of 20-100 IRE out of blanking, reflection a quarter turn off the carrier: with a
+  synchronous detector the echo is the same share of the step at every height (0%); with an envelope detector its
+  depth differs by under 5% and its shape by 7-19% of the echo for 20-80 IRE (18-32% at 100 IRE). So for plain luma a
+  linear removal is the right frame, and a fixed recorder/player stage after a near-linear echo never has to be known.
+- **Why the staircase disagreed with the bar: its colour, not its size.** In the same chain the bar's dip is 1.18-1.30
+  times the risers' with the staircase's subcarrier on (envelope detector) and 1.01-1.08 with it off; a synchronous
+  detector gives 1.02-1.04 either way. Captured: about 1.2-1.3 (Codex: riser dips 60-66% of the current step against
+  78% for the bar, and the README's "55-60%" depends on the denominator). "The echo is not a linear operation"
+  (`stair.py`) holds for a line carrying 40 IRE of subcarrier, not for plain luma. Its "small steps hit harder at 62
+  minutes" is a second definition (strong minus weak, mostly the riser losing its overshoot), not a second behaviour.
+- **Small risers overshoot 36-40%, the bar 14%: measured, cause not attributed.** Reproduced by both, in both fields,
+  not the capture's ceiling, not residual subcarrier ripple (0.05-0.11 IRE), not rise-time difference alone. Nothing
+  assigns it to the recording machine rather than the player or the line as broadcast. "The recorder sharpens small
+  edges more" above is withdrawn as a cause.
+- **The fitted lines pool two different waveforms.** Field 1's test line minus field 2's is 1.7-2.1 IRE rms in every
+  passage (split-half noise 0.2-0.7; rerun here), about the size of the fit's misfit. Field 2 alone still does not fit
+  (1.79 IRE, envelope). Also: fitted values of the line as broadcast sit at their bounds; the model scales and shifts
+  before its size-dependent stage where the captured lines were scaled and placed after it (0.3-1.5 IRE); the bar top
+  is 182 codes in the weak passage and 219-237 at strong echo, unexplained.
+- **The bands left by `direct.py` are made by the method.** Adversarial bench: echo-free frames of another tape given
+  each 62-minute frame's fitted kernel (exactly linear), cut and rounded, then `direct.py`'s own reading and removal:
+  leftover ripple 0.030 / 0.048 / 0.072 of the step by reading (real capture after removal 0.039 / 0.067 / 0.086).
+  With the true kernel the ripple is the division limit (0.057 -> 0.034 -> 0.021 above a reading of 0.75 as the limit
+  goes 0.01 -> 0.003 -> 0.001, for 3.9 -> 4.3 codes of whole-picture error); the reading gets the near-null's depth
+  wrong (0.060 read against 0.028 true). Caveat noted here: those kernels put 0.063-0.087 of ripple at +22..+92 on the
+  clean frames where the capture itself shows 0.035, so the kernels' tails overstate the real echo; the bench matches
+  the size, not necessarily the route.
+- **The reference edge is imposed.** Codex: `direct.py` with its production reference, on a tape with no echo and none
+  added, changes the picture by 4.5 codes rms (2.3 with a reference learned from that tape; the README's 0.65 used a
+  reference from the same frames). Adversarial: at 62 minutes every left edge comes out at 1.22-1.25 at +2 (captured
+  0.92) and the reading asks for -0.075 at +20 because the first passage's reference is still settling there.
+- **Other residuals measured:** the removal multiplies the 393 kHz region by 1.7-2.1; frames filled from the bar barely
+  remove what follows the reading (0.471 -> 0.368; read frames 0.366 -> 0.087; a hidden readable frame is predicted to
+  0.055-0.072 of the step at the dip); every "per unit of amount" slope is diluted by the reading's noise (to about
+  0.88 of the truth in the first passage, 0.40 at 62 minutes), which is most of "the bar and picture edges show
+  different echoes" (a one-sample shape difference survives).
+- **Not decided by either:** whether the echo's share depends on level in the picture (the estimator is the diluted
+  one); the detector type; what a never-absent part of the echo looks like (a common fixed distortion cannot be told
+  from the tape's own edge without an anchor).
+
+Next, in this order: (1) on the known-answer bench (echo-free frames, kernels with a near-null), how the frame's
+kernel is read and the division limit, scored against the clean frames: success is ripple at or below 0.03 of the
+step above a reading of 0.75 with whole-picture error no higher than 3.9 codes; failed if no reading from the frame's
+own left edges gets below 0.05. (2) Each steady edge keeping its own baseline, changes fitted with and without a
+level term on held-out tracks and time blocks, with the reading's noise handled: the level term is kept only if it
+cuts the held-out error at the dip by 20% in each passage.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -587,7 +643,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
 | `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
 | `tonesmall.py`, `tonediff.py` | the 393 kHz question in busy picture: many small flat patches; differences of consecutive frames |
-| `rfmodel.py`, `rf_sim.py` | the echo modelled at RF through the off-air simulator; arithmetic checks, known-answer recovery, fit to the test line, residual panel, picture-edge test |
+| `rfmodel.py`, `rf_sim.py` | the echo modelled at RF through the off-air simulator; arithmetic checks, the chain's own answer on level and colour (`level`), known-answer recovery, fit to the test line, residual panel, picture-edge test |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
@@ -623,14 +679,17 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 ## Open
 
-- Every removal here treats the echo as a linear operation on the demodulated picture; `stair.py` shows it is not.
-  The model at RF (`rfmodel.py`): its fitting passes its known answer, but the captured lines do not fit, the
-  recorder's size-dependent sharpening can imitate the echo on the test line, and picture edges are predicted worse
-  than by a plain linear echo. Missing: a description of the recorder/player stage from material without echo.
+- The residuals of the picture-read removal (`direct.py`), per the two reviews above: one reference edge imposed on
+  every scene; the division limit and the reading's error where the echo nearly cancels 0.5 MHz (62 minutes, readings
+  above 0.65); the 393 kHz region multiplied by about 2; frames filled from the bar. None needs the recording VCR.
+- The full-chain fit at RF (`rfmodel.py fit`) is parked: not established, and not needed for plain luma
+  (`rfmodel.py level`). Whether saturated colour changes the luma echo in the picture as it does on the staircase is
+  not measured.
 - The reading from the picture (`direct.py`) is the only one that holds in both passages; the owner still sees bands.
   Its open points: frames without usable left edges (filled from the bar, unscored); the reference edge is one
   scene type's and is imposed on others beyond about +12; two passages only.
-- Why the bar and picture edges show different echoes is not known.
+- The bar and picture edges: the size difference is mostly the reading's noise diluting the slopes; a one-sample
+  shape difference is not explained.
 - Colour: no measurement yet of whether it carries the echo beyond the 8 frames under "What it is".
 - What is left after the left edge (above): tape's own edge or echo that is never absent.
 - Narrow strokes: the 2T pulse is not improved at strong echo; fine lettering above a reading of 0.8 is not clean.

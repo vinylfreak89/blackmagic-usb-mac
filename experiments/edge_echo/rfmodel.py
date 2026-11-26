@@ -9,6 +9,8 @@
 # lines are placed by).  Everything else is one description shared by all groups, and all of it is solved together.
 #
 #   python3 rfmodel.py check                      known answers for the model's own arithmetic (no data)
+#   python3 rfmodel.py level                      the chain alone: does the echo's share of a plain luma step depend on its height; the
+#                                                 staircase's risers against the bar, with and without the colour on the steps
 #   python3 rfmodel.py recover [envelope|pll]     made-up lines put through the capture's own scaling and placing, noise added:
 #                                                 is the fit at the noise, are the reflections recovered, does a picture edge
 #                                                 predicted from the fit match the true one; and the wrong detector fitted to them
@@ -100,6 +102,26 @@ def cmd_check():
 TUNK = ['w', 'off']; ENHK = []; NS = len(SRCK) + len(TUNK) + len(ENHK); WA = 10.0             # WA: one tenth of a sample off the placing rule counts as 1 IRE
 SLO = np.r_[[-168, -110, -69, 60, 30, 14, 30, 46, 62, 78, 1.5], 0.2, -0.6]; SHI = np.r_[[-158, -100, -59, 130, 70, 24, 42, 62, 82, 100, 8.0], 1.6, 0.6]
 SSC = np.r_[np.ones(3), 10 * np.ones(7), 1.0, 0.2, 0.1]
+def cmd_level():                        # the owner's question put to the chain alone (no tape stage, no fit, no data): does the echo's share of a step
+    I = np.arange(len(X)); x0 = 300.0; t = np.arange(-2, 41); pre = (I > x0 - 60) & (I < x0 - 20); far = (I > x0 + 80) & (I < x0 + 200)      # depend on the step's height, and what does the staircase's colour do
+    def change(L, g, tau, kind, base=0.0):                               # with echo minus without, each scaled to its own step, on -2..40 samples
+        lum = base + L * ramp(I, x0, 3.0); out = []
+        for gg in (g, 0):
+            d = detect_pics(lum[None], gg, tau, kind)[0]; lo = np.median(d[pre]); out.append((d - lo) / (np.median(d[far]) - lo))
+        return np.interp(x0 + t, I, out[0] - out[1])
+    print('plain luma steps out of blanking: deepest change in units of the step (and rms difference from the 60 IRE step, % of its echo)')
+    for kind in ('envelope', 'pll'):
+        for rho, ph, tau in ((0.3, -90, 8.0), (0.6, -90, 8.0), (0.6, -110, 6.0), (0.6, -110, 12.0), (0.9, -100, 8.0)):
+            g = rho * np.exp(1j * np.radians(ph)); ref = change(60, g, tau, kind); cs = [change(L, g, tau, kind) for L in (20, 40, 60, 80, 100)] + [change(20, g, tau, kind, 60.0)]
+            print('   %-8s strength %.1f phase %4d delay %4.1f | ' % (kind, rho, ph, tau) + ' | '.join('%s %.3f (%2.0f%%)' % (n, c.min(), 100 * np.sqrt(((c - ref) ** 2).mean() / (ref ** 2).mean())) for n, c in zip(('20', '40', '60', '80', '100', '20 on 60'), cs)))
+    print('the test line: dip after each staircase riser and after the bar, as a share of its step, with and without the colour on the steps')
+    lum, chroma = source({})
+    for on in (1, 0):
+        for kind in ('envelope', 'pll'):
+            for rho, ph in ((0.3, -90), (0.6, -90), (0.6, -110), (0.6, -60)):
+                d0 = norm(detect(lum, chroma * on, 0.0, 0.0, 8.0, kind)); d = norm(detect(lum, chroma * on, rho, np.radians(ph), 8.0, kind)); out = []
+                for xe, a, b in list(zip(RISERS[1:], STEPS[:-1], STEPS[1:])) + [(0.0, 0, 100)]: tt = xe + np.arange(2, 15); out.append(-(np.interp(tt, X, d) - np.interp(tt, X, d0)).min() / (b - a))
+                print('   colour %s, %-8s strength %.1f phase %4d: risers %s, bar %.2f, bar / mean riser %.2f' % ('on ' if on else 'off', kind, rho, ph, np.round(out[:4], 2), out[4], out[4] / np.mean(out[:4])))
 def shared(s):                          # the shared numbers as (line as broadcast, tuner, sharpening)
     a, b = len(SRCK), len(SRCK) + len(TUNK); return dict(zip(SRCK, s[:a])), dict(TUN0, **dict(zip(TUNK, s[a:b]))), dict(zip(ENHK, s[b:]))
 class Fit:
@@ -261,4 +283,4 @@ def cmd_panel(fitf, outf):
         for a_, b_ in PARTS.values(): ax[i, 1].axvline(a_, color='0.8', lw=0.4)
     fig.tight_layout(); fig.savefig(outf, dpi=70)
 if __name__ == '__main__':
-    {'check': cmd_check, 'recover': cmd_recover, 'fit': cmd_fit, 'panel': cmd_panel, 'edges': cmd_edges}[sys.argv[1]](*sys.argv[2:])
+    {'check': cmd_check, 'level': cmd_level, 'recover': cmd_recover, 'fit': cmd_fit, 'panel': cmd_panel, 'edges': cmd_edges}[sys.argv[1]](*sys.argv[2:])
