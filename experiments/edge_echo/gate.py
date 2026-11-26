@@ -7,8 +7,9 @@
 #          keeps the boost at every frequency under GMAX.  Applied everywhere.
 #   hole : the division limit leaves the band around the frequency the echo cancels unrestored; a NARROW leftover hole rings for
 #          100+ samples after every strong edge (vertical bands on flat picture, changing from frame to frame).  With HOLE (MHz) set,
-#          the division is made so that removal x echo = 1 - B(f): B is the shortfall the gain limit GMAX forces,
-#          b(f) = max(0, 1 - GMAX |H(f)|), widened by a Gaussian of HOLE MHz, and one pass follows.  The leftover is then compact,
+#          the division is made so that division x echo = 1 - B(f): B is the shortfall the gain limit GMAX forces,
+#          b(f) = max(0, 1 - GMAX |H(f)|), widened by a Gaussian of HOLE MHz, and one pass follows (with it, removal x echo is
+#          (1 - B) + B H: inside the hole the captured echo stays, and the noise gain can pass GMAX).  The leftover is then compact,
 #          next to the edge.  HOLE=0 (default): the division limit EPS and three passes, as before.
 #   python3 gate.py ka [NOISE [TONE]]                       -> known answer: echo-free frames, real strong-echo taps, noise and a 393 kHz tone
 #   python3 gate.py ka2 [NOISE [TONE [DRIFT]]]              -> the same with the reading's real error in the taps, by division limit; error near the cancelled frequency ('stripes')

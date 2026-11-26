@@ -736,7 +736,7 @@ the cancellation toward the carrier does not prevent the artifacts.
   the edge); the removal leaves a NARROW hole, and a narrow hole rings long: about 20 codes of a 160-code step sit
   within 0.1 MHz of 0.5 MHz. Its depth and place follow each frame's reading, so the train comes and goes. Cutting the
   division's response off in time instead (reach 8 to 64 samples) makes the wall worse (ripple 3.2 to 7.8 against 2.2).
-- **Wide leftover hole (`HOLE`, `GMAX`).** The division is made so that removal times echo is 1 - B(f), with B the
+- **Wide leftover hole (`HOLE`, `GMAX`).** The division is made so that division times echo is 1 - B(f), with B the
   shortfall a gain limit forces, widened by a Gaussian of HOLE MHz; one pass. On that wall, ripple over columns 32-112,
   median / largest of 14 frames: captured 1.74 / 1.94, limit 0.01 as sent 2.20 / 4.55, hole 0.15 MHz gain 3 2.06 /
   2.72, hole 0.25 MHz gain 3 1.77 / 1.95, hole 0.25 MHz gain 5 1.82 / 2.39.
@@ -753,6 +753,42 @@ the cancellation toward the carrier does not prevent the artifacts.
 - **Setting now: gated, hole 0.25 MHz, gain 3, taps over 5 frames.** Judged by the owner on the 62-minute stretch
   (2026-11-26): the moving vertical bands are gone. Not yet judged: whether what is left of the ghost at the strongest
   moments is acceptable.
+
+### Two reviews before going further (2026-11-26): the cancelled band is not the place; thin strokes are
+
+The owner asked for the assumptions behind "reduce it further" to be put to Codex and to an independent adversarial
+agent before any work. Both read the code and the record and ran their own checks; the claims used below were
+re-measured here.
+
+- **Wrong: "the band is not lost to noise".** Assumed 0.11 codes rms per line near 0.5 MHz (0.7 codes spread evenly
+  over 4.2 MHz). Measured in flat picture at 0.42-0.53 MHz: 0.55-0.75 (agent), 0.68-0.72 (Codex), 1.1 on the wall after
+  the border from frame differences (here). The 0.7 was the deck's grey-mute floor, not this tape's noise. What the
+  echo leaves of an ordinary edge in that band is at or under the noise.
+- **The echo's zero sits on the unit circle** (agent; re-measured: |z| 1.0024, 1.0003, 0.9964, 0.9926 at frames 420,
+  423, 430, 440, all at 0.474-0.479 MHz). The exact inverse rings for hundreds of samples and changes side (after the
+  edge, before it) within twenty frames; the reading's own error there is as large as what is left of the picture.
+- **So "a more accurate kernel would allow more gain there" falls.** Both: do not raise the gain or narrow the hole.
+- **The response written above was inexact** (both): with the pass after the division, removal times echo is
+  1 + (H - 1) B = (1 - B) + B H, i.e. inside the hole the captured echo is put back, and the noise gain reaches 3.9
+  where the division's own limit is 3. The leftover dip at strong echo is that hole, by design.
+- **The proposed measurement (exact division on the border and on held-out edges) would not have decided anything**:
+  noise, a wrong fit, a kernel that differs by field or level, and the zero on the circle all predict ringing; on a
+  720-sample line in a 1024-point transform exact division rings from the wrap alone (Codex: 61 codes rms with the true
+  kernel and no noise). What would: a forward test with no division (fit on one group of edges, predict another: field
+  1 against field 2, large steps against small, rises against falls). First numbers: the two fields of a frame differ
+  at the dip by about 0.04 of the step after the odd/even-row control (agent), 0.019 rms in response near 0.5 MHz
+  against 0.045 left there (Codex); cause not separated.
+- **Found by Codex, re-measured here: features one or two field rows tall get NO removal, in any version.** The
+  five-line cleaning drops them from the estimate the echo is predicted from. A 120-code stroke on 40, true taps, no
+  noise, error over the stroke's rows in codes rms: captured 23.3; one and two rows tall 23.3 after every removal;
+  three rows and taller 14.6 (wide hole) and 5.6 (limit 0.01, three passes). Without the cleaning: 14.6 at every
+  height. This is outside the cancelled band and is a candidate for the doubles on fine lettering.
+- **Scores do not cover** (both): the two fields against each other; noise texture beside edges (row-incoherent, and
+  `flat` looks only where the gate is shut); ringing before edges; small steps against large; static doubles on sparse
+  features.
+- The reviews differ on one point: the agent would stop (three limits each larger than what is left in the band);
+  Codex would pause the gain and not call the leftover unrecoverable before the remover itself (cleaning, pass, gate)
+  is tested with known kernels.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
