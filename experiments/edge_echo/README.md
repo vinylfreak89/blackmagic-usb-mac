@@ -434,6 +434,15 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
     everywhere: far worse (14 on the dark card), dropped. In noisy or textured picture the tone (0.45 codes) is
     below what the picture and tape noise put at the same frequency, and a blind estimate from luma cannot tell
     them apart.
+  - The owner: the bands that remain are in the picture after the card. Tried then, and not kept: fitting the tone
+    in the difference between a frame and the median of its neighbours (still picture cancels, the rolling tone
+    does not), all frames solved in passes. Known answer on 30 consecutive frames of a tone-free tape with a
+    made-up tone: 93% of the tone left (96% one frame at a time); only 4% of that footage holds still, and even
+    there 93% is left. The limit is not the picture but the noise: the tone is 0.45 codes against 4-5 codes rms of
+    tape noise in ordinary picture, and a patch small enough for the tone to stay in step does not hold enough
+    samples to find it. A blind estimate needs far more samples in step than the tone's wander allows; removing it
+    in ordinary picture needs the tone's phase from somewhere else. Untried: if it is the two Hi-Fi carriers
+    beating, its phase follows the difference of the two sound channels, which the capture also holds.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
