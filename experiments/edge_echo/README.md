@@ -750,7 +750,9 @@ the cancellation toward the carrier does not prevent the artifacts.
   0.06 of as sent). First passage, same edge at stronger against weaker echo +2..+24: 0.025 against 0.0096 as sent and
   0.055 captured. Known answer with the taps known exactly, true echo over 8 codes: 12.0 against 3.4 as sent and 22.3
   captured; 4-8 codes: 4.1 against 3.1 and 5.1. The known answer does not have the trouble the hole is there for.
-- **Setting now: gated, hole 0.25 MHz, gain 3, taps over 5 frames.** Judged by the owner: pending.
+- **Setting now: gated, hole 0.25 MHz, gain 3, taps over 5 frames.** Judged by the owner on the 62-minute stretch
+  (2026-11-26): the moving vertical bands are gone. Not yet judged: whether what is left of the ghost at the strongest
+  moments is acceptable.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
@@ -850,7 +852,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
   every scene; frames filled from the bar. The 393 kHz region multiplied by about 2 and the ripple far after strong
   edges are taken out by applying the correction only where a ghost is predicted (`gate.py`); the ripple train after
   strong edges where the echo cancels nearly everything, by leaving a wide hole there instead of a narrow one, at the
-  price of less removal in those frames. The owner has not judged that yet. None needs the recording VCR.
+  price of less removal in those frames; the owner confirmed the bands gone. None needs the recording VCR.
 - A reference for the picture-read kernel that is not one scene's edge: reading the kernel from the test line instead
   was tried and fails far after the edge (above). Open.
 - The full-chain fit at RF (`rfmodel.py fit`) is parked: not established, and not needed for plain luma
