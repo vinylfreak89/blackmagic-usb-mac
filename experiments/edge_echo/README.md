@@ -387,7 +387,8 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   kHz apart, and a beat between them leaking into the picture would be there only on tapes with a Hi-Fi track, at
   a frequency set by the recorder that made the tape.
   The owner (2026-11-25): the commercial tape that shows it is Hi-Fi and the commercial tape that does not is not
-  Hi-Fi. Two for two. Intermodulation between the two Hi-Fi carriers giving slanted stripes over the whole picture
+  Hi-Fi; the off-air tape of the echo capture (has it) is Hi-Fi and the home-edited tape (does not) is not. Four
+  for four. Intermodulation between the two Hi-Fi carriers giving slanted stripes over the whole picture
   is described in the patent literature for the third-order product near 0.9 MHz (US 5,347,405); the plain
   difference near 0.4 MHz, which is what is measured here in luma, was not found described. A companion tone near
   0.94 MHz shows in one flat frame of the Hi-Fi tape only, not in the others: no support from that.
