@@ -473,8 +473,44 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
 - The removal multiplies content by 1.2-1.3 at 0.25-0.35 MHz and by about 2 at 0.35-0.55 MHz (above).
 
-Not yet done: a model of the echo at RF (picture as carrier amplitude, a delayed copy with strength, phase and
-delay, then the detector), fitted to the whole test line.
+### The echo modelled at RF (`rfmodel.py`): first fits, not yet established
+
+The owner's point: the echo was added at RF and then demodulated, so model it there. `rfmodel.py` runs the test
+line as broadcast (FCC composite: staircase with subcarrier, 2T and 12.5T pulses, bar, with sync and porches)
+through the off-air simulator written for the antenna tape (`rf_sim.py`, copied unchanged from the
+`antenna-deghost` branch: negative modulation, vestigial sideband, one delayed copy with strength, carrier phase
+and delay, tuner filter, detector, sync-tip AGC, back-porch clamp), then one fitted filter for recorder, tape and
+playback, then the capture's floor. Per group of fields (passage x reading, 8 groups, 168-1,181 test lines each):
+three numbers. Shared by all groups: the line's pulse positions and levels, the tuner's sideband slope (width
+and centring), the tape filter.
+
+- Arithmetic checks (`check`) pass: with no echo a synchronous detector returns the plateaus as sent and an envelope
+  detector lowers them by m^2/(4A) (34.8 / 52.5 / 69.9 / 86.6 for 36 / 54 / 72 / 90); an in-phase echo gives a plain
+  delayed copy's share (0.156-0.174 for 0.167); an echo a quarter turn off gives shares that differ by level and
+  step size through the envelope detector (0.34 / 0.39 / 0.50).
+- With the tuner's filter fixed at the textbook shape the fit fails outright: the bar's rise is off by 5-12 IRE and
+  the three numbers jump between groups (delay 1.6-18 samples). The echo's shape here (level reached, then a dip a
+  few samples later, no lasting change) is the quadrature part of the vestigial-sideband signal arriving about a
+  quarter turn off the carrier, and its shape is set by the sideband filters.
+- With the tuner's slope width and centring fitted (all groups together, error over the line 2.6 IRE rms with the
+  synchronous detector, 2.8 with the envelope detector), the three numbers come out orderly in every group:
+
+  | group | strength | carrier phase | delay, samples |
+  |---|---|---|---|
+  | first passage, readings 0.30-0.45 / 0.45-0.60 / 0.60-0.75 / 0.75-1.0 | 0.23 / 0.34 / 0.50 / 0.63 | -84 / -83 / -81 / -88 deg | 8.8 / 8.6 / 8.4 / 8.3 |
+  | 62 minutes, readings 0.45-0.60 / 0.60-0.75 / 0.75-1.0 | 0.56 / 0.70 / 0.90 | -69 / -75 / -80 deg | 7.7 / 7.8 / 7.9 |
+
+  One reflection about 0.6 microseconds late, close to a quarter turn off the carrier, whose strength follows the
+  reading; the 62-minute passage differs from the first by about ten degrees and half a sample.
+- Error by part, IRE rms, first passage 0.60-0.75 (three numbers / a linear echo read from the bar's rise / a
+  linear echo with 86 free taps): staircase risers 1.6-1.8 / 1.6-3.1 / 0.7-2.0; top plateau 2.1 / 4.3 / 3.1;
+  staircase fall 3.2 / 5.3 / 3.0; 2T pulse 4.8 / 12.5 / 4.6; 12.5T pulse 2.2 / 2.8 / 1.2; bar rise 6.6 / 1.0 / 4.4;
+  bar top 1.0 / 0.8 / 1.7.
+- **Not established.** The fit does not pass its own known answer: on made-up lines with 0.4 IRE of noise it ends
+  at 2.0-2.6 IRE and does not recover the tuner's slope (the search stops in the wrong place), so the fit to the
+  capture is probably not the model's best either. The bar's rise is 4-8 IRE off in every group. The two detectors
+  are not told apart (they settle on different tuner slopes and fit about equally). Nothing has been tried on
+  picture, and nothing is inverted.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
@@ -530,6 +566,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
 | `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
 | `tonesmall.py`, `tonediff.py` | the 393 kHz question in busy picture: many small flat patches; differences of consecutive frames |
+| `rfmodel.py`, `rf_sim.py` | the echo modelled at RF through the off-air simulator; arithmetic checks, recovery test, fit to the test line |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
@@ -566,7 +603,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 ## Open
 
 - Every removal here treats the echo as a linear operation on the demodulated picture; `stair.py` shows it is not.
-  A model at RF is the next thing to try.
+  The model at RF (`rfmodel.py`) gives orderly numbers per group but its fit does not yet pass its known answer,
+  misses the bar's rise by 4-8 IRE, and has not been tried on picture or inverted.
 - The reading from the picture (`direct.py`) is the only one that holds in both passages; the owner still sees bands.
   Its open points: frames without usable left edges (filled from the bar, unscored); the reference edge is one
   scene type's and is imposed on others beyond about +12; two passages only.
