@@ -726,7 +726,31 @@ the cancellation toward the carrier does not prevent the artifacts.
   weaker echo, first passage: 0.0096 against 0.0547 captured; ripple at 62 minutes 0.044 / 0.030 / 0.043 / 0.048
   against 0.035 / 0.034 / 0.033 / 0.035 captured and 0.039 / 0.037 / 0.066 / 0.087 for the full removal). Flat
   stretches: 393 kHz amplitude 1.04 against 0.99 captured. Known answer at this limit, true echo over 8 codes: 3.4
-  against 22.3 captured. Judged by the owner: pending (replacement clip of the same stretch).
+  against 22.3 captured.
+- **Owner on that clip:** the bands are still there, "especially around 14-16 seconds". Found there, frame by frame:
+  after the picture's bright left border (a step of about 160 codes at reading 0.80) the removed frames carry a ripple
+  of 28 samples per cycle on a wall that is flat in the capture, up to +-7 codes, 100+ samples long, 3.6 codes rms in
+  one frame and 1.7 (the capture's own) half a second later. The same train follows every strong vertical edge.
+- **What it is.** Where the echo cancels almost everything (0.02 of the picture left at 0.47 MHz in that frame) the
+  division limit restores the band on both sides and not its centre. The capture's hole is wide (a compact dip next to
+  the edge); the removal leaves a NARROW hole, and a narrow hole rings long: about 20 codes of a 160-code step sit
+  within 0.1 MHz of 0.5 MHz. Its depth and place follow each frame's reading, so the train comes and goes. Cutting the
+  division's response off in time instead (reach 8 to 64 samples) makes the wall worse (ripple 3.2 to 7.8 against 2.2).
+- **Wide leftover hole (`HOLE`, `GMAX`).** The division is made so that removal times echo is 1 - B(f), with B the
+  shortfall a gain limit forces, widened by a Gaussian of HOLE MHz; one pass. On that wall, ripple over columns 32-112,
+  median / largest of 14 frames: captured 1.74 / 1.94, limit 0.01 as sent 2.20 / 4.55, hole 0.15 MHz gain 3 2.06 /
+  2.72, hole 0.25 MHz gain 3 1.77 / 1.95, hole 0.25 MHz gain 5 1.82 / 2.39.
+- **Scores at hole 0.25 MHz, gain 3, taps over 5 frames, gated.** Still picture from frame to frame (`gate.py moving`):
+  0.94 against 0.93 captured and 1.10 as sent (gain 5: 0.99; without the averaging: 1.15). Added where the captured
+  picture is flat (`gate.py flat`, 48 samples within 3 codes, 150 frames): 0.35 codes rms, 5.1 exceeded by 1 sample in
+  1000, against 0.46 and 6.8 as sent. Ripple +22..+92 at 62 minutes by reading: 0.039 / 0.028 / 0.034 / 0.052
+  (captured 0.035 / 0.034 / 0.033 / 0.035).
+- **The price: less removal where the echo is strongest.** Pooled edge at +4 / +6 / +8, 62 minutes, reading 0.75-0.90:
+  captured 0.39 / 0.19 / 0.42, as sent 1.10 / 0.84 / 0.73, wide hole 0.87 / 0.59 / 0.54 (readings under 0.65: within
+  0.06 of as sent). First passage, same edge at stronger against weaker echo +2..+24: 0.025 against 0.0096 as sent and
+  0.055 captured. Known answer with the taps known exactly, true echo over 8 codes: 12.0 against 3.4 as sent and 22.3
+  captured; 4-8 codes: 4.1 against 3.1 and 5.1. The known answer does not have the trouble the hole is there for.
+- **Setting now: gated, hole 0.25 MHz, gain 3, taps over 5 frames.** Judged by the owner: pending.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
@@ -786,7 +810,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `barread.py` | the echo read from the test line's plain-luma parts with free taps on both sides of the edge; references, known answer, picture scores (same edge at two strengths, what moves together across rows) |
 | `reflect.py`, `reflect_score.py` | one reflection at RF relative to the weakest state: fit to the pooled test lines; three numbers per frame and the picture scores |
 | `reflect_cal.py`, `scene_ref.py` | the test line's per-frame state calibrated to the picture on held-out tracks; a reference edge made for the passage, judged on the test bar |
-| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, a gated stretch |
+| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; the wide leftover hole; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, what is added on flat picture, a gated stretch |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
@@ -824,8 +848,9 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 
 - The residuals of the picture-read removal (`direct.py`), per the two reviews above: one reference edge imposed on
   every scene; frames filled from the bar. The 393 kHz region multiplied by about 2 and the ripple far after strong
-  edges are taken out by applying the correction only where a ghost is predicted (`gate.py`); the owner has not judged
-  it yet. None needs the recording VCR.
+  edges are taken out by applying the correction only where a ghost is predicted (`gate.py`); the ripple train after
+  strong edges where the echo cancels nearly everything, by leaving a wide hole there instead of a narrow one, at the
+  price of less removal in those frames. The owner has not judged that yet. None needs the recording VCR.
 - A reference for the picture-read kernel that is not one scene's edge: reading the kernel from the test line instead
   was tried and fails far after the edge (above). Open.
 - The full-chain fit at RF (`rfmodel.py fit`) is parked: not established, and not needed for plain luma

@@ -5,16 +5,23 @@
 #          share applied = 1 - KAPPA * floor^2 / size^2, never below 0.  Flat picture is left exactly as captured.
 #   taper: the echo's taps are weakened toward the carrier, w(f) = 1 - exp(-(f/f0)^2 / 2), with the smallest f0 per frame that
 #          keeps the boost at every frequency under GMAX.  Applied everywhere.
+#   hole : the division limit leaves the band around the frequency the echo cancels unrestored; a NARROW leftover hole rings for
+#          100+ samples after every strong edge (vertical bands on flat picture, changing from frame to frame).  With HOLE (MHz) set,
+#          the division is made so that removal x echo = 1 - B(f): B is the shortfall the gain limit GMAX forces,
+#          b(f) = max(0, 1 - GMAX |H(f)|), widened by a Gaussian of HOLE MHz, and one pass follows.  The leftover is then compact,
+#          next to the edge.  HOLE=0 (default): the division limit EPS and three passes, as before.
 #   python3 gate.py ka [NOISE [TONE]]                       -> known answer: echo-free frames, real strong-echo taps, noise and a 393 kHz tone
 #   python3 gate.py ka2 [NOISE [TONE [DRIFT]]]              -> the same with the reading's real error in the taps, by division limit; error near the cancelled frequency ('stripes')
 #   python3 gate.py moving LUMA.npy TAPS.npz [A B [C0 C1 [R0 R1]]]   -> bands that move: frame-to-frame change where the picture stands still, per division limit
 #   python3 gate.py score NAME LUMA.npy TRACKS.npz TAPS.npz AMOUNTS.npy   -> steady left edges (odd rows) and line-to-line change, per method
+#   python3 gate.py flat LUMA.npy TAPS.npz [A B [STEP]]     -> what each method adds where the CAPTURED picture is flat (48 samples within 3 codes)
 #   python3 gate.py remove LUMA.npy AMOUNTS.npy TAPS.npz OUT_removed.npy [EPS [KAPPA]]   -> a whole stretch, gated (also OUT_read.npy for clip.py)
+# Environment: KAPPA (9), STEADY (taps averaged over this many frames, 1), HOLE (MHz, 0), GMAX (3).
 import sys, os, numpy as np
 import model as M, harness as H, direct as D
 from aware import clean, bands
 np.set_printoptions(linewidth=250, precision=3, suppress=True)
-NF = H.NF; FR = np.fft.rfftfreq(NF, 1 / 13.5); T = H.T; KAPPA = float(os.environ.get('KAPPA', 9.0)); STEADY = int(os.environ.get('STEADY', 1)); PCT = 10; BAND = (FR > 0.05) & (FR < 4.2)
+NF = H.NF; FR = np.fft.rfftfreq(NF, 1 / 13.5); T = H.T; KAPPA = float(os.environ.get('KAPPA', 9.0)); STEADY = int(os.environ.get('STEADY', 1)); PCT = 10; BAND = (FR > 0.05) & (FR < 4.2); HOLE = float(os.environ.get('HOLE', 0)); GMAX = float(os.environ.get('GMAX', 3))
 def spec(q): return np.fft.rfft(np.r_[0, q[1:]], NF)
 def remove_spec(Y, Qs, eps=0.01, iters=3):          # harness.remove_img (no lag, floor rule, five-line cleaning) for an echo given by its spectrum
     Hq = 1 + Qs; n = Y.shape[1]; fl = Y <= 0.5
@@ -22,6 +29,15 @@ def remove_spec(Y, Qs, eps=0.01, iters=3):          # harness.remove_img (no lag
     for it in range(iters):
         Xc = clean(X, 220); E = np.fft.irfft(np.fft.rfft(Xc, NF, axis=1) * Qs, NF, axis=1)[:, :n]; X = np.where(fl, np.minimum(Xc + E, Y), Y) - E
     return X
+def division(Qs, gmax, sigma):                      # 1/H times a net response whose hole is no narrower than sigma MHz
+    Hq = 1 + Qs; A = np.abs(Hq); b = np.maximum(0, 1 - gmax * A); b[FR > 4.2] = 0; idx = np.nonzero(b > 0)[0]; B = np.zeros_like(A)
+    for sgn in (1, -1):
+        if len(idx): B = np.maximum(B, (b[idx][None] * np.exp(-0.5 * ((FR[:, None] - sgn * FR[idx][None]) / sigma) ** 2)).max(1))
+    return (1 - B) / np.where(A > 1e-6, Hq, 1e-6)
+def remove_hole(Y, Qs, gmax=GMAX, sigma=HOLE):       # remove_spec with that division and one pass
+    n = Y.shape[1]; fl = Y <= 0.5; X = np.fft.irfft(np.fft.rfft(Y, NF, axis=1) * division(Qs, gmax, sigma), NF, axis=1)[:, :n]
+    Xc = clean(X, 220); E = np.fft.irfft(np.fft.rfft(Xc, NF, axis=1) * Qs, NF, axis=1)[:, :n]; return np.where(fl, np.minimum(Xc + E, Y), Y) - E
+def core(y, Qs, eps=0.01): return remove_hole(y, Qs) if HOLE else remove_spec(y, Qs, eps=eps)      # the removal the gate is put on
 def box(a, w, axis):                                # running mean over w (odd) samples, edges repeated
     c = np.cumsum(np.pad(a, [(w // 2 + 1, w // 2) if i == axis else (0, 0) for i in range(a.ndim)], mode='edge'), axis=axis)
     return (np.take(c, range(w, c.shape[axis]), axis) - np.take(c, range(0, c.shape[axis] - w), axis)) / w
@@ -42,6 +58,8 @@ def tapered(Qs, gmax, eps=0.01):
 def methods(y, q):                                  # every method's picture for one frame
     Qs = spec(q); full = remove_spec(y, Qs); m, th = gate(full - y); deep = remove_spec(y, Qs, eps=0.003); m2, _ = gate(deep - y); out = {'full': full, 'gated': y + m * (full - y), 'gated, more boost': y + m2 * (deep - y)}
     for g in (1.5, 2.5): out['taper to boost %.1f' % g] = remove_spec(y, tapered(Qs, g)[0])
+    for sg in (0.15, 0.25):
+        wide = remove_hole(y, Qs, GMAX, sg); mw, _ = gate(wide - y); out['gated, hole %.2f MHz' % sg] = y + mw * (wide - y)
     return out, m, th
 def cmd_ka(noise='0.7', tone='0.45'):
     # Pass lines, set before the run.  Where the true echo is under 0.5 codes: gated error within 5% of the captured one and the
@@ -98,10 +116,28 @@ def cmd_moving(lumf, tapf, a='300', b='620', c0='470', c1='700', r0='20', r1='20
         for eps, w in ((0.003, 1), (0.01, 1), (0.02, 1), (0.04, 1), (0.01, 3), (0.01, 5), (0.01, 9), (0.02, 5)):
             Qw = spec(steady(Q, f, w)); full = remove_spec(y, Qw, eps=eps); m, _ = gate(full - y); acc.setdefault('gated, limit %.3f%s' % (eps, ', taps over %d frames' % w if w > 1 else ''), []).append(cut(y + m * (full - y)))
             if eps == 0.01 and w == 1: acc.setdefault('full removal, limit 0.010', []).append(cut(full))
+        for sg, gm, w in ((0.15, 3, 5), (0.25, 3, 5), (0.25, 5, 5), (0.25, 3, 1)):
+            wide = remove_hole(y, spec(steady(Q, f, w)), gm, sg); m, _ = gate(wide - y); acc.setdefault('gated, hole %.2f MHz, gain to %d%s' % (sg, gm, ', taps over %d frames' % w if w > 1 else ''), []).append(cut(y + m * (wide - y)))
         H.guard()
     hm = np.array(hm)[1:]; deep = hm < 0.06; print('%s frames %s-%s, columns %s-%s: %d frames where under 0.06 of the picture is left at the deepest point, %d others' % (lumf, a, b, c0, c1, deep.sum(), (~deep).sum()))
     print('  change from frame to frame where the picture stands still, same down the rows, codes rms (median frame):   deep frames | others')
     for lab, v in acc.items(): d = np.sqrt((np.diff(np.array(v), axis=0) ** 2).mean(1)); print('   %-44s                                                       %5.2f      | %5.2f' % (lab, np.median(d[deep]), np.median(d[~deep])))
+def cmd_flat(lumf, tapf, a='0', b='900', step='6'):
+    # What a removal adds where the CAPTURED picture is flat: stretches of 48 samples that stay within 3 codes (after smoothing over
+    # 5 samples and 3 lines of the field).  A removal that adds nothing leaves them flat.  Scored: the smoothed correction there,
+    # codes: rms, and the size only 1 sample in 1000 exceeds.  Taps averaged over STEADY frames.
+    from scipy.ndimage import maximum_filter1d, minimum_filter1d
+    t = np.load(tapf); lum = np.load(lumf, mmap_mode='r'); Q = t['Q']; acc = {}
+    def sm(v): return np.concatenate([box(box(v[r0:r1], 5, 1), 3, 0) for r0, r1 in ((0, 220), (220, v.shape[0]))])
+    for f in range(int(a), min(int(b), lum.shape[0]), int(step)):
+        y = lum[f].astype(float) - M.BL; Qs = spec(steady(Q, f, STEADY)); s = sm(y); fl = maximum_filter1d((maximum_filter1d(s, 48, axis=1) - minimum_filter1d(s, 48, axis=1) < 3).astype(np.uint8), 48, axis=1) > 0; fl &= y > 4; fl[:, :30] = False; fl[:, 690:] = False
+        var = {'gated, limit 0.010': remove_spec(y, Qs, eps=0.01)}
+        for sg, gm in ((0.15, 3), (0.25, 3), (0.25, 5), (0.40, 3)): var['gated, hole %.2f MHz, gain to %d' % (sg, gm)] = remove_hole(y, Qs, gm, sg)
+        for lab, x in var.items(): m, _ = gate(x - y); acc.setdefault(lab, []).append(np.abs(sm(m * (x - y))[fl]))
+        acc.setdefault('share of the picture that is flat', []).append(np.array([fl.mean()])); H.guard()
+    print('%s frames %s-%s every %s, taps over %d frames: flat in the capture %.3f of the picture' % (lumf, a, b, step, STEADY, np.mean(np.concatenate(acc.pop('share of the picture that is flat')))))
+    print('  added where the captured picture is flat, codes:      rms | exceeded by 1 sample in 1000')
+    for lab, v in acc.items(): v = np.concatenate(v); print('   %-36s                 %.3f | %.2f' % (lab, np.sqrt((v ** 2).mean()), np.percentile(v, 99.9)))
 def cmd_score(name, lumf, trackf, tapf, amf):
     z = np.load(trackf); meta, cap, R = z['meta'], z['prof'].astype(float), z['R']; t = np.load(tapf); Q = np.array([steady(t['Q'], f, STEADY) for f in range(len(t['Q']))]); lum = np.load(lumf, mmap_mode='r'); k = meta[:, 1].astype(int)
     use = (k % 2 == 0) & (meta[:, 2].astype(int) % 2 == 1); meta, cap, k = meta[use], cap[use], k[use]; tid = meta[:, 0].astype(int); g = R[k, 0]; rem = {}; bd = {}; sh = []
@@ -135,8 +171,8 @@ def cmd_score(name, lumf, trackf, tapf, amf):
 def cmd_remove(lumf, amf, tapf, outf, eps='0.01', kappa=str(KAPPA)):
     A = np.load(amf); t = np.load(tapf); Q, direct = np.array([steady(t['Q'], f, STEADY) for f in range(len(t['Q']))]), t['direct']; lum = np.load(lumf, mmap_mode='r'); lo = hi = 0; out = np.lib.format.open_memmap(outf, mode='w+', dtype=np.uint8, shape=lum.shape)
     for f in range(lum.shape[0]):
-        y = lum[f].astype(float) - M.BL; full = remove_spec(y, spec(Q[f]), eps=float(eps)); m, _ = gate(full - y, float(kappa)); x = y + m * (full - y) + M.BL
+        y = lum[f].astype(float) - M.BL; full = core(y, spec(Q[f]), float(eps)); m, _ = gate(full - y, float(kappa)); x = y + m * (full - y) + M.BL
         lo += int((x < 0).sum()); hi += int((x > 255).sum()); out[f] = np.clip(np.rint(x), 0, 255); H.guard()
     out.flush(); np.save(outf.replace('removed', 'read'), np.c_[A[:, 0], A[:, 3:5], A[:, 1], ~direct]); print('%s: %d frames; samples cut off below 0: %d, above 255: %d' % (outf, lum.shape[0], lo, hi))
 if __name__ == '__main__':
-    {'ka': cmd_ka, 'ka2': cmd_ka2, 'moving': cmd_moving, 'score': cmd_score, 'remove': cmd_remove}[sys.argv[1]](*sys.argv[2:])
+    {'ka': cmd_ka, 'ka2': cmd_ka2, 'moving': cmd_moving, 'flat': cmd_flat, 'score': cmd_score, 'remove': cmd_remove}[sys.argv[1]](*sys.argv[2:])
