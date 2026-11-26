@@ -423,6 +423,17 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
     head: a four-cycle sliding fit, one sine per line, and patches judged against white noise.
   - Not done: colour; the echo capture (its tone sits near 395 kHz); any wiring into a render; the patch size and
     the two factors were chosen on five frames of one tape.
+  - The owner watched the clip (2026-11-25): the bands are still there. Measured afterwards by part of the clip
+    (tone over the boxes 90 kHz either side, in quiet patches of consecutive-frame differences; 1 = nothing): dark
+    title card 28 -> 1.9, and a decoded frame of the clip itself shows no bands there; the bright picture after it
+    12 -> 5.6, so the tone is still in the not-flat parts of ordinary picture. Which part the owner means is not
+    yet known.
+  - Tried against that residue: a running median for the slow part (keeps step edges out of the fit): no gain
+    (5.7); smaller patches: worse on both parts; the factor at 1.2: 1.0 and 4.0, with tone-free frames changed by
+    0.075 codes; an estimator that turns the tone's band down to zero frequency and smooths it in two dimensions
+    everywhere: far worse (14 on the dark card), dropped. In noisy or textured picture the tone (0.45 codes) is
+    below what the picture and tape noise put at the same frequency, and a blind estimate from luma cannot tell
+    them apart.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
