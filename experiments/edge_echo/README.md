@@ -405,6 +405,24 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   In the flattest frame the tone's frequency moves between 386 and 399 kHz from line to line and its phase moves
   by 40-50 degrees along one line while its size stays 0.9-1.0 codes: frequency modulation, as sound carriers
   have and a power supply does not.
+- **Taking the tone out (`tonecut.py`), an experiment, luma only.** A band-stop wide enough for the tone's wander
+  would ring by about 5 codes around a 200-code edge, to remove 0.9 codes. So: one slanted wave fitted in small
+  half-overlapping patches (16 lines x 480 samples), subtracted only as far as it stands above what the same patch
+  shows at the frequencies beside the tone, never above 1.3 times the tone's size.
+  - On 10 s of the tape that shows it best (dark title card, then picture): small flat patches 32 x -> 2.9 x the
+    column median; differences of consecutive frames 27 x -> 7 x; large flat patches standing out in 38 of 58
+    frames -> 4 of 58, fitted size 0.78-0.91 -> 0.16-0.23 codes.
+  - Frames of two tapes without the tone: changed by 0.04 codes rms, never more than 0.53 codes at a sample.
+  - Known answer with a made-up tone matched to the real one's wander (three statistics, in the script): 62% of
+    it removed on a flat card with 1.5 codes of noise, 47% with 3 codes; on ordinary busy picture 4-16%. It acts
+    where the picture is flat, which is where the tone can be seen, and leaves it elsewhere.
+  - The tone is under half a code. Subtracted and rounded back to whole 8-bit codes, the capture's values simply
+    return (measured: no change at all). The result has to stay finer than 8 bits, or be rounded with dither
+    (0.29 codes rms of added noise), which the clip sent to the owner uses.
+  - Three earlier estimators failed the known answer or the tone-free control and are described in the script's
+    head: a four-cycle sliding fit, one sine per line, and patches judged against white noise.
+  - Not done: colour; the echo capture (its tone sits near 395 kHz); any wiring into a render; the patch size and
+    the two factors were chosen on five frames of one tape.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
@@ -467,6 +485,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
 | `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
 | `tonesmall.py`, `tonediff.py` | the 393 kHz question in busy picture: many small flat patches; differences of consecutive frames |
+| `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |

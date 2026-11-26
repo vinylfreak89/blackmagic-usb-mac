@@ -54,13 +54,13 @@ def check():
     b = np.array([[bands(lum[k].astype(float), 220), bands(rem[k].astype(float), 220)] for k in range(0, n, 15)])
     print('line-to-line change mid-frame, codes, bands 0-0.2 / 0.2-0.6 / 0.6-1.5 / 1.5-4 MHz (median of %d frames):' % len(b))
     print('  captured', np.median(b[:, 0], 0)); print('  clip    ', np.median(b[:, 1], 0))
-def frames(lumf='run_luma.npy', remf='clip_removed.npy', readf='clip_read.npy'):
+def frames(lumf='run_luma.npy', remf='clip_removed.npy', readf='clip_read.npy', what='echo removed'):   # readf '-': no echo reading in the label
     from PIL import Image, ImageDraw, ImageFont
-    lum = np.load(lumf, mmap_mode='r'); rem = np.load(remf, mmap_mode='r'); R = np.load(readf); font = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 20)
+    lum = np.load(lumf, mmap_mode='r'); rem = np.load(remf, mmap_mode='r'); R = None if readf == '-' else np.load(readf); font = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 20)
     grey = bytes([128]) * (720 * (880 + STRIP) // 2)        # neutral colour planes: the frames are yuv420p, luma codes as captured
     def weave(a): o = np.empty((440, 720), np.uint8); o[0::2] = a[:220]; o[1::2] = a[220:]; return o
     for k in range(rem.shape[0]):
-        im = Image.new('L', (720, STRIP), 16); ImageDraw.Draw(im).text((8, 5), 'above: captured      below: echo removed      %4.1f s      echo reading %.2f' % (k * 1001 / 30000, R[k, 0]), fill=200, font=font)
+        im = Image.new('L', (720, STRIP), 16); ImageDraw.Draw(im).text((8, 5), 'above: captured      below: %s      %4.1f s' % (what, k * 1001 / 30000) + ('' if R is None else '      echo reading %.2f' % R[k, 0]), fill=200, font=font)
         sys.stdout.buffer.write(np.vstack([weave(lum[k]), np.asarray(im), weave(rem[k])]).tobytes() + grey); guard()
 if __name__ == '__main__':
-    {'remove': lambda: remove(int(sys.argv[2]) or None if len(sys.argv) > 2 else None, *sys.argv[3:6]), 'check': check, 'frames': lambda: frames(*sys.argv[2:5])}[sys.argv[1]]()
+    {'remove': lambda: remove(int(sys.argv[2]) or None if len(sys.argv) > 2 else None, *sys.argv[3:6]), 'check': check, 'frames': lambda: frames(*sys.argv[2:6])}[sys.argv[1]]()
