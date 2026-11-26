@@ -448,9 +448,10 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
     was set against the captured sound averaged over each line: right minus left, left, right, and their sum, at
     every offset within +-50 ms. Strongest correlation 0.014; the same with the frequencies shuffled gives 0.012.
     Limits of the test: the sound under the title card is near silence (about -58 dB, mostly hiss), the only
-    place where lines are flat enough to read the tone's frequency; and whether the captured sound came from the
-    Hi-Fi tracks is not known. So no predictor from the captured sound, and the carrier-beat explanation is not
-    confirmed by this; the tally of tapes still stands.
+    place where lines are flat enough to read the tone's frequency. The captured sound was the Hi-Fi sound (owner).
+    So no predictor from the captured sound, and the carrier-beat explanation is not confirmed by this; the tally
+    of tapes still stands. Not yet tried: a flat passage with loud sound, where a relation, if any, would be
+    plain.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
