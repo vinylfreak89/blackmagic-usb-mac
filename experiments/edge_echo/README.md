@@ -452,6 +452,17 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
     So no predictor from the captured sound, and the carrier-beat explanation is not confirmed by this; the tally
     of tapes still stands. Not yet tried: a flat passage with loud sound, where a relation, if any, would be
     plain.
+    Then the deciding case: the end credits of the same tape, a flat dark card for 10 s with loud sound throughout
+    (left about -16 dBFS, right minus left -26 to -42 dBFS; 40 dB above the sound under the title card). 97,511
+    flat lines: the tone's frequency spread is +-5.1 kHz (+-4.4 kHz under near silence), its size 0.87 codes and
+    frequency 393.0 kHz as before, and the strongest correlation with any of the four sound signals at any offset
+    is 0.014 (shuffled 0.008-0.011; chance over 4,801 offsets gives about 0.013). The tone does not move with the
+    sound at all. A beat between the two Hi-Fi carriers would have to: each carrier's frequency follows its
+    channel. **The carrier-beat explanation is refuted**, and with it "frequency modulation, as sound carriers
+    have" above: about half of the measured wander is the reading's own noise (a steady sine in the same noise
+    reads +-2.2 kHz), and the rest is fast phase jitter of unknown origin. What stands: which tapes have the tone
+    (two Hi-Fi tapes; not two other Hi-Fi tapes from one production house; not the two tapes without Hi-Fi), its
+    constant size at every picture level, and a slightly different frequency on each tape. Cause unknown.
     The sound itself reads as Hi-Fi, as the owner suggested checking: content up to 18-20 kHz in the loud part
     (10-15 dB above the quiet part's floor there), a noise floor near -71 dBFS over 1-20 kHz against loud passages
     at -14 dBFS, and hiss that differs between left and right. A linear track would stop near 10 kHz with a floor
