@@ -663,6 +663,53 @@ is truly fixed, and every field has one. Only its plain-luma parts are read (2T 
 - **So:** the test line gives the echo's form and a quiet per-frame state (three numbers), not the kernel. The
   picture-read kernel stays; what it lacks is still a reference that is not one scene's.
 
+### Removal that adds nothing where no ghost is predicted (`gate.py`, 2026-11-26)
+
+Owner's target: "good cancellation with no extra artifacts", not complete cancellation; and the question why tapering
+the cancellation toward the carrier does not prevent the artifacts.
+
+- **Where the removal boosts.** `direct.py`'s per-frame taps, picture left by the echo and the removal's boost (division
+  limit 0.01), median by reading. All the boost sits between 0.2 and 0.85 MHz; above 0.85 MHz the removal attenuates
+  (0.65-1.1). First passage: picture left at 0.39-0.45 MHz 0.77 (reading 0.30-0.45) down to 0.24 (0.75-0.90), boost 1.3
+  to 3.6. At 62 minutes the hole is deeper and sits at 0.5 MHz: 0.27 down to 0.09 left, boost 3.3 to 5.0 (the limit)
+  there and 2.0-2.8 at 393 kHz.
+- **A taper toward the carrier keeps the boost out and the ghost in.** Taps weakened by w(f) = 1 - exp(-(f/f0)^2/2),
+  the smallest f0 per frame that keeps the boost under 1.5 or 2.5. The ghost is that band: the dip after an edge is the
+  0.3-0.7 MHz part of the edge gone missing, so not boosting it leaves it. Known answer (below), where the true echo is
+  over 8 codes: error captured 22.3, taper 21.3 / 19.8, full removal 3.2. Real edges at 62 minutes, reading 0.75-0.90,
+  level at +6: captured 0.19, taper 0.35 / 0.46, full 0.85; the 2.5 taper leaves ripple 0.138 against 0.035 captured.
+- **Gate.** The full removal's correction (removed minus captured) is applied only where its local size (rms over 17
+  samples twice along the line and 3 lines of the field) stands clear of the frame's own floor (10th percentile of that
+  size): share applied = 1 - 9 floor^2 / size^2, never below 0. Flat picture stays as captured, so the division limit
+  can go down to 0.003 ("more boost") without boosting it.
+- **Known answer** (`gate.py ka`: 100 echo-free frames of another tape, taps of 352 strong-echo frames of the 62-minute
+  passage, noise 0.7 codes, a 393 kHz tone of 0.45 codes, cut off and rounded; removal with the true taps). Error against
+  the echo-free frames, codes rms, by the true echo's local size:
+
+  | | 0.5-1 | 1-2 | 2-4 | 4-8 | over 8 | tone left (0.45 put in) |
+  |---|---|---|---|---|---|---|
+  | captured | 1.13 | 1.67 | 2.76 | 5.12 | 22.3 | 0.45 |
+  | full removal | 1.42 | 1.75 | 2.11 | 2.46 | 3.24 | 1.02 |
+  | gated | 1.14 | 1.67 | 2.59 | 3.06 | 3.36 | 0.45 |
+  | gated, more boost | 1.14 | 1.68 | 2.61 | 3.10 | 3.03 | 0.45 |
+
+  Pass lines set beforehand (tone within 10%; over 4 codes within 15% of the full removal and under half of captured;
+  between, no worse than captured): met. Not tested: picture with a true echo under 0.5 codes (under 1% of these frames).
+  With the factor at 4 instead of 9: 4-8 codes 2.60, tone 0.46.
+- **Real passages** (`gate.py score`, steady left edges on odd rows, taps from even rows). The pooled removed edge is
+  the full removal's to 0.01. Ripple +22..+92 at 62 minutes by reading (0.45-0.55, 0.55-0.65, 0.65-0.75, 0.75-0.90):
+  captured 0.035 / 0.034 / 0.033 / 0.035; full 0.039 / 0.037 / 0.066 / 0.086; gated with more boost 0.044 / 0.028 /
+  0.034 / 0.038. First passage (five bins from 0.30): captured 0.036-0.044, full 0.027-0.040, gated 0.039-0.052: there
+  the gate gives back what the full removal gained far after the edge and leaves a soft step of up to 0.016 of the edge
+  where the correction fades out. About 36% of the correction is applied (62 minutes); 60% of the removed clip's samples
+  are identical to captured.
+- **Flat picture at 62 minutes** (373 stretches of 96 samples with a spread under 2 codes): 393 kHz amplitude captured
+  0.99, full removal 2.13, gated 1.06 (factor 4: 1.23; factor 16: 1.02); change from captured 2.38 / 0.69 codes rms.
+- **Not changed by this:** the reading itself (one reference edge, frames filled from the bar), so what is left at the
+  strongest frames' edges and fine lettering is what the full removal left. Edges whose echo is 2-8 codes get part of
+  the correction only. A frame with less than a tenth of quiet picture gets a floor that is too high and less removal.
+  Colour untouched. Judged by the owner: pending (one clip of the 62-minute passage).
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -721,6 +768,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `barread.py` | the echo read from the test line's plain-luma parts with free taps on both sides of the edge; references, known answer, picture scores (same edge at two strengths, what moves together across rows) |
 | `reflect.py`, `reflect_score.py` | one reflection at RF relative to the weakest state: fit to the pooled test lines; three numbers per frame and the picture scores |
 | `reflect_cal.py`, `scene_ref.py` | the test line's per-frame state calibrated to the picture on held-out tracks; a reference edge made for the passage, judged on the test bar |
+| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; known answer, scores, a gated stretch |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
@@ -757,8 +805,9 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 ## Open
 
 - The residuals of the picture-read removal (`direct.py`), per the two reviews above: one reference edge imposed on
-  every scene; the division limit and the reading's error where the echo nearly cancels 0.5 MHz (62 minutes, readings
-  above 0.65); the 393 kHz region multiplied by about 2; frames filled from the bar. None needs the recording VCR.
+  every scene; frames filled from the bar. The 393 kHz region multiplied by about 2 and the ripple far after strong
+  edges are taken out by applying the correction only where a ghost is predicted (`gate.py`); the owner has not judged
+  it yet. None needs the recording VCR.
 - A reference for the picture-read kernel that is not one scene's edge: reading the kernel from the test line instead
   was tried and fails far after the edge (above). Open.
 - The full-chain fit at RF (`rfmodel.py fit`) is parked: not established, and not needed for plain luma
