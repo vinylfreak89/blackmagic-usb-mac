@@ -35,9 +35,11 @@ else:
             if e.get('filled') and e.get('structure_ok'): mods.append(e)
 mods.sort(key=lambda m: m['file_from'])
 def data_of(m):
-    if 'data' in m: return m['data']
-    d = open(os.path.join(work, m['file']), 'rb').read()
-    assert len(d) == m['bytes'] and hashlib.sha256(d).hexdigest() == m['sha256'], ('work file does not read back as written', m['file'])
+    """a range's bytes as a bytearray, read once into it (a range can be hundreds of megabytes: a copy doubled it)"""
+    if 'data' in m: return bytearray(m['data'])
+    fn = os.path.join(work, m['file']); d = bytearray(os.path.getsize(fn))
+    with open(fn, 'rb', buffering=0) as f: n = f.readinto(d)
+    assert n == len(d) == m['bytes'] and hashlib.sha256(d).hexdigest() == m['sha256'], ('work file does not read back as written', m['file'])
     return d
 for a, b in zip(mods, mods[1:]): assert a['file_to'] <= b['file_from'], 'overlapping ranges'
 size = min(capture_size(src), int(os.environ.get('LIMIT_BYTES', 1 << 62))) + base      # LIMIT_BYTES: stop after this much of the source (tests); cut at the last whole record
@@ -150,6 +152,7 @@ def shift(bb, ov, oa):
         p += 24 + (al if (t == 0 or t == 3) else 0); k += 1
     assert p == n, 'range does not end on a record'
     return k
+RSS_MAX = float(os.environ.get('ASSEMBLE_RSS_MAX_GB', '1.5')) * (1 << 30)    # memory guard; ranges of a two-pass merge reach ~0.5 GB
 RETRY_S = float(os.environ.get('SOURCE_RETRY_S', '1800')); RETRY_WAIT_S = float(os.environ.get('SOURCE_RETRY_WAIT_S', '180'))
 def read_retry(at, n):
     """n bytes of the source at file offset at (as fin.read would give them), retrying I/O errors for up to RETRY_S seconds"""
@@ -195,7 +198,7 @@ def copy(a, b, ov, oa):
         if written - last_report > (256 << 20):      # often enough that the backlog overshoots by at most this
             last_report = written; throttle()
             import resource
-            if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > (1536 << 20): raise SystemExit('STOPPED: the assembler has used more than 1.5 GB of memory')
+            if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > RSS_MAX: raise SystemExit('STOPPED: the assembler has used more than %.1f GB of memory' % (RSS_MAX / 2**30))
             if written // (2 << 30) != (written - len(bb)) // (2 << 30):
                 print('%.0f s: %.2f GB written, %d records, %.1f MB/s' % (time.time() - t0, written / 1e9, nrec, written / 1e6 / (time.time() - t0)), file=sys.stderr, flush=True)
 def bridge_range(m):
@@ -224,7 +227,7 @@ for m in mods:
         segs.append(dict(kind='bridge', name=m['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], donor=m['donor'], headers=res['headers'], resyncs=res['resyncs'],
                          counter_shift=m.get('counter_shift')))
         pos = m['file_to']; ov += m['kv']; oa += m['ka']; continue
-    d = bytearray(data_of(m)); nrec += shift(d, ov, oa); d0 = at()
+    d = data_of(m); nrec += shift(d, ov, oa); d0 = at()
     if m.get('counter_shift'): Z.shift(d0 + m['counter_shift']['at'], m['counter_shift']['counts'])
     emit(d); segs.append(dict(kind='fill', name=m['rep']['name'], src=[m['file_from'], m['file_to']], dst=[d0, at()], kv=m['kv'], ka=m['ka'], counter_shift=m.get('counter_shift'))); del d
     pos = m['file_to']; ov += m['kv']; oa += m['ka']
