@@ -18,7 +18,7 @@
 # usage: two_pass_merge.py <plan.json> <base thumbs dir> <donor thumbs dir> <base .tpc> <donor .tpc> <work dir> [first] [last]
 #   writes <work dir>/plan.json in assemble.py's form (one entry per region: file range, data file, bytes, SHA-256, kv, ka,
 #   counter_shift) and the data files; a region already in it with its file present is not rebuilt (a rerun resumes).
-import sys, os, json, struct, hashlib, bisect, collections, resource, threading, time
+import sys, os, json, struct, hashlib, bisect, collections, resource, threading, time, shutil
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from tpc import H, MAGIC, UNIT, SYNC, MARK
@@ -29,6 +29,7 @@ F_LONG = 0.5124; F_EIGHT = 0.50094; VREQ, AREQ = 15360, 192          # build.py'
 MARGIN = 24 << 20                                                    # base bytes read either side of a region
 RSS_MAX = int(3.5 * (1 << 30))                                  # the machine has 16 GB; captures and renders share it
 ZEROS = bytes(40)
+FREE_MIN = 34e9                                                      # the internal disk's floor is ~30 GB free (share staging lands there)
 
 def _rss_guard():
     while True:
@@ -315,6 +316,10 @@ def main():
     plans = json.load(open(planf)); last = len(plans) - 1 if last is None else last
     BU = np.fromfile(os.path.join(bth, 'units.bin'), UNIT_DT); DU = np.fromfile(os.path.join(dth, 'units.bin'), UNIT_DT)
     os.makedirs(work, exist_ok=True); pj = os.path.join(work, 'plan.json')
+    # TWO_PASS_DATA: where the ranges' bytes go (the share: they come to tens of GB); plan.json stays in work (a local disk:
+    # it is replaced after every range, and a rename over a file on the share can serve the old one for minutes)
+    data = os.environ.get('TWO_PASS_DATA') or work; os.makedirs(data, exist_ok=True)
+    fuse = os.path.expanduser('~/.juicemount/fuse-internal'); truth = lambda x: fuse + x[len('/Volumes/zpool'):] if x.startswith('/Volumes/zpool/') else x
     done = json.load(open(pj)) if os.path.exists(pj) else {}
     clusters = []; JOIN = 3 * MARGIN
     for i in range(first, last + 1):
@@ -323,15 +328,20 @@ def main():
     prev_end = 0
     for ids in clusters:
         key = 'c%04d' % ids[0]
-        if key in done and os.path.exists(os.path.join(work, done[key][0]['file'])):
+        if key in done and os.path.exists(os.path.join(work, done[key][0]['file'])):   # (an absolute file stays absolute)
             assert done[key][0]['rep']['regions'] == ids, ('the work folder was built with other clusters', key)
             prev_end = done[key][0]['file_to']; continue
+        free = shutil.disk_usage('/').free
+        if free < FREE_MIN: print('STOPPED before %s: %.1f GB free on the internal disk, under %.0f GB (a rerun resumes here)' % (key, free / 1e9, FREE_MIN / 1e9), flush=True); sys.exit(4)
         t0 = time.time()
         mod, G = build_cluster(ids, plans, BU, DU, base_tpc, donor_tpc, prev_end)
         check_range(mod, G)
-        fn = key + '.bin'; d = mod.pop('data')
-        with open(os.path.join(work, fn), 'wb') as f: f.write(d); f.flush(); os.fsync(f.fileno())
-        assert open(os.path.join(work, fn), 'rb').read() == d, 'work file does not read back'
+        fn = os.path.join(data, key + '.bin'); d = mod.pop('data')
+        with open(fn, 'wb') as f: f.write(d); f.flush(); os.fsync(f.fileno())
+        h = hashlib.sha256()
+        with open(truth(fn), 'rb') as f:
+            for x in iter(lambda: f.read(8 << 20), b''): h.update(x)
+        assert h.hexdigest() == hashlib.sha256(d).hexdigest(), 'work file does not read back'
         mod.update(file=fn, bytes=len(d), sha256=hashlib.sha256(d).hexdigest(), filled=True, structure_ok=True)
         done[key] = [mod]; prev_end = mod['file_to']
         tmp = pj + '.tmp'; json.dump(done, open(tmp, 'w'), indent=0); os.replace(tmp, pj)
