@@ -192,7 +192,7 @@ typedef struct {
     _Atomic int64_t time_ms;                      /* position of the last frame played (video worker; set at session start) */
     _Atomic int64_t seek_shown_ms;                /* a seek chosen while paused, shown instead (-1 none): frames still in the
                                                      pipeline after a pause must not overwrite it */
-    _Atomic uint64_t tl_units, tl_bytes; _Atomic int tl_first16;   /* the replay's timeline; tl_units 0 = not known yet */
+    _Atomic uint64_t tl_units, tl_bytes, tl_lo, tl_hi; _Atomic int tl_first16;   /* the replay's timeline; tl_units 0 = not known yet */
     char *tl_path; uint64_t tl_gen, tl_size;      /* under s->m: the file (and its size) the timeline describes; gen bumps when it changes */
     int tl_probing, tl_failed;                    /* under s->m: a probe for tl_gen is queued or running / found no length */
     int paused; int64_t pending_seek_ms;          /* under s->m: replay held; a seek chosen while held (-1 none) */
@@ -296,7 +296,8 @@ static void on_frame(void *ctx, const fp_frame *fr){
     }
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (units){   /* the seek bar's time: this frame's own counter, resolved near the session's expected position */
-        rt_timeline tl = { atomic_load(&s->tl_bytes), units, (uint16_t)atomic_load(&s->tl_first16) };
+        rt_timeline tl = { .file_bytes = atomic_load(&s->tl_bytes), .units = units, .first16 = (uint16_t)atomic_load(&s->tl_first16),
+                           .byte_lo = atomic_load(&s->tl_lo), .byte_hi = atomic_load(&s->tl_hi) };
         uint64_t u = rt_resolve(&tl, (uint16_t)fr->counter_ext, (int64_t)(s->session_start_unit + atomic_load(&s->frames_out)));
         atomic_store(&s->time_ms, rt_ms(u));
     }
@@ -630,6 +631,7 @@ static int timeline_get(shuttle_src *s, rt_timeline *tl){
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (!units) return -1;
     tl->units = units; tl->file_bytes = atomic_load(&s->tl_bytes); tl->first16 = (uint16_t)atomic_load(&s->tl_first16);
+    tl->byte_lo = atomic_load(&s->tl_lo); tl->byte_hi = atomic_load(&s->tl_hi);
     return 0;
 }
 /* Render thread (libobs process_media_actions): queue only. Consecutive seeks collapse into the latest
@@ -799,21 +801,23 @@ static void *probe_thread(void *arg){
         pthread_mutex_unlock(&s->ctl_m);
         fs_replay_span sp; rt_timeline tl;
         int probed = fs_replay_probe(path, 0, &s->probe_abort, &sp) == 0;
-        int ok = probed && rt_init(&tl, sp.file_bytes, sp.first_counter, sp.last_counter) == 0;
+        int ok = probed && rt_init_span(&tl, sp.file_bytes, sp.first_offset, sp.last_offset, sp.first_counter, sp.last_counter) == 0;
         int aborted = atomic_load(&s->probe_abort);
         pthread_mutex_lock(&s->m);
         if (gen == s->tl_gen && !aborted){
             s->tl_probing = 0;
             if (ok){
                 atomic_store(&s->tl_bytes, tl.file_bytes); atomic_store(&s->tl_first16, tl.first16);
+                atomic_store(&s->tl_lo, tl.byte_lo); atomic_store(&s->tl_hi, tl.byte_hi);
                 atomic_store_explicit(&s->tl_units, tl.units, memory_order_release);
-                blog(LOG_INFO, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u) — %s", rt_ms(tl.units) / 1000.0,
-                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter, path);
+                blog(LOG_INFO, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u; picture from byte %llu to %llu of %llu) — %s", rt_ms(tl.units) / 1000.0,
+                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter, (unsigned long long)tl.byte_lo, (unsigned long long)tl.byte_hi,
+                     (unsigned long long)tl.file_bytes, path);
             } else if (sp.incomplete){
                 blog(LOG_WARNING, "[shuttle-source] replay length unknown: %s could not be read to its end (read error?); no seek bar until the replay is started again", path);
             } else {
                 s->tl_failed = 1;   /* a property of the file: not retried until the path or size changes */
-                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 32 MiB (about 1.4 s) of the %s of %s; no seek bar for this file",
+                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 2 GiB (about 90 s) of the %s of %s; no seek bar for this file",
                      !sp.have_first && !sp.have_last ? "start or end" : !sp.have_first ? "start" : "end", path);
             }
         }

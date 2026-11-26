@@ -100,8 +100,9 @@ int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n", argv[0]); return 9; }
     if (argc == 3 && !strcmp(argv[1], "--probe")){
         fs_replay_span sp; int rc = fs_replay_probe(argv[2], 0, NULL, &sp);
-        printf("file_bytes %llu first_counter %s%u last_counter %s%u\n", (unsigned long long)sp.file_bytes,
-               sp.have_first ? "" : "(none) ", sp.first_counter, sp.have_last ? "" : "(none) ", sp.last_counter);
+        printf("file_bytes %llu first_counter %s%u last_counter %s%u first_offset %llu last_offset %llu\n", (unsigned long long)sp.file_bytes,
+               sp.have_first ? "" : "(none) ", sp.first_counter, sp.have_last ? "" : "(none) ", sp.last_counter,
+               (unsigned long long)sp.first_offset, (unsigned long long)sp.last_offset);
         return rc == 0 ? 0 : 1;
     }
     fs_config cfg = {0}; cfg.geometry_config=&geometry; cfg.capture.replay_path = argv[1]; cfg.on_end = on_end;
