@@ -589,6 +589,56 @@ own left edges gets below 0.05. (2) Each steady edge keeping its own baseline, c
 level term on held-out tracks and time blocks, with the reading's noise handled: the level term is kept only if it
 cuts the held-out error at the dip by 20% in each passage.
 
+### Reading the echo from the test line (`barread.py`, `reflect.py`): right in the dip, not usable as the picture's kernel
+
+Tried as the cure for the imposed reference edge: the test line is the same waveform in every field, so its reference
+is truly fixed, and every field has one. Only its plain-luma parts are read (2T pulse, the bar's rise and top).
+
+- **No stretch of this capture is free of echo.** As a running median over 11 frames the reading is never below
+  0.12 in any array here; single lines reading below 0.1 (the "almost-no-echo edge" of `family.py`) are noise picks.
+  The reference is therefore the weakest state (running median below 0.15, 74 lines per field), every kernel here is
+  relative to it, and a removal takes the picture to how it looks there. In that state the picture's own left edge
+  overshoots to 1.12, dips to 0.79 at +7 and is back by about +24 (the bar: 1.17, 0.88, back by +20).
+- **The echo starts before the edge.** At strong echo the foot of the bar's rise comes up as well as its top coming
+  down; free taps need two lags before the edge (misfit 2.6% -> 1.6% of the bar; more lags add nothing). An echo that
+  only follows the edge cannot do that; a reflection a quarter turn off the carrier does (its quadrature part is an
+  odd function of frequency below the receiver's slope).
+- **Free taps (89 per field, `barread.py`).** Known answer (`ka`: the reference lines through made-up echoes, three
+  that only follow the edge and three as a reflection at RF makes them, with gain, shift, noise 3.5 codes, rounding
+  and the capture's limits): an echo of 0.06-0.41 of a picture-like edge comes back to 0.003-0.023, the depth of the
+  near-cancellation within 5%. Three faults the known answer caught on the way: gain, sideways shift and the first
+  tap trade freely on a rise (level now pinned, no shift fitted); samples the capture cut off at blanking were read
+  as echo (now left out); straight-line interpolation blurred the rise (now band-limited). On the captured lines the
+  fit leaves 1.5-1.7% of the bar; the two fields' taps agree to 0.02 rms.
+- **One reflection (`reflect.py`): three numbers per group, fitted to the change from the weak line, so the line as
+  broadcast and the recorder never enter.** 22 pooled lines, 38 numbers: 2.2% of the bar from four of five starts
+  (free taps: 1.4%; the line set beforehand was 1.5 times the free taps, missed at 1.56). Delay 6.3-6.9 samples
+  (0.47-0.51 microseconds) in every group; phase -129 to -138 degrees in the first passage and the weak one, -111 to
+  -123 at 62 minutes; strength 0.48 -> 0.88 and 0.64 -> 0.96 with the reading; weak state 0.40 at -144 degrees;
+  receiver slope 0.72 MHz wide (straight) or 1.03 (raised cosine), the same fit either way. Per frame the three
+  numbers move by 0.005 and 0.03 samples from one frame to the next.
+- **On the picture's steady left edges** (`barread.py score`, `reflect_score.py`; odd rows; division limit 0.01):
+
+  | | same edge, stronger minus weaker echo, +2..+24 / +26..+90 | ripple +22..+92 of the removed edge by reading, first passage | 62 minutes |
+  |---|---|---|---|
+  | captured | 0.055 / 0.002 | 0.037-0.044 | 0.032-0.035 |
+  | free taps from the bar | 0.021 / 0.015; rings at about 2.4 MHz | | |
+  | one reflection, all frequencies | 0.025 / 0.019; rings at about 2.2 MHz | | |
+  | one reflection, below 1.6 MHz only | 0.012 / 0.014; no ringing | 0.042 / 0.062 / 0.095 / 0.135 / 0.172 | 0.081 / 0.089 / 0.134 / 0.159 |
+  | `direct.py` (passes "same edge" by construction on left edges) | 0.007 / 0.003 | 0.040 / 0.036 / 0.036 / 0.032 / 0.027 | 0.039 / 0.039 / 0.067 / 0.086 |
+
+  With the one-reflection reading the edge comes out the same at every reading within 0.02 (first passage +6..+18:
+  0.80-0.87; 62 minutes 0.77-0.94) and looks like the weak passage's own edges, so the dip is the same echo on the bar
+  and in the picture. But far after the edge it adds 2-5 times the ripple `direct.py` does, at every reading in
+  both passages. It is not the padding of the profile (same with 1,500 samples of hold) and not the reflection's
+  own tail (its step response is back to 1.00 by +26): it is the division by a near-cancellation near 0.45 MHz acting
+  on the scene's own slow settle after an edge. The bar's near-cancellation is not the picture's closely enough to
+  be divided out.
+- Above about 2 MHz the test line's echo does not carry over at all (the ringing); consistent with small and large
+  edges being sharpened differently (above).
+- **So:** the test line gives the echo's form and a quiet per-frame state (three numbers), not the kernel. The
+  picture-read kernel stays; what it lacks is still a reference that is not one scene's.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -644,6 +694,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
 | `tonesmall.py`, `tonediff.py` | the 393 kHz question in busy picture: many small flat patches; differences of consecutive frames |
 | `rfmodel.py`, `rf_sim.py` | the echo modelled at RF through the off-air simulator; arithmetic checks, the chain's own answer on level and colour (`level`), known-answer recovery, fit to the test line, residual panel, picture-edge test |
+| `barread.py` | the echo read from the test line's plain-luma parts with free taps on both sides of the edge; references, known answer, picture scores (same edge at two strengths, what moves together across rows) |
+| `reflect.py`, `reflect_score.py` | one reflection at RF relative to the weakest state: fit to the pooled test lines; three numbers per frame and the picture scores |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
@@ -682,6 +734,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 - The residuals of the picture-read removal (`direct.py`), per the two reviews above: one reference edge imposed on
   every scene; the division limit and the reading's error where the echo nearly cancels 0.5 MHz (62 minutes, readings
   above 0.65); the 393 kHz region multiplied by about 2; frames filled from the bar. None needs the recording VCR.
+- A reference for the picture-read kernel that is not one scene's edge: reading the kernel from the test line instead
+  was tried and fails far after the edge (above). Open.
 - The full-chain fit at RF (`rfmodel.py fit`) is parked: not established, and not needed for plain luma
   (`rfmodel.py level`). Whether saturated colour changes the luma echo in the picture as it does on the staircase is
   not measured.
