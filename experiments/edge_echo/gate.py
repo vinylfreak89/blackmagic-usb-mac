@@ -17,12 +17,26 @@
 #   python3 gate.py score NAME LUMA.npy TRACKS.npz TAPS.npz AMOUNTS.npy   -> steady left edges (odd rows) and line-to-line change, per method
 #   python3 gate.py flat LUMA.npy TAPS.npz [A B [STEP]]     -> what each method adds where the CAPTURED picture is flat (48 samples within 3 codes)
 #   python3 gate.py remove LUMA.npy AMOUNTS.npy TAPS.npz OUT_removed.npy [EPS [KAPPA]]   -> a whole stretch, gated (also OUT_read.npy for clip.py)
-# Environment: KAPPA (9), STEADY (taps averaged over this many frames, 1), HOLE (MHz, 0), GMAX (3).
+#   thin : the five-line cleaning replaces a sample that disagrees with its five-line median by the other rows' mean, so features
+#          one or two field rows tall (lettering) drop out of the estimate the echo is predicted from and keep their echo.  With
+#          THIN=1 such a sample is averaged with the rows that agree with IT instead (clean_keep).  Cost: a dropout streak, which
+#          has no echo, then gets one predicted and subtracted.
+# Environment: KAPPA (9), STEADY (taps averaged over this many frames, 1), HOLE (MHz, 0), GMAX (3), THIN (0).
 import sys, os, numpy as np
 import model as M, harness as H, direct as D
 from aware import clean, bands
 np.set_printoptions(linewidth=250, precision=3, suppress=True)
 NF = H.NF; FR = np.fft.rfftfreq(NF, 1 / 13.5); T = H.T; KAPPA = float(os.environ.get('KAPPA', 9.0)); STEADY = int(os.environ.get('STEADY', 1)); PCT = 10; BAND = (FR > 0.05) & (FR < 4.2); HOLE = float(os.environ.get('HOLE', 0)); GMAX = float(os.environ.get('GMAX', 3))
+THIN = os.environ.get('THIN', '0') == '1'
+def clean_keep(x, half):                            # aware.clean, but a sample that disagrees with the median keeps its own row's company
+    out = np.empty_like(x)
+    for a, b in ((0, half), (half, x.shape[0])):
+        f = x[a:b]; p = np.pad(f, ((2, 2), (0, 0)), mode='edge'); st = np.stack([p[i:i + f.shape[0]] for i in range(5)])
+        sig = 1.4826 * np.median(np.abs(f[1:] - f[:-1])) / np.sqrt(2); med = np.median(st, 0); w = np.abs(st - med) <= 2.5 * sig
+        base = (st * w).sum(0) / np.maximum(w.sum(0), 1); off = np.abs(f - med) > 2.5 * sig; w2 = np.abs(st - f[None]) <= 2.5 * sig
+        out[a:b] = np.where(off, (st * w2).sum(0) / np.maximum(w2.sum(0), 1), base)
+    return out
+if THIN: clean = clean_keep
 def spec(q): return np.fft.rfft(np.r_[0, q[1:]], NF)
 def remove_spec(Y, Qs, eps=0.01, iters=3):          # harness.remove_img (no lag, floor rule, five-line cleaning) for an echo given by its spectrum
     Hq = 1 + Qs; n = Y.shape[1]; fl = Y <= 0.5

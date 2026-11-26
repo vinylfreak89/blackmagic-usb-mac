@@ -790,6 +790,30 @@ re-measured here.
   Codex would pause the gain and not call the leftover unrecoverable before the remover itself (cleaning, pass, gate)
   is tested with known kernels.
 
+### Thin features kept in the echo prediction (`THIN=1`, `gate.py clean_keep`, 2026-11-26)
+
+The five-line cleaning replaces a sample that disagrees with its five-line median by the other rows' mean. With
+`THIN=1` such a sample is averaged with the rows that agree with it instead, so a feature one or two field rows tall
+stays in the estimate the echo is predicted from. Everything else as before (gated, hole 0.25 MHz, gain 3, taps over
+5 frames).
+
+- **Known answer** (50 echo-free frames of another tape, strong-echo taps, noise 0.7, 25 made-up dropout streaks a
+  frame; error in codes rms, captured / median cleaning / thin kept). Where the median cleaning misses over 2 codes of
+  true echo (7% of the picture): 14.5 / 8.0 / 7.9. Where that missed echo is over 4 codes and most of the true echo
+  (0.1%; a one-off variant of the script): 7.6 / 7.2 / 5.3. Elsewhere, echo over 4 codes: 15.1 / 8.4 / 8.4; under 2 codes: 1.60 / 1.60 / 1.65. After a
+  dropout streak (which has no echo; one is now predicted and subtracted): 8.0 / 4.9 / 10.7. The pass line set before
+  the run (a quarter lower where the echo is missed) was not met on these frames: they hold little fine lettering.
+- **Real lettering decides it the other way.** Caption text is four or five field rows tall, so most of a letter
+  disagrees with its five-line median. Raw panel of the caption card at readings 0.96 and 0.74: captured doubled,
+  median cleaning still doubled, thin kept readable. Output changed on the card by 7.2-7.7 codes rms. In the picture
+  the change sits on diagonal edges and foliage (about 3 codes rms, over 10 codes on 2.4% of it); flat picture is
+  unchanged.
+- **Scores.** Still picture from frame to frame 0.92 (median cleaning 0.94, captured 0.93). Added where the capture is
+  flat 0.356 rms and 5.2 at 1 in 1000 (0.346 and 5.1). The wall after the border as captured (1.6-2.0).
+- **Dropout-like streaks** (one row, 12+ samples, 30+ codes off both field neighbours, there in that frame only):
+  0.13 a frame at 62 minutes, 0.02 in the first passage.
+- Judged by the owner: pending.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -848,7 +872,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `barread.py` | the echo read from the test line's plain-luma parts with free taps on both sides of the edge; references, known answer, picture scores (same edge at two strengths, what moves together across rows) |
 | `reflect.py`, `reflect_score.py` | one reflection at RF relative to the weakest state: fit to the pooled test lines; three numbers per frame and the picture scores |
 | `reflect_cal.py`, `scene_ref.py` | the test line's per-frame state calibrated to the picture on held-out tracks; a reference edge made for the passage, judged on the test bar |
-| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; the wide leftover hole; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, what is added on flat picture, a gated stretch |
+| `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; the wide leftover hole; thin features kept in the echo prediction; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, what is added on flat picture, a gated stretch |
+| `thin_ka.py` | known answer for keeping thin features in the echo prediction: error where the median cleaning cannot predict the echo, elsewhere, and after made-up dropout streaks |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
