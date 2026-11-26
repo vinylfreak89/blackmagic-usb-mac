@@ -634,6 +634,30 @@ is truly fixed, and every field has one. Only its plain-luma parts are read (2T 
   own tail (its step response is back to 1.00 by +26): it is the division by a near-cancellation near 0.45 MHz acting
   on the scene's own slow settle after an edge. The bar's near-cancellation is not the picture's closely enough to
   be divided out.
+- **Calibrating the test line's state to the picture (`reflect_cal.py`)**: each steady edge keeps its own shape, the
+  per-frame state comes from the test lines, a few shared numbers are fitted on half of the first passage's long
+  tracks. With the weak state left free it wandered (an edge's own shape absorbs anything common to all frames) and
+  wrecked the edges; pinned, the fit asks for almost nothing (strength x 0.99, phase +4 to +6 degrees, delay +1.0 to
+  +1.3 samples). Held out: the same edge at stronger against weaker echo 0.055 -> 0.016 near and 0.006-0.007 far;
+  ripple of the removed edge 0.061-0.110 on the first passage's other tracks and 0.058-0.123 at 62 minutes. Better
+  than uncalibrated, still 2-3 times `direct.py`. Dropped as a kernel.
+- **A reference edge made for the passage (`scene_ref.py`)**: `direct.py`'s reading, its one fixed reference replaced
+  by the passage's pooled edge with the one-reflection echo divided out (first 18 samples) joined to the captured
+  pooled edge (from +26, which the echo does not reach). Judged on the frame's own test bar after removal with the
+  picture-read taps (independent of the picture's left edges), rms of the bar by reading:
+
+  | 62 minutes | bar rise, captured -> fixed reference / passage reference | picture ripple +22..+92, fixed / passage |
+  |---|---|---|
+  | 0.45-0.55 | 0.144 -> 0.059 / 0.040 | 0.034 / 0.057 |
+  | 0.55-0.65 | 0.159 -> 0.068 / 0.053 | 0.033 / 0.059 |
+  | 0.65-0.75 | 0.186 -> 0.069 / 0.055 | 0.058 / 0.082 |
+  | 0.75-0.90 | 0.209 -> 0.081 / 0.072 | 0.068 / 0.092 |
+
+  The bar comes out 10-30% closer with the passage's reference and the picture's far ripple 25-70% larger; in the
+  first passage the two references score the same (the fixed one was made there). The join at +18..+26 carries the
+  first swing of the one-reflection removal's own ripple, which may be the cause; not pursued. Either way the
+  picture-read taps leave 0.04-0.08 of the bar on the bar's rise, make the 2T pulse worse in the first passage
+  (0.050 -> 0.068 ... 0.130 -> 0.161) and add to the bar's top (0.018 -> 0.03).
 - Above about 2 MHz the test line's echo does not carry over at all (the ringing); consistent with small and large
   edges being sharpened differently (above).
 - **So:** the test line gives the echo's form and a quiet per-frame state (three numbers), not the kernel. The
@@ -696,6 +720,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `rfmodel.py`, `rf_sim.py` | the echo modelled at RF through the off-air simulator; arithmetic checks, the chain's own answer on level and colour (`level`), known-answer recovery, fit to the test line, residual panel, picture-edge test |
 | `barread.py` | the echo read from the test line's plain-luma parts with free taps on both sides of the edge; references, known answer, picture scores (same edge at two strengths, what moves together across rows) |
 | `reflect.py`, `reflect_score.py` | one reflection at RF relative to the weakest state: fit to the pooled test lines; three numbers per frame and the picture scores |
+| `reflect_cal.py`, `scene_ref.py` | the test line's per-frame state calibrated to the picture on held-out tracks; a reference edge made for the passage, judged on the test bar |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
