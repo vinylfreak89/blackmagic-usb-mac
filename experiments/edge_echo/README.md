@@ -377,6 +377,15 @@ step per line and per frame). The owner sees diagonal bands in every capture mad
   the other chain does not have it (0 of 6 flat frames). A free-running source somewhere in the playback chain
   (its frequency differs by 0.6% between the two captures); which box is not established.
   The echo removal about doubles it (gain 1.9-2.2 at 0.35-0.55 MHz).
+  It is not in every capture from that week (`tonesmall.py`: many small flat patches; `tonediff.py`: differences
+  between consecutive frames, which cancel still picture and keep a free-running tone; both find it where the
+  large-patch measurement does). Present: the capture the owner pointed at (24 x against 5-7 beside it) and the
+  echo capture (9-20 x against 2-4 in all three passages). Absent: another commercial tape captured the same day
+  as the first (3.0 x against 3.4-3.8, 585 patches) and a home-edited tape captured four days later (1.7 x against
+  1.4-1.6). Undetermined: a camcorder tape from October (one quiet patch in 10 s). So it goes with the tape while
+  being the same size at every picture level. Candidate, not tested: the two Hi-Fi sound carriers of VHS sit 400
+  kHz apart, and a beat between them leaking into the picture would be there only on tapes with a Hi-Fi track, at
+  a frequency set by the recorder that made the tape.
 - 1266.6 kHz = 80.5 x line rate, flipping every line: twice the VHS colour-under carrier, colour leaking into luma
   on tape. 9 times the background in the weak passage, 3 in the first.
 - 920.6 kHz = 58.5 x line rate in the first passage: the sound/colour beat of the off-air reception.
@@ -438,6 +447,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `diag.py` | what the removal does to line-to-line content by frequency (the diagonal bands) |
 | `tones.py` | steady interfering tones in a captured stretch: frequency, step per line, step per frame |
 | `tones2d.py` | slanted bands in flat patches: two-dimensional spectrum, also sees tones that hardly change from line to line |
+| `tonesmall.py`, `tonediff.py` | the 393 kHz question in busy picture: many small flat patches; differences of consecutive frames |
 | `sample_units.py` | N single frames spread through a capture |
 | `stretch.py` | N consecutive frames from a byte offset: picture rows, the test-signal rows (`vbi`), or both in one read (`both`) |
 | `survey_tl.py`, `survey_read.py` | the two test lines at N points across a capture, one short read each; strength over the capture |
