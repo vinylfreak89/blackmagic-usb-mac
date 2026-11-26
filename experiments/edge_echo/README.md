@@ -896,6 +896,39 @@ strength at 14-20 s: "isn't it best to do nothing?"
   is gone. The fit leaves 2.2% of the bar where 89 free taps leave 1.4%.
 - A three-row clip of the 62-minute stretch (captured / full strength / faded) was sent. Judged by the owner: pending.
 
+### The line-19 sweep: a purpose-built reference, direct division, and a chain that is not linear (`gcr.py`, `bartest.py`, 2026-11-26)
+
+Owner on the three-row clip: the full-strength row has the best cancellation and the ringing; the faded row "barely
+cancels the ghost". "Why is there any fitting going on at all? ... a wave phase cancellation, right?"; the blanking
+signal must match the picture; "think about this problem from a physics standpoint".
+
+- **The bar test** (`bartest.py`): the removal applied to each frame's own test bar, whose shape is known. With the
+  three numbers fitted to predict the captured bar, the removed bar still carries +-2.5% of the bar at +20..+34 and
+  0.03-0.05 rms over the rise, at every strength. Fitted instead so that the REMOVED bar is clean: 0.0215 -> 0.0173
+  (noise 0.009-0.011), with the numbers moving the same way in every frame (phase -12 degrees, delay -0.8 samples). A
+  second, longer path sharing a ratio and a delay: 0.0186 -> 0.0173 on held-out frames; the pass line was 0.012. Not a
+  second reflection.
+- **Line 19 / 282 carry the broadcast's ghost-cancelling reference**: a sweep to about 4 MHz on a 30 IRE pedestal,
+  inverted about the pedestal in fields 2, 4, 5 and 7 of eight (rows 5 and 13 of the VBI arrays; polarity seen
+  flipping every two frames). Never used before today.
+- **Direct division** (`gcr.py`): the frame's sweep over the weak-state sweep, no model. Three faults of my own on
+  the way, each caught by a check: polarity set per passage (the reference upside-down), a tapering window across
+  the sweep (weighs the delayed echo differently from the direct signal), a low band limit and a tight lag limit.
+  Known answer after those: a made-up echo put on the reference sweep and bar, recovered from the sweep, removed from
+  the bar: rise 0.0030 where the true echo leaves 0.0024.
+- **On the real lines the sweep's echo does not clean the bar.** Frames pooled by strength (noise negligible), rise
+  of the bar captured -> after: 0.139 -> 0.075, 0.160 -> 0.074, 0.191 -> 0.079 at 62 minutes; 0.099 -> 0.059,
+  0.141 -> 0.062, 0.192 -> 0.092 in the first passage (the three-number fit to the bar: 0.03-0.06). The 2T pulse
+  comes out somewhat better with the sweep's echo than with the fit (0.056-0.11 against 0.08-0.15).
+- **Why: what arrives is not a linear function of what was sent.** For a linear chain the part of line 19 that does
+  not flip with the sweep's polarity is zero. Measured: 20-28% of the flipping part in rms (peak +26 to +44 codes
+  against +-100), already 25% in the weakest-echo passage. The capture's floor cuts off the sweep's swings below
+  blanking, but that touches 5% of the samples and reading around it changes nothing. The reflection is linear at RF;
+  the receiver's detector and the record and playback processing after it are not, and a small fast signal (the
+  sweep) and a large edge (the bar, picture edges) come through differently. Which stage: not identified.
+- So the bar stays the reference for large edges, and what the three numbers leave on it (3-4% of the bar) is what
+  comes back as ringing, multiplied where the two paths cancel.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -957,6 +990,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `gate.py` | the removal applied only where its correction stands clear of the frame's own floor; the taper toward the carrier; the wide leftover hole; thin features kept in the echo prediction; known answers (also with the reading's error and a drifting echo), left-edge scores, still-picture change from frame to frame, what is added on flat picture, a gated stretch |
 | `thin_ka.py` | known answer for keeping thin features in the echo prediction: error where the median cleaning cannot predict the echo, elsewhere, and after made-up dropout streaks |
 | `onerefl.py` | the owner's model: one reflection per frame from the test bar, removed at full strength, with the fade near equal strength; three-row clip frames; results by strength |
+| `bartest.py` | the removal applied to each frame's own test bar: what is left on a shape that is known |
+| `gcr.py` | the line-19 ghost-cancelling sweep: per-frame echo by direct division, its known answer, and the bar test with it |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |
