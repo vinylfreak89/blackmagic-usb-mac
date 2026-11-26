@@ -29,7 +29,7 @@ F_LONG = 0.5124; F_EIGHT = 0.50094; VREQ, AREQ = 15360, 192          # build.py'
 MARGIN = 24 << 20                                                    # base bytes read either side of a region
 RSS_MAX = int(3.5 * (1 << 30))                                  # the machine has 16 GB; captures and renders share it
 ZEROS = bytes(40)
-FREE_MIN = 34e9                                                      # the internal disk's floor is ~30 GB free (share staging lands there)
+FREE_MIN = float(os.environ.get('TWO_PASS_FREE_MIN_GB', '34')) * 1e9    # stop under this much free on the internal disk; 0: never (owner, 2026-11-26: macOS frees its snapshots itself)
 
 def _rss_guard():
     while True:
@@ -351,7 +351,7 @@ def main():
             prev_end = done[key][0]['file_to']; continue
         hold_for_uploads(data)
         free = shutil.disk_usage('/').free
-        if free < FREE_MIN: print('STOPPED before %s: %.1f GB free on the internal disk, under %.0f GB (a rerun resumes here)' % (key, free / 1e9, FREE_MIN / 1e9), flush=True); sys.exit(4)
+        if FREE_MIN and free < FREE_MIN: print('STOPPED before %s: %.1f GB free on the internal disk, under %.0f GB (a rerun resumes here)' % (key, free / 1e9, FREE_MIN / 1e9), flush=True); sys.exit(4)
         t0 = time.time()
         mod, G = build_cluster(ids, plans, BU, DU, base_tpc, donor_tpc, prev_end)
         check_range(mod, G)
