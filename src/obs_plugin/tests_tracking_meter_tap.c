@@ -63,10 +63,13 @@ int main(void){
     usleep(100000); tmt_snapshot_take(&s);
     if (s.frames_measured != before || s.active){ printf("FAIL: measuring after close\n"); fails++; }
 
-    // Stale: while frames arrive the reading is live; 1.7 s after they stop it must no longer be shown as live.
+    // Stale: while frames arrive the reading is live; 1.7 s after the last frame was measured it must no longer be
+    // shown as live. The last offered frames are still being measured when the offers stop (two can be in hand, each
+    // up to ~150 ms under ThreadSanitizer and load): the clock starts once the measured count has stopped changing.
     tmt_start(); usleep(400000); tmt_snapshot_take(&s);
     int was = s.now.valid;
     atomic_store(&run_offer, 0); pthread_join(t, NULL);
+    for (uint64_t last = ~0ull, i = 0; i < 50; i++){ tmt_snapshot_take(&s); if (s.frames_measured == last) break; last = s.frames_measured; usleep(100000); }
     usleep(1700000); tmt_snapshot_take(&s);
     printf("stale: valid while offered %d, 1.7 s after the last offer %d (want 1, 0)\n", was, s.now.valid);
     if (!was || s.now.valid){ printf("FAIL: stale reading\n"); fails++; }

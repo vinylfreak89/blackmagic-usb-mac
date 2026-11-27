@@ -48,23 +48,59 @@ int main(int argc, char **argv){
     CHECK(fs_replay_probe(p, 16u << 20, NULL, &sp) == 0 && sp.last_counter == 118 && sp.first_counter == 0, "small-window probe: first %u last %u", sp.first_counter, sp.last_counter);
     /* a head window too small to hold a unit finds no first counter */
     CHECK(fs_replay_probe(p, 1u << 16, NULL, &sp) != 0 && !sp.have_first, "a 64 KiB head window cannot hold a 756,048-byte unit, yet found counter %u", sp.first_counter);
-    /* An end without picture units near it (a capture ending with the deck off): 40 MiB of audio-only
-     * records after the fixture. The last 32 MiB hold no unit: no span, and a clean absence (not
-     * incomplete), so the plugin does not retry it. */
+    /* Ends without picture units near them (a capture that starts or ends with the deck off or stopped): ~42 MB of
+     * stream with no picture unit after the fixture, then before it. Like a real no-input stretch it carries both
+     * endpoints, in whole transfers (8 packets of 2 KiB of video with no marker, then 8 of 8 audio records), so a
+     * replay started inside it lands on a video transfer at once; the numbering runs on across the join (after the
+     * fixture: on from far past its last transfer; before it: the fixture's own transfers renumbered past the
+     * padding's). The last (first) 32 MiB hold no unit; the probe samples further in and finds unit 118 (0), placed
+     * within a few units of where it is. A search bound short of the picture is a clean absence (not incomplete),
+     * so the plugin does not retry it. */
     {
-        char tpath[] = "/tmp/replay_probe_tail_XXXXXX"; int fd = mkstemp(tpath);
-        FILE *in = fopen(p, "rb"); static uint8_t buf[1 << 20]; size_t got;
-        while (fd >= 0 && in && (got = fread(buf, 1, sizeof buf, in)) > 0) if (write(fd, buf, got) != (ssize_t)got) break;
-        if (in) fclose(in);
-        memset(buf, 0, sizeof buf);
-        for (uint32_t seq = 0; fd >= 0 && seq < 20480; seq++){   /* 20,480 x (24 + 2048) B = 42.4 MB */
-            uint8_t rec[24 + 2048] = {0}; uint32_t magic = 0x31504143u, req = 2048, act = 2048;
-            memcpy(rec, &magic, 4); rec[4] = 0; rec[5] = 0x84; memcpy(rec + 8, &seq, 4); memcpy(rec + 16, &req, 4); memcpy(rec + 20, &act, 4);
-            if (write(fd, rec, sizeof rec) != (ssize_t)sizeof rec) break;
+        uint64_t per_unit_f = 756048 + 24ull * 756048 / 15360;     /* file bytes per unit in the fixture's video run */
+        enum { PAIRS = 2400, VPK = 8, VLEN = 2048, APK = 8, ALEN = 192 };
+        static uint8_t buf[1 << 16];
+        uint64_t pad = (uint64_t)PAIRS * (VPK * (24 + VLEN) + APK * (24 + ALEN));   /* 42.6 MB */
+        for (int head = 0; head < 2; head++){
+            char tpath[] = "/tmp/replay_probe_end_XXXXXX"; int fd = mkstemp(tpath); int ok = fd >= 0;
+            FILE *in = fopen(p, "rb");
+            for (int part = 0; part < 2 && ok; part++){
+                if ((part == 0) == (head == 1)){
+                    uint32_t base = head ? 0 : 1000000;
+                    for (uint32_t t = 0; t < PAIRS && ok; t++)
+                        for (int ep = 0; ep < 2 && ok; ep++)
+                            for (uint32_t k = 0; k < (ep ? APK : VPK) && ok; k++){
+                                uint8_t h[24] = {0}; uint32_t magic = 0x31504143u, len = ep ? ALEN : VLEN, sq = base + t; uint16_t pi = (uint16_t)k;
+                                memcpy(h, &magic, 4); h[4] = 0; h[5] = ep ? 0x84 : 0x83; memcpy(h + 6, &pi, 2); memcpy(h + 8, &sq, 4);
+                                memcpy(h + 16, &len, 4); memcpy(h + 20, &len, 4);
+                                memset(buf, 0, len);
+                                ok = write(fd, h, 24) == 24 && write(fd, buf, len) == (ssize_t)len;
+                            }
+                } else {
+                    uint8_t h[24];
+                    while (ok && in && fread(h, 1, 24, in) == 24){
+                        uint32_t al, sq; memcpy(&al, h + 20, 4); memcpy(&sq, h + 8, 4);
+                        size_t n = (h[4] == 0 || h[4] == 3) ? al : 0;
+                        if (n > sizeof buf || (n && fread(buf, 1, n, in) != n)){ ok = 0; break; }
+                        if (head && (h[4] == 0 || h[4] == 2)){ sq += PAIRS; memcpy(h + 8, &sq, 4); }
+                        ok = write(fd, h, 24) == 24 && (!n || write(fd, buf, n) == (ssize_t)n);
+                    }
+                }
+            }
+            if (in) fclose(in);
+            if (fd >= 0) close(fd);
+            CHECK(ok, "could not write the %s test file", head ? "head" : "tail");
+            uint64_t base = head ? pad : 0;
+            int rc = fs_replay_probe(tpath, 0, NULL, &sp);
+            CHECK(rc == 0 && sp.have_first && sp.first_counter == 0 && sp.have_last && sp.last_counter == 118 && !sp.incomplete,
+                  "a unit-less 42 MB %s: rc %d first %d/%u last %d/%u incomplete %d", head ? "head" : "tail", rc, sp.have_first, sp.first_counter, sp.have_last, sp.last_counter, sp.incomplete);
+            int64_t e0 = (int64_t)sp.first_offset - (int64_t)base, e1 = (int64_t)sp.last_offset - (int64_t)(base + 118 * per_unit_f);
+            CHECK(e0 > -3 * (int64_t)per_unit_f && e0 < 3 * (int64_t)per_unit_f && e1 > -3 * (int64_t)per_unit_f && e1 < 3 * (int64_t)per_unit_f,
+                  "%s case: first unit placed %+lld bytes, last %+lld bytes from where they are (a few units allowed)", head ? "head" : "tail", (long long)e0, (long long)e1);
+            CHECK(fs_replay_probe_ex(tpath, 0, 32u << 20, NULL, &sp) != 0 && (head ? !sp.have_first : !sp.have_last) && !sp.incomplete,
+                  "a search bound short of the picture (%s): first %d last %d incomplete %d", head ? "head" : "tail", sp.have_first, sp.have_last, sp.incomplete);
+            unlink(tpath);
         }
-        if (fd >= 0) close(fd);
-        CHECK(fs_replay_probe(tpath, 0, NULL, &sp) != 0 && sp.have_first && !sp.have_last && !sp.incomplete, "a unit-less 40 MiB tail: first %d last %d incomplete %d", sp.have_first, sp.have_last, sp.incomplete);
-        unlink(tpath);
     }
     CHECK(fs_replay_probe("/nonexistent/volume/capture.tpc", 0, NULL, &sp) != 0 && sp.incomplete, "an unreadable path must be unknown (incomplete), not a clean absence: incomplete %d", sp.incomplete);
     _Atomic int abort_now = 1;

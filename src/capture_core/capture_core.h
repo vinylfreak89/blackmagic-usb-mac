@@ -159,6 +159,10 @@ size_t cc_ring_pending(const cc_session *s);
 // restart from the resume time, so no burst follows. The read-ahead keeps filling while paused.
 // CC_ERR_STATE for a device session (a live capture cannot be held; the device keeps streaming).
 int cc_replay_pause(cc_session *s, int paused);
+// Replay only: 1 when the pacer is waiting in a pause (cc_replay_pause) and every packet it queued before parking has
+// been passed to on_packet and the callback returned. A state, not an estimate: nothing more arrives until a resume.
+// 0 otherwise (running, not yet parked, still delivering, or a device session).
+int cc_replay_held(const cc_session *s);
 const char *cc_strerror(int err);
 // The mode word the device start-up sent (it carries the input select and the setup bit). Replay sessions return -1.
 int cc_start_info(const cc_session *s, uint32_t *mode_word);

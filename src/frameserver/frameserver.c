@@ -100,6 +100,7 @@ struct frameserver {
     // pool + ring (single producer = delivery thread, single consumer = worker)
     unsigned n_slots; uint8_t *pool; _Atomic int *slot_used;
     fs_item ring[RING_ITEMS]; _Atomic unsigned r_head, r_tail;
+    _Atomic unsigned r_done;   // worker: items fully processed (sink calls returned); r_done == r_head = nothing queued or in progress
     pthread_mutex_t m; pthread_cond_t c;
     pthread_mutex_t life_m; pthread_cond_t life_c;
     int m_init,c_init,life_m_init,life_c_init;
@@ -686,6 +687,8 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
      * adjacency, even though the extended numbers alone look consecutive. */
     if(it->obs.transport_flags&UNIT_FLAG_COUNTER_DISCONTINUITY)geometry_flush(f);
     f->geometry_epoch=it->obs.epoch;f->geometry_have_epoch=1;
+    /* after every flush above (an earlier unit's frame is out), before this unit's own frame */
+    if(f->cfg.on_unit)f->cfg.on_unit(f->cfg.unit_ctx,&it->obs,it->preceding_ring_drops!=0||it->drop==FS_DROP_POOL_FULL);
     if(!unit) {
         geometry_flush(f);
         if(it->drop==FS_DROP_POOL_FULL){atomic_fetch_add(&f->dropped_pool_full,1);f->st.exact_units++;f->st.discontinuity_calls++;}
@@ -835,6 +838,7 @@ static void repair_publish(frameserver *f, const fs_item *it, const repair_out *
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
         geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
+        if(f->cfg.on_unit)f->cfg.on_unit(f->cfg.unit_ctx,NULL,1);
         geometry_log(f,it,NULL,0,"RingFullTail",NULL,NULL);return;
     }
     repair_out ro; repair_prepare(f, (fs_item *)it, &ro);
@@ -902,6 +906,7 @@ static void *worker_main(void *arg){
           f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++;
           f->ht.up_gap_ns=it.up_gap_ns; f->ht.up_cpu_ns=it.up_cpu_ns; f->ht.up_ring_bytes=it.up_ring_bytes; }
         process_item(f, &it);
+        atomic_store_explicit(&f->r_done, t + 1, memory_order_release);
         fs_test_after_item(f);
     }
     if(f->geometry)geometry_flush(f);
@@ -1174,6 +1179,11 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
 }
 uint64_t fs_packets_delivered(const frameserver *f){ return cc_packets_delivered(f->cap); }
+int fs_replay_held(const frameserver *f){
+    /* the capture side first: once it holds, every unit the parser will emit before the resume is already in the ring */
+    if (!f || !f->cap || !cc_replay_held(f->cap)) return 0;
+    return atomic_load_explicit(&f->r_done, memory_order_acquire) == atomic_load_explicit(&f->r_head, memory_order_acquire);
+}
 int fs_replay_pause(frameserver *f, int paused){ return f && f->cap && cc_replay_pause(f->cap, paused) == CC_OK ? 0 : -1; }
 void fs_close(frameserver *f){
     if (!f) return;

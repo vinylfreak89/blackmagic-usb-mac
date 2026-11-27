@@ -88,6 +88,9 @@ int shuttle_test_usb_backend = -1;   /* the last start's cc_config.usb_backend (
 int shuttle_test_open_rc;            /* a refused live start returns this (0: -1) */
 int shuttle_test_close_during_open;  /* the next refused live start sees a close notice before it returns */
 int shuttle_test_close_watch = 1;    /* tests have no Shuttle on USB: whether arming the close watch succeeds */
+void (*shuttle_test_on_late)(uint64_t prev_ns, uint64_t t0_ns);   /* video worker: a handoff gap over FREEZE_GAP_NS was reported */
+void (*shuttle_test_on_applied)(void);                           /* media thread: an action was applied */
+unsigned shuttle_test_resume_delay_us;                           /* resume: hold the control thread after releasing the replay */
 #endif
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
@@ -189,7 +192,7 @@ typedef struct {
     _Atomic int64_t time_ms;                      /* position of the last frame played (video worker; set at session start) */
     _Atomic int64_t seek_shown_ms;                /* a seek chosen while paused, shown instead (-1 none): frames still in the
                                                      pipeline after a pause must not overwrite it */
-    _Atomic uint64_t tl_units, tl_bytes; _Atomic int tl_first16;   /* the replay's timeline; tl_units 0 = not known yet */
+    _Atomic uint64_t tl_units, tl_bytes, tl_lo, tl_hi; _Atomic int tl_first16;   /* the replay's timeline; tl_units 0 = not known yet */
     char *tl_path; uint64_t tl_gen, tl_size;      /* under s->m: the file (and its size) the timeline describes; gen bumps when it changes */
     int tl_probing, tl_failed;                    /* under s->m: a probe for tl_gen is queued or running / found no length */
     int paused; int64_t pending_seek_ms;          /* under s->m: replay held; a seek chosen while held (-1 none) */
@@ -199,7 +202,12 @@ typedef struct {
     int usb_iousbhost;                            /* the running live session reads through IOUSBHost (cc_config.usb_backend) */
     uint64_t session_start_unit;                  /* the running session's first unit, estimated: on_frame resolves counters from it */
     _Atomic int live_regrey;                      /* live: put OBS's controls back in their greyed restart state on the next tick */
-    _Atomic int handoff_reset;                    /* resumed from a pause: the next frame's gap is the pause, not a stall */
+    /* A pause is not a delivery stall. pause_epoch counts resumes of a held replay (control thread, bumped BEFORE the
+     * replay is released); handoff_epoch is the value the video worker read before its previous handoff. A gap whose two
+     * handoffs read different values spans a pause and is not timed. It only increases and is read before the handoff's
+     * time, so a delayed control thread or worker cannot make a pause read as a stall; frames still draining during the
+     * pause are timed as usual. Live sessions never hold, so never bump it. */
+    _Atomic uint64_t pause_epoch; uint64_t handoff_epoch;
 } shuttle_src;
 #define STOP_TICKS 3
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
@@ -268,10 +276,11 @@ static void on_frame(void *ctx, const fp_frame *fr){
     memcpy(f.color_matrix, s->color_matrix, sizeof f.color_matrix);
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
     f.full_range = false;
+    uint64_t epoch = atomic_load(&s->pause_epoch);   /* before t0 (pause_epoch) */
     uint64_t t0 = os_gettime_ns();
     obs_source_output_video(s->source, &f);
-    if (atomic_exchange(&s->handoff_reset, 0)) s->last_handoff_ns = 0;
-    uint64_t t1 = os_gettime_ns(), call = t1 - t0, gap = s->last_handoff_ns ? t0 - s->last_handoff_ns : 0;
+    int spans_pause = epoch != s->handoff_epoch; s->handoff_epoch = epoch;
+    uint64_t t1 = os_gettime_ns(), call = t1 - t0, gap = s->last_handoff_ns && !spans_pause ? t0 - s->last_handoff_ns : 0;
     s->last_handoff_ns = t0;
     if (gap > s->max_gap_ns) s->max_gap_ns = gap;
     if (call > s->max_call_ns) s->max_call_ns = call;
@@ -281,10 +290,14 @@ static void on_frame(void *ctx, const fp_frame *fr){
         tr_event e = { fr->counter_ext, gap, call, {0} };
         fs_handoff_timing_get(s->fs, &e.h);   /* worker thread: this sink runs on it */
         tr_post(s->reports, &e);              /* never blog here: a log write on this thread delays the next frame */
+#ifdef SHUTTLE_TEST_HOOKS
+        if (gap > FREEZE_GAP_NS && shuttle_test_on_late) shuttle_test_on_late(t0 - gap, t0);   /* the reported gap's two handoffs */
+#endif
     }
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (units){   /* the seek bar's time: this frame's own counter, resolved near the session's expected position */
-        rt_timeline tl = { atomic_load(&s->tl_bytes), units, (uint16_t)atomic_load(&s->tl_first16) };
+        rt_timeline tl = { .file_bytes = atomic_load(&s->tl_bytes), .units = units, .first16 = (uint16_t)atomic_load(&s->tl_first16),
+                           .byte_lo = atomic_load(&s->tl_lo), .byte_hi = atomic_load(&s->tl_hi) };
         uint64_t u = rt_resolve(&tl, (uint16_t)fr->counter_ext, (int64_t)(s->session_start_unit + atomic_load(&s->frames_out)));
         atomic_store(&s->time_ms, rt_ms(u));
     }
@@ -618,6 +631,7 @@ static int timeline_get(shuttle_src *s, rt_timeline *tl){
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (!units) return -1;
     tl->units = units; tl->file_bytes = atomic_load(&s->tl_bytes); tl->first16 = (uint16_t)atomic_load(&s->tl_first16);
+    tl->byte_lo = atomic_load(&s->tl_lo); tl->byte_hi = atomic_load(&s->tl_hi);
     return 0;
 }
 /* Render thread (libobs process_media_actions): queue only. Consecutive seeks collapse into the latest
@@ -717,10 +731,16 @@ static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /
     case ACT_PLAY:
         if (!running) replay_start_at(s, settings, s->pending_seek_ms >= 0 ? s->pending_seek_ms : 0);
         else if (s->pending_seek_ms >= 0) replay_start_at(s, settings, s->pending_seek_ms);
-        else if (s->paused && fs_replay_pause(s->fs, 0) == 0){
-            s->paused = 0; atomic_store(&s->handoff_reset, 1);
-            int expect = OBS_MEDIA_STATE_PAUSED;
-            atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PLAYING);
+        else if (s->paused){
+            atomic_fetch_add(&s->pause_epoch, 1);   /* before the release (pause_epoch): the first frame after it is never timed from before */
+            if (fs_replay_pause(s->fs, 0) == 0){
+#ifdef SHUTTLE_TEST_HOOKS
+                if (shuttle_test_resume_delay_us) usleep(shuttle_test_resume_delay_us);   /* the control thread held up just after the release */
+#endif
+                s->paused = 0;
+                int expect = OBS_MEDIA_STATE_PAUSED;
+                atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PLAYING);
+            }
         }
         break;
     case ACT_SEEK: {
@@ -759,6 +779,9 @@ static void *media_thread(void *arg){
         pthread_mutex_unlock(&s->ctl_m);
         int disp = (act == ACT_RESTART || act == ACT_STOP) && atomic_load(&s->asleep) ? display_on() : 0;   /* outside s->m */
         pthread_mutex_lock(&s->m); media_apply(s, act, ms, disp); pthread_mutex_unlock(&s->m);
+#ifdef SHUTTLE_TEST_HOOKS
+        if (shuttle_test_on_applied) shuttle_test_on_applied();   /* a state transition the test may be waiting on */
+#endif
         pthread_mutex_lock(&s->ctl_m);
     }
     pthread_mutex_unlock(&s->ctl_m);
@@ -778,21 +801,23 @@ static void *probe_thread(void *arg){
         pthread_mutex_unlock(&s->ctl_m);
         fs_replay_span sp; rt_timeline tl;
         int probed = fs_replay_probe(path, 0, &s->probe_abort, &sp) == 0;
-        int ok = probed && rt_init(&tl, sp.file_bytes, sp.first_counter, sp.last_counter) == 0;
+        int ok = probed && rt_init_span(&tl, sp.file_bytes, sp.first_offset, sp.last_offset, sp.first_counter, sp.last_counter) == 0;
         int aborted = atomic_load(&s->probe_abort);
         pthread_mutex_lock(&s->m);
         if (gen == s->tl_gen && !aborted){
             s->tl_probing = 0;
             if (ok){
                 atomic_store(&s->tl_bytes, tl.file_bytes); atomic_store(&s->tl_first16, tl.first16);
+                atomic_store(&s->tl_lo, tl.byte_lo); atomic_store(&s->tl_hi, tl.byte_hi);
                 atomic_store_explicit(&s->tl_units, tl.units, memory_order_release);
-                blog(LOG_INFO, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u) — %s", rt_ms(tl.units) / 1000.0,
-                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter, path);
+                blog(LOG_INFO, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u; picture from byte %llu to %llu of %llu) — %s", rt_ms(tl.units) / 1000.0,
+                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter, (unsigned long long)tl.byte_lo, (unsigned long long)tl.byte_hi,
+                     (unsigned long long)tl.file_bytes, path);
             } else if (sp.incomplete){
                 blog(LOG_WARNING, "[shuttle-source] replay length unknown: %s could not be read to its end (read error?); no seek bar until the replay is started again", path);
             } else {
                 s->tl_failed = 1;   /* a property of the file: not retried until the path or size changes */
-                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 32 MiB (about 1.4 s) of the %s of %s; no seek bar for this file",
+                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 2 GiB (about 90 s) of the %s of %s; no seek bar for this file",
                      !sp.have_first && !sp.have_last ? "start or end" : !sp.have_first ? "start" : "end", path);
             }
         }
@@ -1020,7 +1045,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.on_end = on_end; cfg.end_ctx = s;
     atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->video_clock = (shuttle_video_clock){0}; atomic_store(&s->video_estimated, 0);
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
-    atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
+    atomic_store(&s->last_counter, 0); s->handoff_epoch = atomic_load(&s->pause_epoch);   /* before any worker exists */
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
     if (!s->replaying && was_replay) atomic_store(&s->live_regrey, 1);   /* from replay to live: OBS's controls still show the replay's bar; grey them */
 #ifdef SHUTTLE_TEST_HOOKS
@@ -1275,6 +1300,7 @@ int shuttle_test_asleep(void *d){ return atomic_load(&((shuttle_src *)d)->asleep
 void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
 void shuttle_test_device_closed(void *d){ shuttle_device_closed(d); }   /* a close notice, as usb_interest receives it */
 int shuttle_test_reconnect_wanted(void *d){ return atomic_load(&((shuttle_src *)d)->reconnect_wanted); }
+int shuttle_test_replay_held(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); int h = s->fs && fs_replay_held(s->fs); pthread_mutex_unlock(&s->m); return h; }
 unsigned shuttle_test_reconnect_tries(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); unsigned t = s->reconnect_tries; pthread_mutex_unlock(&s->m); return t; }
 #endif
 

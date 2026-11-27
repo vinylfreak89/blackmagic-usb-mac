@@ -94,6 +94,13 @@ typedef struct {
                                // on whenever registration is off.
     void (*on_repair)(void *ctx, const unit_video_observation *unit, const ur_result *result);
     void *repair_ctx;          // optional; every repair attempt and its outcome (video worker, never blocks: print and return)
+    /* optional: every unit the video worker takes, in input order, once any earlier unit's frame has been published and
+     * before this unit's own frame (if it yields one): its observation (format, kind, transport, counter) and whether the
+     * host lost data just before it (ring drops) or its bytes (pool full). unit NULL: units the host lost at the end of the
+     * capture ring. A renderer can then tell why no frame came between two frames (the Shuttle's own no-signal units, or
+     * loss). Video worker, never blocks: print and return. */
+    void (*on_unit)(void *ctx, const unit_video_observation *unit, int host_lost);
+    void *unit_ctx;
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded
@@ -237,6 +244,9 @@ void fs_get_stats(const frameserver *f, fs_stats *out);
 uint64_t fs_packets_delivered(const frameserver *f);
 // Replay only: hold (paused != 0) or resume delivery; see cc_replay_pause. -1 for a device session.
 int fs_replay_pause(frameserver *f, int paused);
+// Replay only: 1 when the paused replay holds (cc_replay_held) and the video worker has processed every unit queued
+// before it, sink calls included. Nothing more is published until a resume. 0 otherwise.
+int fs_replay_held(const frameserver *f);
 void fs_close(frameserver *f);
 
 #ifdef __cplusplus

@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 extern const struct obs_source_info *stub_info;       /* registered by obs_module_load */
 extern _Atomic int stub_started_signals, stub_ended_signals;
+extern _Atomic uint64_t stub_frames_at_start;   /* stub_video_frames when the last media_started signal came */
 extern _Atomic uint64_t stub_video_frames;
 extern _Atomic uint64_t stub_blank_calls;
 extern _Atomic uint64_t stub_frame_errors;   /* frames handed to OBS not in the expected I210 layout/values */
@@ -15,7 +16,9 @@ extern _Atomic int stub_plain_content;   /* 1 (default): frames must carry fixtu
 extern _Atomic int stub_stop_lines;          /* "[shuttle-source] stopped:" lines logged so far */
 void stub_last_stop_line(char *out, size_t n);   /* the last of them */
 extern int shuttle_test_usb_backend;          /* cfg.capture.usb_backend of the last session start (shuttle_source.c) */
-extern _Atomic int stub_late_reports;   /* late-handoff WARNINGs the plugin logged */
+void stub_progress(void);                                   /* something moved: a frame, a signal, a log line, an applied action */
+uint64_t stub_progress_gen(void);                           /* how many times */
+uint64_t stub_progress_wait(uint64_t seen, double max_s);   /* block until it moves past seen, at most max_s; the count now */
 void stub_expect(const char *text);       /* lines containing text are counted, not printed, until stub_expect_end */
 int stub_expect_end(const char *text);    /* the count since stub_expect (same pointer) */
 int stub_expect_count(const char *text);  /* the count so far, still counting */

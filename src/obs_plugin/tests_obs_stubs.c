@@ -30,7 +30,20 @@ void stub_usb_backend(const char *v){ atomic_store(&g_settings.usb, v); }
 void stub_registration(int on){ atomic_store(&g_settings.registration_off, !on); }
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
-_Atomic int stub_late_reports;
+/* Progress: every frame, media signal and log line (and, through shuttle_test_on_applied, every applied media action)
+ * bumps the count and wakes waiters. Tests block on it and fail only when nothing at all has moved for a while. */
+static pthread_mutex_t g_prog_m = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t g_prog_c = PTHREAD_COND_INITIALIZER;
+static _Atomic uint64_t g_prog;
+void stub_progress(void){ pthread_mutex_lock(&g_prog_m); atomic_fetch_add(&g_prog, 1); pthread_cond_broadcast(&g_prog_c); pthread_mutex_unlock(&g_prog_m); }
+uint64_t stub_progress_gen(void){ return atomic_load(&g_prog); }
+uint64_t stub_progress_wait(uint64_t seen, double max_s){
+    struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+    long long ns = ts.tv_nsec + (long long)(max_s * 1e9); ts.tv_sec += (time_t)(ns / 1000000000LL); ts.tv_nsec = (long)(ns % 1000000000LL);
+    pthread_mutex_lock(&g_prog_m);
+    while (atomic_load(&g_prog) == seen && pthread_cond_timedwait(&g_prog_c, &g_prog_m, &ts) == 0){}
+    pthread_mutex_unlock(&g_prog_m);
+    return atomic_load(&g_prog);
+}
 /* The plugin's last "stopped:" line (its session stats), and how many there have been. */
 static pthread_mutex_t g_stop_m = PTHREAD_MUTEX_INITIALIZER; static char g_stop_line[2048]; _Atomic int stub_stop_lines;
 void stub_last_stop_line(char *out, size_t n){ pthread_mutex_lock(&g_stop_m); snprintf(out, n, "%s", g_stop_line); pthread_mutex_unlock(&g_stop_m); }
@@ -54,7 +67,7 @@ int stub_expect_count(const char *text){
 }
 void blog(int level, const char *fmt, ...){
     char line[2048]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
-    if (strstr(line, "delivery timing: counter")) atomic_fetch_add(&stub_late_reports, 1);
+    stub_progress();
     if (strstr(line, "[shuttle-source] stopped:")){ pthread_mutex_lock(&g_stop_m); snprintf(g_stop_line, sizeof g_stop_line, "%s", line); pthread_mutex_unlock(&g_stop_m); atomic_fetch_add(&stub_stop_lines, 1); }
     for (int i = 0; i < STUB_EXPECT_MAX; i++){
         const char *e = atomic_load(&g_expect[i]);
@@ -122,16 +135,18 @@ obs_weak_source_t *obs_source_get_weak_source(obs_source_t *s){ return (obs_weak
 obs_source_t *obs_weak_source_get_source(obs_weak_source_t *w){ return (obs_source_t *)w; }        /* so restart_check finds the source alive */
 void obs_weak_source_release(obs_weak_source_t *w){ (void)w; }
 void obs_source_release(obs_source_t *s){ (void)s; }
-void obs_source_media_started(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_started_signals, 1); }
-void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_ended_signals, 1); }
+/* frames handed to OBS when the last session started: set before the signal count, so a test that sees the count sees it */
+_Atomic uint64_t stub_frames_at_start;
+void obs_source_media_started(obs_source_t *s){ (void)s; atomic_store(&stub_frames_at_start, atomic_load(&stub_video_frames)); atomic_fetch_add(&stub_started_signals, 1); stub_progress(); }
+void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_ended_signals, 1); stub_progress(); }
 /* What the plugin hands OBS: I210, byte linesizes 1440/720/720, contiguous Y/U/V planes, codes as 4c
  * (fixture_plain is Y16/C128 everywhere -> 64/512), range clamp opened, limited range kept. */
 _Atomic uint64_t stub_frame_errors;
 _Atomic int stub_plain_content = 1;   /* the replayed fixture is Y16/C128 everywhere: check the codes too */
 _Atomic uint64_t stub_blank_calls;
 void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){
-    (void)s; if (!f){ atomic_fetch_add(&stub_blank_calls, 1); return; }
-    atomic_fetch_add(&stub_video_frames, 1);
+    (void)s; if (!f){ atomic_fetch_add(&stub_blank_calls, 1); stub_progress(); return; }
+    atomic_fetch_add(&stub_video_frames, 1); stub_progress();
     const uint16_t *y = (const uint16_t *)f->data[0], *u = (const uint16_t *)f->data[1], *v = (const uint16_t *)f->data[2];
     int ok = f->format == VIDEO_FORMAT_I210 && f->width == 720 && f->height == 480 && !f->full_range &&
              f->linesize[0] == 1440 && f->linesize[1] == 720 && f->linesize[2] == 720 &&

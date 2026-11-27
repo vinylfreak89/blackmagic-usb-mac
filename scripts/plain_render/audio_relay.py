@@ -130,7 +130,11 @@ except BrokenPipeError:
     # has nowhere to go. That is the end of the render's audio, not a failure; ffmpeg's own exit says whether it was well.
     reader_closed = True
     os.dup2(os.open(os.devnull, os.O_WRONLY), out.fileno())          # the buffered tail goes nowhere instead of erroring at exit
-out.close()
+try: out.close()
+except BrokenPipeError:
+    # the same end, found only now: every write fitted in the buffer, so the pipe's closing showed at the final flush
+    # (2026-11-19, the render of 16-31-48 failed on this after its video had finished). close() has closed the file anyway.
+    reader_closed = True
 if skip: fail('the audio ended %d samples before the first frame' % skip)
 json.dump(dict(samples=pos, discontinuities=discs, silence_inserted=ins, reanchors_earlier=overlaps, untrusted_breaks=untrusted,
                ended_by_reader=reader_closed), open(os.path.join(D, 'audio.json'), 'w'))

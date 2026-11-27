@@ -28,6 +28,13 @@ int main(void){
     CHECK(rt_init(&t, 807324ull * 1000, 100, 1100) == 0 && t.units == 1000, "short file %llu", (unsigned long long)t.units);
     CHECK(rt_init(&t, 807324ull * 70000, 60000, (uint16_t)(60000 + 70000)) == 0 && t.units == 70000, "one wrap %llu", (unsigned long long)t.units);
     CHECK(rt_init(&t, 807324ull * 70000 * 11 / 10, 60000, (uint16_t)(60000 + 70000)) == 0 && t.units == 70000, "10%% off the nominal rate (host loss, another tape) still picks the right wrap");
+    /* a span inside the file (no-signal before and after it): positions spread over the span, the wrap count from its bytes */
+    CHECK(rt_init_span(&t, 807324ull * 2000, 807324ull * 300, 807324ull * 1300, 100, 1100) == 0 && t.units == 1000, "span units %llu", (unsigned long long)t.units);
+    CHECK(rt_offset(&t, 0) == 807324ull * 300 && rt_offset(&t, 1000) == 807324ull * 1300 && rt_offset(&t, 500) == 807324ull * 800, "span offsets %llu %llu %llu",
+          (unsigned long long)rt_offset(&t, 0), (unsigned long long)rt_offset(&t, 500), (unsigned long long)rt_offset(&t, 1000));
+    CHECK(rt_init_span(&t, 807324ull * 70000 + 4000000000ull, 4000000000ull, 4000000000ull + 807324ull * 70000, 60000, (uint16_t)(60000 + 70000)) == 0 && t.units == 70000,
+          "a long no-signal head does not add a wrap: %llu", (unsigned long long)t.units);
+    CHECK(rt_init_span(&t, 1000000, 0, 0, 0, 1) == 0 && rt_offset(&t, 1) == 1000000, "no span offsets: the whole file");
     CHECK(rt_init(&t, 1000, 5, 5) != 0, "no units: unknown");
 
     printf(fails ? "REPLAY TIMELINE: %d FAILURES\n" : "REPLAY TIMELINE PASS\n", fails);

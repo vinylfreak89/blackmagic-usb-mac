@@ -38,7 +38,10 @@
 # CAPTURE.tpc may be a FIFO (the replay reads it as a stream). PLAIN_RENDER_DECISION_LOG=FILE also writes the replay's
 # decision log (the sidecar's schema) from the same pass; it is not overwritten if it exists.
 # PLAIN_RENDER_STALL_S=N: the replay's no-delivery deadline (default 120 s); raise it when the input can pause for longer,
-# e.g. a FIFO fed from a cloud volume whose reader waits out dropouts.
+# e.g. a FIFO fed from a cloud volume whose reader waits out dropouts. Reading through checked_read.py it defaults to the
+# reader's own give-up time plus an hour: the reader waits out a store that refuses downloads (B2's daily cap) or a network
+# dropout and carries on from the same piece, so the replay and the encoder wait with it instead of ending the render
+# (2026-11-18: a render stopped at 81 of 86.5 GB on B2's cap and had to be redone).
 # PLAIN_RENDER_FILTER='COMMAND': a picture filter between the replay and the relay (bash -c, frames on stdin and stdout, 720x480
 # UYVY, one frame out per frame in, so the audio-clock placement and the frame-count check hold); it fails the render if it
 # exits non-zero. PLAIN_RENDER_DEINTERLACE replaces the yadif step (default yadif=mode=send_field:parity=tff): a filter whose
@@ -75,10 +78,12 @@ mkfifo "$D/v.fifo" "$D/a.fifo"; date
 # the old size and crawl while the client reads each block before writing it (2026-10-21, both seen). Creating and truncating to 0
 # clears the mark; ffmpeg then writes into that same file (-y).
 empty_in_place(){ : > "$1" && truncate -s 0 "$1" && [ "$(stat -f %z "$1")" = 0 ] || { echo "REFUSE: could not empty $1 in place"; exit 2; }; }
-empty_in_place "$PART"
-# Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc): the relay
-# never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off.
-SC="${SRC%.raw.tpc}.registration.csv"; LOST=none
+# Units the host lost, from the capture's own sidecar (<recording>.registration.csv beside <recording>.raw.tpc, or
+# PLAIN_RENDER_SIDECAR when the source is a stream with no sidecar beside it, as capture_patch's render is): the relay
+# never repeats a frame across them. Without a sidecar there is nothing to say which gaps are lost data, so holds are off
+# (a patched render without one showed a seam's one-slot step as a blue flash, 2026-11-18 at 58:27).
+SC="${PLAIN_RENDER_SIDECAR:-${SRC%.raw.tpc}.registration.csv}"; LOST=none
+[ -n "${PLAIN_RENDER_SIDECAR:-}" ] && [ ! -f "$SC" ] && { echo "REFUSE: PLAIN_RENDER_SIDECAR names no file: $SC"; exit 2; }
 if [ "$SC" != "$SRC" ] && [ -f "$SC" ]; then
   python3 - "$SC" "$D/lost_counters.txt" <<'PY' || { echo "REFUSE: could not read lost units from $SC"; exit 2; }
 import sys
@@ -102,6 +107,9 @@ if [ -n "${PLAIN_RENDER_FIRST_LINE:-}" ]; then FL="$PLAIN_RENDER_FIRST_LINE"; ec
 elif [ -p "$SRC" ]; then echo "REFUSE: $SRC is a FIFO; measure the capture it comes from and pass PLAIN_RENDER_FIRST_LINE=F1,F2"; exit 2
 else FL=$(python3 "$HERE/measure_first_line.py" "$SRC" "$D" 2>"$D/first_line.log") || { echo "REFUSE: could not measure the first picture line; see $D/first_line.log"; exit 2; }
   cat "$D/first_line.log"; fi
+# The partial is made only now, when ffmpeg is about to write it: a refusal before this point (a sidecar or first line that
+# cannot be read) leaves nothing on the share (2026-11-22: two 0-byte .partial.mov stubs from renders refused at the sidecar).
+empty_in_place "$PART"
 python3 "$HERE/audio_relay.py" "$D" "$D/a.fifo" 2>"$D/audio_relay.log" & AP=$!
 python3 "$HERE/relay.py" "$D/v.fifo" "$D/timing.csv" "$LOST" 2>"$D/relay.log" | ffmpeg -hide_banner -loglevel warning -nostdin \
   -thread_queue_size 64 -f rawvideo -pix_fmt uyvy422 -s 720x480 -r 30000/1001 -i pipe:0 \
@@ -120,6 +128,7 @@ case "$SRC" in /Volumes/zpool/*) ;; *)
   fi;; esac
 case "$CHK" in /Volumes/zpool/*) if [ "${PLAIN_RENDER_CHECKED_READ:-1}" != 0 ]; then
   mkfifo "$D/cap.fifo"; RSRC="$D/cap.fifo"
+  [ -z "${PLAIN_RENDER_STALL_S:-}" ] && PLAIN_RENDER_STALL_S=$(python3 -c 'import os; print(int(float(os.environ.get("CHECKED_READ_GIVE_UP_S", 90000)) + 3600))')
   { python3 "$REPO/scripts/juicefs/checked_read.py" "$CHK" ${CRARGS[@]+"${CRARGS[@]}"} --out "$D/cap.fifo" --report "$D/checked_read.json" 2>"$D/checked_read.log"
     echo $? > "$D/checked_read.rc"
     python3 -c 'import os, sys

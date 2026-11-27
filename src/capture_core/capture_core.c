@@ -94,6 +94,8 @@ struct cc_session {
     long corrupt_spans; uint64_t corrupt_bytes;   /* replay backend thread; read after stop */
     uint64_t align_bytes;                          /* replay: walked past before the first whole video transfer */
     _Atomic int replay_paused;                     /* cc_replay_pause: the pacer holds at a transfer boundary */
+    _Atomic int replay_parked;                     /* the pacer is waiting in its pause (cc_replay_held) */
+    _Atomic uint64_t replay_queued;                /* replay: DATA records put into the delivery ring (cc_replay_held) */
     pthread_mutex_t pause_m; pthread_cond_t pause_c; int pause_init;
     _Atomic int space_waiting;                     /* replay_block_when_full: the replay waits for ring space */
     pthread_mutex_t space_m; pthread_cond_t space_c;   /* statically initialised in cc_open; signalled by the delivery thread */
@@ -387,7 +389,7 @@ static void* delivery_main(void *arg){
             cc_packet p={rh.endpoint,rh.pkt_index,rh.submit_seq,rh.status,
                          rh.req_len,rh.actual_len,buf};
             s->cb.on_packet(s->cb.ctx,&p);
-            atomic_fetch_add_explicit(&s->packets_delivered,1,memory_order_relaxed);
+            atomic_fetch_add_explicit(&s->packets_delivered,1,memory_order_release);   /* cc_replay_held: after the callback's effects */
             break; }
         case REC_HOSTLOSS:
             if(rh.pkt_index==CC_PI_UNSCHEDULED || rh.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* loud: this loss leaves no other trace anywhere */
@@ -1213,6 +1215,7 @@ static void* replay_main(void *arg){
             // deliver with the ORIGINAL tags; backpressure via ring, honestly (offline: wait for room instead)
             if(s->cfg.replay_block_when_full) replay_wait_space_(s,sizeof(rec_hdr)+(size_t)h.actual_len);
             put_pkt_(s,h.endpoint,h.pkt_index,h.submit_seq,h.status,h.req_len,pay,h.actual_len);
+            if(!s->lost_pkts[e]) atomic_fetch_add_explicit(&s->replay_queued,1,memory_order_relaxed);   /* put, not lost */
             s->bytes[e]+=h.actual_len;
             if(h.actual_len==0) s->zero_pkts++; else if(h.actual_len<h.req_len) s->short_pkts++;
             int npk = e ? A_NPK : V_NPK;
@@ -1242,11 +1245,12 @@ static void* replay_main(void *arg){
                     while(atomic_load(&s->replay_paused) && !atomic_load(&s->stop_req)){
                         /* test hook, under pause_m after the check: a stop signalled after it can only land once
                          * this thread waits, so a prompt stop proves the broadcast, not a lucky early check */
-                        if(!told){ told=1; cc_test_replay_paused(s->bytes[0]); }
+                        if(!told){ told=1; atomic_store(&s->replay_parked,1); cc_test_replay_paused(s->bytes[0]); }
                         struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=PAUSE_BACKSTOP_S; ts.tv_nsec+=PAUSE_BACKSTOP_NS;
                         if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
                         pthread_cond_timedwait(&s->pause_c,&s->pause_m,&ts);   /* liveness backstop: internal stop paths set stop_req without signalling */
                     }
+                    atomic_store(&s->replay_parked,0);
                     pthread_mutex_unlock(&s->pause_m);
                     clock_gettime(CLOCK_MONOTONIC,&p1);
                     int64_t held_ns=(int64_t)(p1.tv_sec-p0.tv_sec)*1000000000+(p1.tv_nsec-p0.tv_nsec);
@@ -1513,6 +1517,12 @@ int cc_replay_pause(cc_session *s, int paused){
     pthread_cond_broadcast(&s->pause_c);
     pthread_mutex_unlock(&s->pause_m);
     return CC_OK;
+}
+int cc_replay_held(const cc_session *s){
+    if(!s || !s->cfg.replay_path || !atomic_load(&s->replay_parked)) return 0;
+    /* parked: nothing more is queued, so the count is final; delivered reaches it once every callback has returned */
+    uint64_t q=atomic_load_explicit(&s->replay_queued,memory_order_relaxed);
+    return atomic_load_explicit(&s->packets_delivered,memory_order_acquire)==q;
 }
 size_t cc_ring_pending(const cc_session *s){
     if(!s) return 0;

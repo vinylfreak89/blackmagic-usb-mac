@@ -19,8 +19,14 @@
 #define DUP_LINE_FRACTION 0.3           // 30% or more of field-1 lines byte-identical to the field-2 line below:
                                         // one field shown twice (a stretched partial unit). Real fields never repeat
                                         // a line exactly; floor-clipped black can be near-identical, so not "near"
-#define MAX_NOISE 6.0                   // fine-grain luma noise above this in either field is snow or an unlocked
-                                        // signal, not programme (programme measured 1.3-2.7 codes, snow 4-16)
+#define MAX_NOISE 6.0                   // fine-grain luma noise above this in either field may be snow or an unlocked
+                                        // signal (programme on clean tapes measured 1.3-2.7 codes, snow 4-16); it is
+#define MIN_PERSIST 0.56                // snow only when a field's picture does not persist from the frame before: a
+                                        // noisy off-air tape's programme reached 10-15 codes of noise (2026-11-19, so the
+                                        // meter refused it as snow) with frame-to-frame field correlation 0.60 or more over
+                                        // 946 frames, cuts included; relock snow on the fixture A tape (31 frames)
+                                        // measured 0.52 or less. Measured on luma between lines 16 and 223 of each
+                                        // field, samples 32 to 687
 #define MAX_BLOCKS (((W - 2 * EDGE_X) / BLK_Y) * ((FIELD_LINES - 2 * EDGE_LINES) / BLK_LINES))
 
 // Residual standard deviation of v (bw x BLK_LINES, row stride `stride` elements apart in `step`)
@@ -59,10 +65,23 @@ static double pctl_bias(double dof){
     return 1.0 + z10 / sqrt(2.0 * dof);
 }
 
-void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
+// Correlation of field f's luma between two frames, over the central picture (every other sample).
+static double field_persist(const uint8_t *a, const uint8_t *b, size_t bpr, int f){
+    double sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0; double n = 0;
+    for (int l = 16; l < 224; l++){
+        const uint8_t *ra = a + (size_t)(2 * l + f) * bpr, *rb = b + (size_t)(2 * l + f) * bpr;
+        for (int x = 32; x < 688; x += 2){ double u = ra[2 * x + 1], v = rb[2 * x + 1]; sa += u; sb += v; saa += u * u; sbb += v * v; sab += u * v; n++; }
+    }
+    double va = saa - sa * sa / n, vb = sbb - sb * sb / n;
+    return va > 0 && vb > 0 ? (sab - sa * sb / n) / sqrt(va * vb) : 0;
+}
+
+void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){ tm_measure_uyvy_pair(frame, NULL, bpr, out); }
+
+void tm_measure_uyvy_pair(const uint8_t *frame, const uint8_t *prev, size_t bpr, tm_frame *out){
     static const int chan_offset[TM_CHANNELS] = { 1, 0, 2 };  // Y in odd bytes; U at 0, V at 2 of each 4
     double *vals = malloc(sizeof(double) * MAX_BLOCKS * (TM_CHANNELS + 1));
-    memset(out, 0, sizeof *out);
+    memset(out, 0, sizeof *out); out->persist = -2;
     if (!vals){ out->why = TM_TOO_FEW_BLOCKS; return; }
     int ok = 1, detail_ok = 1;
     for (int f = 0; f < 2; f++){
@@ -106,6 +125,8 @@ void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
     }
     int dup = lines && dup_lines >= DUP_LINE_FRACTION * lines;
     int snow = ok && (out->noise[0][TM_Y] > MAX_NOISE || out->noise[1][TM_Y] > MAX_NOISE);
+    if (prev){ double p0 = field_persist(frame, prev, bpr, 0), p1 = field_persist(frame, prev, bpr, 1); out->persist = p0 < p1 ? p0 : p1; }
+    if (snow && prev && out->persist >= MIN_PERSIST) snow = 0;       // noisy, but the picture persists: programme
     out->valid = ok && !dup && detail_ok && !snow;
     out->why = !ok ? TM_TOO_FEW_BLOCKS : dup ? TM_FIELDS_IDENTICAL : snow ? TM_SNOW : !detail_ok ? TM_NO_DETAIL : TM_OK;
     free(vals);
