@@ -365,7 +365,7 @@ def main():
         done[key] = [mod]; prev_end = mod['file_to']
         tmp = pj + '.tmp'; json.dump(done, open(tmp, 'w'), indent=0); os.replace(tmp, pj)
         r = mod['rep']
-        print('%s: %s, %d slots %s, shift %+d, %d -> %d bytes, +%d/+%d transfers, %.1f s' % (key, r['name'], sum(r['m']), r['slots'], r['total_shift'],
+        print('%s %s: %s, %d slots %s, shift %+d, %d -> %d bytes, +%d/+%d transfers, %.1f s' % (time.strftime('%H:%M:%S'), key, r['name'], sum(r['m']), r['slots'], r['total_shift'],
               mod['file_to'] - mod['file_from'], mod['bytes'], mod['kv'], mod['ka'], time.time() - t0), flush=True)
 
 if __name__ == '__main__':
