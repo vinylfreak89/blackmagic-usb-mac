@@ -1136,6 +1136,17 @@ regression check (`regress.py`) on that stretch with the whole-capture taps, aga
 Not judged by anyone before the render: everything outside the approved 30 seconds; the first and last lines of
 each field (the clips showed lines 34-253 / 297-516; the head-switch lines at the bottom get the removal too).
 
+**The render (2026-11-27, 62 minutes, the filter at 29 frames a second with four processes).** The plain render's own
+checks passed and the capture's render was replaced: 215,370 frames at 59.94 a second (3,593.09 s), audio unbroken,
+every byte of the capture proven by the checked reader. The filter took 107,677 frames in and out, found all 107,670
+table rows (7 frames were in no row: the repair put back 6 units the Shuttle sent at the wrong length), worked on
+106,588, changed 106,559, and passed 1,089 byte for byte, which is the table's count of frames with nothing removed.
+Read back from the encoded file: one second inside the approved stretch (30 units, both fields, the lines yadif
+passes untouched) is within 0.70-0.73 codes rms of the removed picture, which is the encoder's loss, and 8-12 codes
+rms from the captured picture; regressing (render - captured) on (removed - captured) gives 0.999-1.000 on every frame.
+That read-back shows the removal reached the encoded picture; it says nothing about how it looks outside the approved
+30 seconds.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
