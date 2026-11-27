@@ -1050,6 +1050,30 @@ think we are good".
   median, 0.013 largest); identical to the capture in frames 525-592. Judged by the owner: "Yes, we're good."
   (This is the luma setting for this stretch; nothing is built into the pipeline. Next asked: chroma.)
 
+### Colour on the 62-minute stretch: nothing to remove (`chroma_check.py`, 2026-11-26)
+
+Asked by the owner once the luma setting was accepted. The stretch's colour (kept at the one read) against the echo's
+strength from the bar, 0.6 to 1.1.
+
+- **Steady colour does not follow the echo.** The blue glow of the layout keeps its hue: -34.5 / -36.3 / -35.1 / -34.1
+  degrees at strength 0.7-0.8 / 0.8-0.9 / 0.9-1.0 / over 1.0. It sweeps, so its size is compared at the peaks of the
+  sweep: 52.7 at strength 0.82, 52.2 at 1.00, 54.7 at 0.73. (The receiver sets colour against the burst, which the
+  same reflection reaches.)
+- **No ghost on colour edges.** The picture box's borders as colour edges, along the row's own colour direction: the
+  rise and the fall are smooth at every strength, with no dip and no second step. At strength 0.95 and over there is
+  an overshoot of 5-6% after the rising border and an undershoot of 3-7% after the falling one; the largest turn of
+  hue at an edge is 0.13-0.19 of the colour's size at every strength.
+- **Place against luma.** Within scenes (so a change of scene does not count), per 0.1 of strength the right border as
+  a colour edge moves -1.9 +- 0.4 luma samples against the same border in luma (the luma edge itself -0.2 +- 0.1).
+  The strength moves by about 0.1 inside a scene, the colour edge is 15-28 luma samples wide, and the picture also
+  moves inside a scene, so this is small and not separated from content. The luma removal moves luma edges by under
+  half a sample.
+- **Not looked at here:** the first passage (its colour is not on disk; 8 frames earlier showed no dip); the stretch
+  around the trade, where nothing is done to luma either; whether saturated colour lowers the luma level under strong
+  echo in the picture as it does on the staircase (still open, a luma question); cross-colour on the caption lettering
+  (in the capture at every strength, not from the echo).
+- So: nothing is proposed for colour on this stretch.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -1140,6 +1164,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `aware.py` | spectral division, five-line cleaning, noise-aware removal, `ka`, panels |
 | `band.py` | gain of the division by frequency and where line-to-line junk grows |
 | `chroma.py` | colour step at the left edge against the luma echo depth |
+| `chroma_check.py` | the 62-minute stretch's colour against the echo's strength: steady colour, colour edges, place against luma |
 | `lin.py` | dip against step height and against position in the field; right-edge bump |
 | `inpic.py` | isolated steps inside the picture, before and after removal |
 | `shift.py` | the "left edge is a gate" idea, scored on right edge and in-picture steps (refuted) |
@@ -1165,7 +1190,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
   scene type's and is imposed on others beyond about +12; two passages only.
 - The bar and picture edges: the size difference is mostly the reading's noise diluting the slopes; a one-sample
   shape difference is not explained.
-- Colour: no measurement yet of whether it carries the echo beyond the 8 frames under "What it is".
+- Colour: measured on the 62-minute stretch (`chroma_check.py`): no ghost, hue and size do not follow the echo; nothing proposed. The first passage's colour is not on disk.
 - What is left after the left edge (above): tape's own edge or echo that is never absent.
 - Narrow strokes: the 2T pulse is not improved at strong echo; fine lettering above a reading of 0.8 is not clean.
 - Bands of 4-7 codes remain above a reading of 0.65.
