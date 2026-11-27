@@ -1002,7 +1002,36 @@ think we are good".
   3, gated; no thin-feature change, no median).
 - **Verified on the rendered frames:** frames 526-622 (17.55-20.75 s) identical to the capture; frames outside the
   ramps identical to the sixth clip's removal (checked at 3.3, 10.0, 14.3, 16.0, 23.4, 28.4 s); ramps 502-525 and
-  623-646. Judged by the owner: pending.
+  623-646.
+- **Owner on that clip:** "pretty decent", but on the last title card "the ghost stairsteps ... there should be no non
+  smooth gradients of change ... after you turn your filters back on, the ghost of the lettering moves all over the
+  place and it does it in steps"; and: "nothing should be using anything other than a smooth weighting. real RF
+  doesn't jump"; and check that none of the other defects came back.
+- **Cause.** The sixth clip's reading is each frame's own left picture edges (the bar's fit where a frame has under 20
+  such lines), then a flat mean of 5 frames. On the title card the reading follows the lettering's own edges as they
+  move (tap at lag 1 from -0.22 to -0.04 and back to -0.17 within two seconds) while the bar's strength eases from
+  0.79 to 0.73; the flat window and the switch between sources turn that into steps (largest change of the taps from
+  one frame to the next 0.19).
+- **Every step in time made smooth** (the rule: no flat window, no switch, no corner).
+  `direct.py readw` (`combine`): the bar's fit carries the change from frame to frame, its amounts weighted along time
+  with a Gaussian of 5 frames; the picture's edges correct it with a Gaussian of 45 frames, each frame by its inverse
+  variance; no line-count switch. Known answer (`kaw`): error 0.0078-0.0080 against the frames with 150+ edges (bar
+  alone 0.012, 22 edges alone 0.0064), taps from one frame to the next 0.003 median, 0.013 largest. `gate.py`: no
+  mean of taps on top (`STEADY=1`); the gate's floor weighted along time (`GATESMOOTH=5`: its change from frame to
+  frame 0.014 median and 0.40 largest as read, 0.003 and 0.075 weighted); the ramp around the trade eased at both
+  ends (largest change of the amount applied in one frame 0.065). The decision that a trade is happening (bar
+  strength 1.0 or more, from a fit that pools the bar's lines of 5 frames) is still a yes or no; what it switches
+  is ramped.
+- **Regression check** (`regress.py`: capture / the sixth clip's removal / this render; frames with the removal on).
+  393 kHz in bright flat stretches 1.02 / 1.06 / 1.07 codes. Added where the capture is flat 0.335 -> 0.280 rms,
+  4.8 -> 3.9 at 1 in 1000. Mean level of a frame moved by 0.15 -> 0.10 codes. Wall at 14-15 s 1.7 | 1.9 captured,
+  1.8 | 2.0, 1.8 | 1.9. Still caption card from frame to frame 0.93 / 0.92 / 0.91, on the last title card 0.77 / 0.79
+  / 0.77. Title lettering rows (what is the same down the rows) from frame to frame on the last card 1.04 / 1.36 /
+  1.17. Rising edges, level at +6 / +8, at +40 / +60, ripple, by strength: under 0.7 0.77/0.70 1.00/1.01 0.038 ->
+  0.77/0.71 1.00/1.01 0.039; 0.7-0.8 0.74/0.68 0.042 -> 0.76/0.69 0.039; 0.8-0.9 0.64/0.59 0.034 -> 0.64/0.58 0.034;
+  0.9-1.0 0.59/0.54 0.050 -> 0.57/0.53 0.048 (captured 0.20-0.35/0.43-0.60, 0.032-0.038). Identical to the capture
+  in frames 525-623. Echo taps from one frame to the next 0.0087 median, 0.191 largest -> 0.0026, 0.013.
+  Nothing came out worse than the sixth clip's removal. Judged by the owner: pending.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
@@ -1067,6 +1096,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `onerefl.py` | the owner's model: one reflection per frame from the test bar, removed at full strength, with the fade near equal strength; three-row clip frames; results by strength |
 | `bartest.py` | the removal applied to each frame's own test bar: what is left on a shape that is known |
 | `gcr.py` | the line-19 ghost-cancelling sweep: per-frame echo by direct division, its known answer, and the bar test with it |
+| `regress.py` | regression check of a rendered 62-minute stretch against the capture and a reference render: every defect fixed on the way |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
 | `sample_units.py` | N single frames spread through a capture |

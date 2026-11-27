@@ -25,7 +25,8 @@
 #          one or two field rows tall (lettering) drop out of the estimate the echo is predicted from and keep their echo.  With
 #          THIN=1 such a sample is averaged with the rows that agree with IT instead (clean_keep).  Cost: a dropout streak, which
 #          has no echo, then gets one predicted and subtracted.
-# Environment: KAPPA (9), STEADY (taps over this many frames, 1), MEDIAN (1: their median instead of their mean), HOLE (MHz, 0), GMAX (3), THIN (0).
+# Environment: KAPPA (9), STEADY (taps over this many frames, 1), MEDIAN (1: their median instead of their mean), HOLE (MHz, 0), GMAX (3), THIN (0),
+# GATESMOOTH (frames, Gaussian sigma: the gate's floor weighted along time in `remove`; 0: each frame's own).
 import sys, os, numpy as np
 import model as M, harness as H, direct as D
 from aware import clean, bands
@@ -64,11 +65,16 @@ def size(C, half=220):                              # local rms of a correction,
     out = np.empty_like(C)
     for a, b in ((0, half), (half, C.shape[0])): out[a:b] = np.sqrt(np.maximum(box(box(box(C[a:b] ** 2, 17, 1), 17, 1), 3, 0), 0))
     return out
-MEDIAN = os.environ.get('MEDIAN', '0') == '1'
+MEDIAN = os.environ.get('MEDIAN', '0') == '1'; GATESMOOTH = float(os.environ.get('GATESMOOTH', 0))
 def steady(Q, f, w):                               # a frame's taps with its neighbours' (w frames): mean, or with MEDIAN=1 the median (one wrong reading cannot get through)
     seg = Q[max(0, f - w // 2): f + w // 2 + 1]; return np.median(seg, 0) if MEDIAN else seg.mean(0)
-def gate(C, kappa=KAPPA):
-    A = size(C); th = np.percentile(A[:, 30:690], PCT); return np.clip(1 - kappa * th ** 2 / np.maximum(A ** 2, 1e-9), 0, 1), th
+def gate(C, kappa=KAPPA, th=None):                  # th given: the floor to use (cmd_remove passes the floor weighted smoothly along time)
+    A = size(C); th = np.percentile(A[:, 30:690], PCT) if th is None else th; return np.clip(1 - kappa * th ** 2 / np.maximum(A ** 2, 1e-9), 0, 1), th
+def tsmooth(v, sig):                                # along frames, Gaussian weights: nothing enters or leaves a window at once
+    n = len(v); h = int(4 * sig) + 1; out = np.zeros(n); den = np.zeros(n)
+    for o in range(-h, h + 1):
+        w = np.exp(-0.5 * (o / sig) ** 2); a, b = max(0, -o), min(n, n - o); out[a:b] += w * v[a + o:b + o]; den[a:b] += w
+    return out / den
 F0S = np.r_[0, np.arange(0.3, 2.01, 0.1)]
 REG = (('< 0.5', 0, 0.5), ('0.5-1', 0.5, 1), ('1-2', 1, 2), ('2-4', 2, 4), ('4-8', 4, 8), ('> 8', 8, 1e9))    # true echo, local rms in codes
 def tapered(Qs, gmax, eps=0.01):
@@ -220,15 +226,19 @@ def trade_weight(S):                                # where the reflection is at
     # second after it; ramped back over the next 0.8 s.  Elsewhere 1.
     hot = np.nonzero(S >= 1.0)[0]; n = np.arange(len(S))
     if not len(hot): return np.ones(len(S))
-    dist = np.abs(n[:, None] - hot[None]).min(1); return np.clip((dist - NEAR) / float(FAR - NEAR), 0, 1)
+    dist = np.abs(n[:, None] - hot[None]).min(1); return 0.5 - 0.5 * np.cos(np.pi * np.clip((dist - NEAR) / float(FAR - NEAR), 0, 1))   # eased at both ends: no corner
 def cmd_remove(lumf, amf, tapf, outf, eps='0.01', kappa=str(KAPPA), parf='', fade0='0.9'):
     # parf (the bar's three numbers per frame, reflect_score.py): the removal is faded out as the reflection nears the direct signal's
     # strength, full up to fade0, none from 1.0 on.  Where the two are equal the cancelled band is gone from the recording.
     A = np.load(amf); t = np.load(tapf); Q, direct = np.array([steady(t['Q'], f, STEADY) for f in range(len(t['Q']))]), t['direct']; lum = np.load(lumf, mmap_mode='r'); lo = hi = 0; out = np.lib.format.open_memmap(outf, mode='w+', dtype=np.uint8, shape=lum.shape)
     wf = (trade_weight(np.hypot(*np.load(parf)[:, :2].T)) if fade0 == 'trade' else np.clip((1 - np.hypot(*np.load(parf)[:, :2].T)) / (1 - float(fade0)), 0, 1)) if parf else np.ones(lum.shape[0])
     if parf: print('removal: none in %d frames, part in %d, as usual in %d' % ((wf == 0).sum(), ((wf > 0) & (wf < 1)).sum(), (wf == 1).sum()))
+    ths = None
+    if GATESMOOTH > 0:                              # first pass: each frame's floor; then the floor weighted smoothly along time
+        raw = np.array([gate(core(lum[f].astype(float) - M.BL, spec(Q[f]), float(eps)) - (lum[f].astype(float) - M.BL), float(kappa))[1] for f in range(lum.shape[0])]); ths = tsmooth(raw, GATESMOOTH)
+        print('gate floor per frame: median %.2f codes; change from one frame to the next: as read median %.3f, largest %.2f; weighted along time median %.4f, largest %.3f' % (np.median(raw), np.median(np.abs(np.diff(raw))), np.abs(np.diff(raw)).max(), np.median(np.abs(np.diff(ths))), np.abs(np.diff(ths)).max()))
     for f in range(lum.shape[0]):
-        y = lum[f].astype(float) - M.BL; full = core(y, spec(Q[f]), float(eps)); m, _ = gate(full - y, float(kappa)); x = y + wf[f] * m * (full - y) + M.BL
+        y = lum[f].astype(float) - M.BL; full = core(y, spec(Q[f]), float(eps)); m, _ = gate(full - y, float(kappa), None if ths is None else ths[f]); x = y + wf[f] * m * (full - y) + M.BL
         lo += int((x < 0).sum()); hi += int((x > 255).sum()); out[f] = np.clip(np.rint(x), 0, 255); H.guard()
     out.flush(); np.save(outf.replace('removed', 'read'), np.c_[A[:, 0], A[:, 3:5], A[:, 1], ~direct]); print('%s: %d frames; samples cut off below 0: %d, above 255: %d' % (outf, lum.shape[0], lo, hi))
 if __name__ == '__main__':
