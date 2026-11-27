@@ -53,7 +53,9 @@ def main():
     mods = [e for v in json.load(open(os.path.join(work, 'plan.json'))).values() for e in v]
     built = sorted(i for e in mods for i in e['rep']['regions'])
     if built != list(range(len(plans))): CP.fail('the work folder holds %d of the plan\'s %d regions' % (len(built), len(plans)))
-    src = CP.truth(T); expect = capture_size(src) + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in mods)
+    # contents through the share only (owner, 2026-11-26); JuiceFS directly only for verification and metadata (sizes, dates, inodes)
+    if not T.startswith(CP.SHARE + '/'): CP.fail('the base capture must be given by its share path, not %s' % T)
+    src = T; expect = capture_size(src) + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in mods)
     times = {k: dict(atime_ns=os.stat(CP.truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(CP.truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
     st = lambda p: [os.path.getsize(CP.truth(p)), int(os.stat(CP.truth(p)).st_mtime)]
     stats = {CP.truth(ORIG['tpc']): st(ORIG['tpc']), CP.truth(ORIG['csv']): st(ORIG['csv'])}
@@ -84,7 +86,7 @@ def assemble_render(src, PATCH, NEWLOG, aj, flf, W, work, expect):
 
 def finish(plans, BU, ORIG, PATCH, NEWLOG, OUTCSV, FL, A, rendered, expect, name, d, times, stats, planf, work, W):
     # the gate: spans and jumps in the numbering each side uses
-    ext = extended(BU, CP.truth(ORIG['csv'])); before = 0; filled = []; jumps = []
+    ext = extended(BU, ORIG['csv']); before = 0; filled = []; jumps = []
     for p in plans:
         ua, ub = p['a'], p['b']; c_a, c_b = int(BU['counter'][ua]), int(BU['counter'][ub]); m = p['m']
         R = CP_s16(c_b - c_a - (m + 1)); p0 = c_a - before
@@ -93,7 +95,7 @@ def finish(plans, BU, ORIG, PATCH, NEWLOG, OUTCSV, FL, A, rendered, expect, name
         if R: jumps.append((((c_a + m) if R > 0 else (c_b - 1)) % 65536, c_b % 65536, R, int(ext[ub])))
         before += R
     CP.log('gate: %d patched spans, %d run-ahead jumps lowering the capture by %d in all' % (len(filled), len(jumps), before))
-    sc_sha, spans = CP.sidecar_gate(CP.truth(ORIG['csv']), NEWLOG, filled, OUTCSV, FL, jumps)
+    sc_sha, spans = CP.sidecar_gate(ORIG['csv'], NEWLOG, filled, OUTCSV, FL, jumps)
     hd, tl = CP.digests(CP.truth(PATCH['tpc']), expect)
     res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=[], patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect,
                sha256=A['sha256'], first_line=FL, head=hd, tail=tl, patched_mtime=int(os.stat(CP.truth(PATCH['tpc'])).st_mtime),

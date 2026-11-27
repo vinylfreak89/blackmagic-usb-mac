@@ -329,6 +329,9 @@ def hold_for_uploads(data):
 
 def main():
     planf, bth, dth, base_tpc, donor_tpc, work = sys.argv[1:7]
+    # contents through the share only (owner, 2026-11-26): JuiceFS directly is for verification (the read-back below)
+    for x in (base_tpc, donor_tpc):
+        if '/.juicemount/fuse-internal/' in os.path.realpath(x): sys.exit('give the captures by their share paths, not %s' % x)
     first = int(sys.argv[7]) if len(sys.argv) > 7 else 0; last = int(sys.argv[8]) if len(sys.argv) > 8 else None
     threading.Thread(target=_rss_guard, daemon=True).start()
     plans = json.load(open(planf)); last = len(plans) - 1 if last is None else last
@@ -357,7 +360,7 @@ def main():
         check_range(mod, G)
         fn = os.path.join(data, key + '.bin'); d = mod.pop('data')
         with open(fn, 'wb') as f: f.write(d); f.flush(); os.fsync(f.fileno())
-        h = hashlib.sha256()
+        h = hashlib.sha256()                     # verification: read back from JuiceFS itself, past JuiceMount
         with open(truth(fn), 'rb') as f:
             for x in iter(lambda: f.read(8 << 20), b''): h.update(x)
         assert h.hexdigest() == hashlib.sha256(d).hexdigest(), 'work file does not read back'
