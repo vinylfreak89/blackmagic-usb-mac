@@ -929,6 +929,47 @@ signal must match the picture; "think about this problem from a physics standpoi
 - So the bar stays the reference for large edges, and what the three numbers leave on it (3-4% of the bar) is what
   comes back as ringing, multiplied where the two paths cancel.
 
+### The detector is linear; back to the picture-read removal with two targeted changes (2026-11-26)
+
+Owner: "Yes, model at RF"; then, on stills of the three-number model beside the sweep's echo: "there is still ringing
+in the middle and right pictures ... somehow you were able to remove the ringing almost entirely at one point in this
+process. and if its linear, then I really feel like you are hunting around at the wrong thing."
+
+- **The receiver's detector behaved linearly** (two tests with no free parameter). (1) Standard NTSC transmission
+  through an envelope detector makes the sweep's non-flipping part DARKER (about 3 IRE rms); measured, it is brighter.
+  About half of it is this capture cutting off the sweep's swings below blanking (predicted and measured peaks agree
+  within a code: 36.3 against 36.3, 35.1 against 35.7); the rest, about 12% of the sweep, also has the wrong sign for
+  a detector. (2) An envelope detector with negative modulation makes the ghost after a falling edge about 0.04 of the
+  ghost after a rising edge; measured on the same frames, 0.89-0.91. The statement in the section above that the
+  floor cut-off does not matter was wrong.
+- **The sweep's echo on the picture** (`gcr.py remove`): stills sent; a clip was rendered and NOT sent: the wall at
+  14-15 s rings at 3.6-6.7 codes rms (captured 1.7-1.9) and still picture changes 1.26 against 0.93.
+- **Removing the weak state's own reflection as well** (the bar fit's 0.40 at -144 degrees, no new numbers): tested
+  as the reason for what is left; false. Near the right border 0.09 -> 0.06 at low strength, far unchanged, and
+  0.19 -> 0.44 at strength 0.8-0.9.
+- **The right-border measure cannot rank kernels.** It sits on black, where the capture cuts off below blanking: a
+  ripple shows only its bright half there, before and after removal. The claim above that the one-reflection model
+  "is the best of the three" on an unfitted edge rests on it and is withdrawn.
+- **The clean measure: after RISING picture edges** (steady left edges, odd rows; the picture stays above black).
+  Ripple +22..+92 of the pooled edge, share of the step, by the reflection's strength (under 0.8 / 0.8-0.9 / 0.9 and
+  over): captured 0.035 / 0.033 / 0.032; picture-read taps from even rows (the removal of clips 4-7) 0.038 / 0.040 /
+  0.051; three numbers 0.089 / 0.150 / 0.153; line-19 sweep 0.035 / 0.126 / 0.166. On the wall at strength 0.96 and
+  the still card (limit 0.01): picture-read 2.2 and 1.21; three numbers 7.2 and 1.23; sweep 4.9 and 2.03.
+  The picture-read removal, the one the owner judged good, does not ring at any strength; it was read from rising
+  left edges, so this is not an independent test of it, but it is what the picture shows.
+- **Its two faults, fixed one each** (`gate.py`: `MEDIAN=1`, `remove ... PAR.npy FADE0`). The reading that jumped at
+  18.4 s: the taps are the median of the frame's and its two neighbours' either side instead of their mean (tap at
+  lag 1 at frames 548-552: -0.07 throughout; the mean gave +0.07). The moving bands where the two paths are nearly
+  equal: full-strength removal adds to the still card's frame-to-frame change by nothing under strength 0.8, 6-13% at
+  0.8-0.85, 15-24% from 0.85 to 1.0 (no sharp edge); the owner's bands sat at 0.92-0.97; the removal is faded from
+  full at 0.9 to none at 1.0 (the owner: where they are equal, "isn't it best to do nothing?").
+- **The stretch rendered that way** (picture-read taps, median of 5, limit 0.01, three passes, gated, thin features
+  kept, no leftover hole, faded 0.9 -> 1.0): full strength in 80% of the frames, none in 4%. Wall at 14-15 s 1.7-2.5
+  (captured 1.6-1.9; 4.5 in the fifth clip). Still card 1.03 against 0.93 (0.97 against 0.84 at 11.5-14.5 s, 0.83
+  against 0.75 at 17.9-18.6 s). Rising edges: the dip at +6 / +8 from 0.35 / 0.59 to 0.82 / 0.74 under 0.8, from
+  0.23 / 0.47 to 0.84 / 0.73 at 0.8-0.9, to 0.66 / 0.64 at 0.9-0.95 and 0.42 / 0.53 above; ripple 0.037-0.043.
+  Judged by the owner: pending.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the

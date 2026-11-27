@@ -4,7 +4,9 @@
 # No model and no fitted numbers.  Known answer (a made-up echo on the reference sweep and bar): exact.  On the real lines it takes
 # out about half of the test bar's echo, and a quarter of the sweep arrives in a form that does not flip with its polarity:
 # the chain after the echo is not linear (README, "The line-19 sweep").
-# Run from the scratch directory:   python3 gcr.py   -> reference sweep, per-passage sweeps (p2_sweep.npy, first_sweep.npy), the bar test
+# Run from the scratch directory:
+#   python3 gcr.py ref                                      -> reference sweep (gcr_ref.npy), per-passage sweeps, the bar test
+#   python3 gcr.py remove LUMA.npy VBI.npy OUT.npy [POOL]   -> the picture with each frame's echo divided out at full strength
 import sys
 import numpy as np, barread as B
 np.set_printoptions(linewidth=260, precision=3, suppress=True)
@@ -34,8 +36,9 @@ def spectrum(y): return np.fft.rfft(y * WIN, NF)
 def echo(dk, Dref, lag0=-40, lag1=140):  # the division; kept up to where the reference fades (2.9 MHz), and to lags an echo can have (eased ends)
     Hq = spectrum(dk) / Dref; band = 0.5 + 0.5 * np.cos(np.pi * np.clip((fr - HI) / 0.5, 0, 1)); Hq = 1 + (Hq - 1) * band
     h = np.fft.irfft(Hq, NF); n = np.arange(NF); lag = np.where(n > NF // 2, n - NF, n); g = np.clip((lag - lag0 + 10) / 10.0, 0, 1) * np.clip((lag1 + 20 - lag) / 20.0, 0, 1); d0 = h[0]; h = h * g; h[0] = d0; return np.fft.rfft(h, NF)
-if __name__ == '__main__':
-    lo, off_lo = align(sweeps('lo_vbi.npy')); L, g = B.lines('lo_vbi.npy'); gm = B.running_median(np.nanmean(g, 1)); weak = gm < 0.15; print('weak passage: %d frames, %d under 0.15; sideways jitter of the sweep line %.2f samples rms' % (len(lo), weak.sum(), off_lo.std()))
+POOL = 2                                # the sweep is two lines a frame; a frame's echo is read from its own sweep and the POOL frames either side
+def cmd_ref():
+    lo, off_lo = align(sweeps('lo_vbi.npy')); L, g = B.lines('lo_vbi.npy'); gm = B.running_median(np.nanmean(g, 1)); weak = gm < 0.2; print('weak passage: %d frames, %d with the bar reading under 0.2; sideways jitter of the sweep line %.2f samples rms' % (len(lo), weak.sum(), off_lo.std()))
     ref = lo[weak].mean(0) if weak.sum() >= 30 else lo.mean(0); np.save('gcr_ref.npy', ref); Dref = spectrum(ref)
     print('reference sweep spectrum every 0.25 MHz:', np.round([np.abs(Dref)[np.argmin(np.abs(fr - f))] for f in np.arange(0.25, 4.01, 0.25)], 0))
     for name in ('p2_vbi.npy', 'vbi_luma.npy'):
@@ -57,3 +60,14 @@ if __name__ == '__main__':
         for a, b in ((0, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.0), (1.0, 9)):
             s_ = (o[:, 0] >= a) & (o[:, 0] < b)
             if s_.sum() >= 4: print('  strength %.1f-%.1f (%3d): ' % (a, b, s_.sum()) + ' | '.join('%s %.3f -> %.3f' % (GB.PARTS[i][0], np.median(o[s_, 1 + i]), np.median(o[s_, 5 + i])) for i in range(4)))
+
+def cmd_remove(lumf, vbif, outf, pool=str(POOL)):
+    # The picture with each frame's echo, as the sweep gives it, divided out at full strength (gate.py's division limit 0.01, three
+    # passes, the gate; THIN=1 keeps thin features in the echo prediction).  Relative to the weak-echo state of gcr_ref.npy.
+    import gate as G, model as M
+    Dref = spectrum(np.load('gcr_ref.npy')); d, off = align(sweeps(vbif)); lum = np.load(lumf, mmap_mode='r'); out = np.lib.format.open_memmap(outf, mode='w+', dtype=np.uint8, shape=lum.shape); h = int(pool); assert G.NF == NF
+    for f in range(lum.shape[0]):
+        y = lum[f].astype(float) - M.BL; x = G.remove_spec(y, echo(d[max(0, f - h):f + h + 1].mean(0), Dref) - 1, eps=0.01); m, _ = G.gate(x - y); out[f] = np.clip(np.rint(y + m * (x - y) + M.BL), 0, 255); G.H.guard()
+    out.flush(); print("%s: %d frames; sweep line jitter %.2f samples rms; echo from each frame's sweep and %d frames either side" % (outf, lum.shape[0], off.std(), h))
+if __name__ == '__main__':
+    {'ref': cmd_ref, 'remove': cmd_remove}[sys.argv[1] if len(sys.argv) > 1 else 'ref'](*sys.argv[2:])
