@@ -127,6 +127,11 @@ def build_cluster(ids, plans, BU, DU, base_tpc, donor_tpc, prev_end):
                 assert size > 0, ('a partial without a following marker', g['i'], s)
                 ub_ = bytes(src.R.v[j:j + size]); assert len(ub_) == size, ('unit runs past the stretch read', g['i'], s, k)
                 assert (ub_[4] | ub_[5] << 8) == int(u['counter']), ('unit counter differs from the thumbnails', g['i'], s, k)
+                if ub_[8:48] != ZEROS:
+                    # a header carrying a stale word (the Shuttle's stall residue, e.g. 8d5e0008 in donor unit 31634 at region
+                    # 1017): not a header the parser renumbering (renum.py) or the checks recognise, and its bytes are the
+                    # repair stage's evidence, so it is not cleaned up either: the slot takes a stub
+                    g['units'].append(header(c)); kinds[k + ' header not clean: stub'] += 1; continue
                 g['units'].append(renumber_unit(ub_, c))
             kinds[k] += 1
         g['ulen'] = [len(u) for u in g['units']]; g['ustart'] = np.cumsum([0] + g['ulen'])
