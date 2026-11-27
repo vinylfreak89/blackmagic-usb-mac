@@ -56,14 +56,14 @@ def main():
     # contents through the share only (owner, 2026-11-26); JuiceFS directly only for verification and metadata (sizes, dates, inodes)
     if not T.startswith(CP.SHARE + '/'): CP.fail('the base capture must be given by its share path, not %s' % T)
     src = T; expect = capture_size(src) + sum(e['bytes'] - (e['file_to'] - e['file_from']) for e in mods)
-    times = {k: dict(atime_ns=os.stat(CP.truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(CP.truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
-    st = lambda p: [os.path.getsize(CP.truth(p)), int(os.stat(CP.truth(p)).st_mtime)]
-    stats = {CP.truth(ORIG['tpc']): st(ORIG['tpc']), CP.truth(ORIG['csv']): st(ORIG['csv'])}
+    times = {k: dict(atime_ns=os.stat(CP.juicefs_path(ORIG[k])).st_atime_ns, mtime_ns=os.stat(CP.juicefs_path(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
+    st = lambda p: [os.path.getsize(CP.juicefs_path(p)), int(os.stat(CP.juicefs_path(p)).st_mtime)]
+    stats = {CP.juicefs_path(ORIG['tpc']): st(ORIG['tpc']), CP.juicefs_path(ORIG['csv']): st(ORIG['csv'])}
     CP.log('merge: %d regions in %d ranges; the merged capture will be %d bytes (the base is %d)' % (len(plans), len(mods), expect, capture_size(src)))
     NEWLOG = os.path.join(W, 'rebuilt_sidecar.csv'); OUTCSV = os.path.join(W, 'sidecar.csv'); aj = os.path.join(W, 'assembly.json'); flf = os.path.join(W, 'first_line.txt')
     if gate_only:
         FL = open(flf).read().strip(); A = json.load(open(aj)); rendered = A['sha256']
-        if os.path.getsize(CP.truth(PATCH['tpc'])) != expect or not os.path.exists(NEWLOG): CP.fail('the earlier run\'s outputs are not whole')
+        if os.path.getsize(CP.juicefs_path(PATCH['tpc'])) != expect or not os.path.exists(NEWLOG): CP.fail('the earlier run\'s outputs are not whole')
     else: FL, A, rendered = assemble_render(src, PATCH, NEWLOG, aj, flf, W, work, expect)
     finish(plans, BU, ORIG, PATCH, NEWLOG, OUTCSV, FL, A, rendered, expect, name, d, times, stats, planf, work, W)
 
@@ -78,7 +78,7 @@ def assemble_render(src, PATCH, NEWLOG, aj, flf, W, work, expect):
     # lost none to the host)
     rendered = CP.read_back(PATCH['tpc'], expect, None, PATCH['mov'], NEWLOG, W, FL, assembler=(argv, HERE, env), LIVE=None)
     A = json.load(open(aj))
-    if A['bytes'] != expect or os.path.getsize(CP.truth(PATCH['tpc'])) != expect: CP.fail('merged capture: %d bytes written, %d on disk, %d expected' % (A['bytes'], os.path.getsize(CP.truth(PATCH['tpc'])), expect))
+    if A['bytes'] != expect or os.path.getsize(CP.juicefs_path(PATCH['tpc'])) != expect: CP.fail('merged capture: %d bytes written, %d on disk, %d expected' % (A['bytes'], os.path.getsize(CP.juicefs_path(PATCH['tpc'])), expect))
     if not (A.get('write_proof') or {}).get('complete'): CP.fail('the merged capture has no write proof')
     if rendered != A['sha256']: CP.fail('the stream the render read (SHA-256 %s) is not the assembled capture (%s)' % (rendered, A['sha256']))
     CP.log('assembled and rendered %s: %d bytes, SHA-256 %s' % (PATCH['tpc'], A['bytes'], A['sha256']))
@@ -96,10 +96,10 @@ def finish(plans, BU, ORIG, PATCH, NEWLOG, OUTCSV, FL, A, rendered, expect, name
         before += R
     CP.log('gate: %d patched spans, %d run-ahead jumps lowering the capture by %d in all' % (len(filled), len(jumps), before))
     sc_sha, spans = CP.sidecar_gate(ORIG['csv'], NEWLOG, filled, OUTCSV, FL, jumps)
-    hd, tl = CP.digests(CP.truth(PATCH['tpc']), expect)
+    hd, tl = CP.digests(CP.juicefs_path(PATCH['tpc']), expect)
     res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=[], patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect,
-               sha256=A['sha256'], first_line=FL, head=hd, tail=tl, patched_mtime=int(os.stat(CP.truth(PATCH['tpc'])).st_mtime),
-               patched_ino=os.stat(CP.truth(PATCH['tpc'])).st_ino, original_times=times, input_stats=stats, two_pass_merge=dict(plan=planf, work=work, regions=len(plans)),
+               sha256=A['sha256'], first_line=FL, head=hd, tail=tl, patched_mtime=int(os.stat(CP.juicefs_path(PATCH['tpc'])).st_mtime),
+               patched_ino=os.stat(CP.juicefs_path(PATCH['tpc'])).st_ino, original_times=times, input_stats=stats, two_pass_merge=dict(plan=planf, work=work, regions=len(plans)),
                spans=spans, verified_at=time.time())
     json.dump(res, open(os.path.join(W, 'result.json'), 'w'), indent=1)
     CP.log('VERIFIED: %s and %s are ready to swap in (capture_patch.py swap %s)' % (PATCH['tpc'], PATCH['mov'], W))

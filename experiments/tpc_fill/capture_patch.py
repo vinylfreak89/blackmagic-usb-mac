@@ -85,8 +85,15 @@ class Failed(Exception): pass
 def fail(m): raise Failed(m)
 
 def on_share(p): return os.path.realpath(p).startswith(SHARE + '/')
-def truth(p):
-    """where a file is checked: on the share, JuiceMount's own directory (the Mac's view can lag; JuiceMount keeps dates there)"""
+# Contents are read and written through the share only (owner, 2026-11-26: "I don't care if things read metadata, I care they
+# don't read or write directly from JuiceFS except in the case of verification"). juicefs_path() is for those two cases alone:
+#   metadata      stat, size, inode and dates (the share's dates can lag or move: 2026-10-23, 3 s back; JuiceMount drops a
+#                 date set through the share, so dates are set there)
+#   verification  digests() and sha256_file(), which read back bytes this tool wrote, or check them before a swap, on JuiceFS
+#                 itself, past JuiceMount, so a JuiceMount bug cannot pass them
+# test_share_reads.py fails if a file under FUSE is opened anywhere but inside those two functions.
+def juicefs_path(p):
+    """p on JuiceFS directly (JuiceMount's own directory), for metadata and verification only: never to read contents to process them"""
     p = os.path.realpath(p)
     return FUSE + p[len(SHARE):] if p.startswith(SHARE + '/') and os.path.isdir(FUSE) else p
 
@@ -98,7 +105,7 @@ def parse_time(s):
     return t
 
 def digests(path, size):
-    """SHA-256 of the first and last 4 MiB"""
+    """SHA-256 of the first and last 4 MiB. Verification: may be given a juicefs_path()"""
     with open(path, 'rb') as f:
         hd = b''
         while len(hd) < 4 << 20:
@@ -112,12 +119,53 @@ def digests(path, size):
             tl += x
     return hashlib.sha256(hd).hexdigest(), hashlib.sha256(tl).hexdigest()
 
+def sha256_file(path):
+    """SHA-256 of a whole (small) file. Verification: may be given a juicefs_path()"""
+    with open(path, 'rb') as f: return hashlib.sha256(f.read()).hexdigest()
+
+def share_view(paths, timeout=120.0, poll=0.5, renudge=20.0):
+    """Refuse to read a file through the share while the share lists it otherwise than JuiceFS holds it: by size, or by
+    inode (the share reports JuiceFS's inode numbers: checked 2026-11-26 on four files), so a stale listing of a replaced
+    file of the same size is caught too. Metadata on both sides; no contents read.
+    A share listing a file LESS, or as another inode, is behind (the Mac's attribute cache: a clip still growing when last
+    listed, a file renamed over) and is brought up to date through the share as share_refresh does it: a nudge of the
+    folder, a re-read of the file's attributes (a chmod to its own mode). The polling is a ceiling, not the mechanism.
+    A share listing the same inode MORE is JuiceMount's size mark of a replaced or deleted file (2026-11-23: two hours after
+    2026-11-22 13-11-20 was swapped for its 640,144-byte shorter patched copy, every open on the share gave the patched
+    content and 640,144 zero bytes after it, which the line-up parsed as records: "bad record at 64081011514"); only a
+    truncate through the share to the true length lowers it, as swap does, and run changes nothing under the capture's
+    names, so it stops at once, named. With no JuiceFS mount to compare against, a file on the share is refused: an
+    unchecked listing is not a checked one. Off the share there is nothing to compare."""
+    on = [p for p in paths if on_share(p)]
+    if not on: return
+    if not os.path.isdir(FUSE): fail('no JuiceFS mount at %s to check the share\'s listing of %s against: not read unchecked' % (FUSE, ', '.join(on)))
+    seen = lambda p: (lambda s: (s.st_size, s.st_ino))(os.stat(p))
+    want = {p: seen(juicefs_path(p)) for p in on}
+    wrong = lambda: {p: v for p in want if (v := seen(p)) != want[p]}
+    mark = lambda p, v: v[1] == want[p][1] and v[0] > want[p][0]
+    bad = wrong(); t0 = time.monotonic(); last = None
+    if any(not mark(p, v) for p, v in bad.items()):
+        sys.path.insert(0, os.path.join(REPO, 'scripts', 'juicefs')); import share_refresh
+        log('the share lists %s otherwise than JuiceFS holds: bringing its listing up to date' % ', '.join(os.path.basename(p) for p, v in bad.items() if not mark(p, v)))
+        while any(not mark(p, v) for p, v in bad.items()) and time.monotonic() - t0 < timeout:
+            if last is None or time.monotonic() - last >= renudge:
+                for d in sorted({os.path.dirname(p) for p, v in bad.items() if not mark(p, v)}): share_refresh.nudge(d)
+                last = time.monotonic()
+            time.sleep(poll)
+            for p, v in bad.items():
+                if not mark(p, v): share_refresh.reread(p)
+            bad = wrong()
+    if bad: fail('the share does not list these as JuiceFS holds them, so reading them through the share would not give the file: %s' % '; '.join(
+        ('%s listed at %d bytes, %d on JuiceFS, the same file: a size mark past its end, as a swap leaves when a smaller file replaces '
+         'a larger (with nothing still writing it, a truncate through the share to %d bytes clears it)' % (p, v[0], want[p][0], want[p][0])) if mark(p, v) else
+        ('%s listed at %d bytes as inode %d, JuiceFS holds %d bytes as inode %d' % (p, v[0], v[1], want[p][0], want[p][1])) for p, v in sorted(bad.items())))
+
 def busy(paths):
     """paths some program has open, or (on the share) that JuiceMount still holds a write handle on"""
     out = []
     p = subprocess.run(['lsof', '-Fn', '--'] + [x for x in paths if os.path.exists(x)], capture_output=True, text=True)
     out += sorted({l[1:] for l in p.stdout.splitlines() if l.startswith('n')})
-    fp = {truth(x): x for x in paths if on_share(x)}
+    fp = {juicefs_path(x): x for x in paths if on_share(x)}        # metadata: JuiceMount's open handles, by its own paths
     if fp:
         from write_proof import juicemount_write_handles
         out += [fp[f] + ' (JuiceMount write handle)' for f in sorted(juicemount_write_handles(fp))]
@@ -193,7 +241,7 @@ def read_back(PATCHED, expect, A, RENDER, NEWLOG, W, FL, assembler=None, LIVE=No
         argv, cwd, aenv = assembler
         cr = subprocess.Popen(argv, cwd=cwd, env=dict(aenv, ASSEMBLE_TEE=fa))
         src = fa
-    elif on_share(PATCHED):        # every block proven against B2 as it is read (juicedata/juicefs#7499)
+    elif on_share(PATCHED):        # verification, the read-back of the bytes just written: every block proven against B2 as it is read (juicedata/juicefs#7499)
         cr = subprocess.Popen([sys.executable, os.path.join(REPO, 'scripts/juicefs/checked_read.py'), PATCHED, '--out', fa, '--report', os.path.join(W, 'checked_read.json')],
                               stdout=open(os.path.join(W, 'checked_read.log'), 'w'), stderr=subprocess.STDOUT)
         src = fa
@@ -498,16 +546,11 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if busy([x]): fail('in use: %s' % '; '.join(busy([x])))
     for x in sorted({x for _, x in ats}):
         if os.path.getsize(x) > DONOR_MAX: fail('the --at donor %s is %.1f GB; --at reads it whole, so at most %.0f GB (give it as --donor instead)' % (x, os.path.getsize(x) / 1e9, DONOR_MAX / 1e9))
-    # every read of the capture and the clips through JuiceMount's own directory (truth), the share's paths kept only to name
-    # and write what the patch makes (ORIG, PATCH). A capture replaced by swap keeps the old file's size on the share: on
-    # 2026-11-23, two hours after 2026-11-22 13-11-20 was swapped for its 640,144-byte shorter patched copy, every open on the
-    # share still gave the old size, the patched content and 640,144 zero bytes after it, which a nudge and a re-read did
-    # not clear; the line-up parsed the zeros ("bad record at 64081011514"). A patched capture is often patched again.
-    parts = [(truth(tp), truth(csv)) for tp, csv in parts]
-    ats = [(t, truth(x)) for t, x in ats]; joins_d = [truth(x) for x in joins_d]; clips = [truth(x) for x in clips]
-    placed = [(t, truth(x), k, o, oa) for t, x, k, o, oa in placed]
-    donors = sorted({x for _, x in ats} | set(joins_d) | set(clips) | {x[1] for x in placed})
-    st = lambda p: [os.path.getsize(truth(p)), int(os.stat(truth(p)).st_mtime)]   # JuiceMount's own view: the share's dates can lag or move (2026-10-23: 3 s back)
+    # every read of the capture, its sidecars and the clips through the share, by the paths given (owner, 2026-11-26). A file
+    # the share lists at another size than JuiceFS holds (a swapped capture's size mark, a clip listed before it finished
+    # growing) is brought up to date or refused by name before anything reads it (share_view)
+    share_view([p for pc in parts for p in pc] + donors)
+    st = lambda p: [os.path.getsize(juicefs_path(p)), int(os.stat(juicefs_path(p)).st_mtime)]   # metadata: the share's dates can lag or move (2026-10-23: 3 s back)
     inputs = dict(target=T, parts=[[tp, st(tp), csv, st(csv)] for tp, csv in parts], at=ats, joins=joins_d, clips=clips, placed=placed, donors={x: st(x) for x in donors})
     # a clip longer than the line-up can hold (a recapture of the rest of the tape, 2026-11-22: 103 GB) is read only around
     # where the capture ends, found by its sound (joins.end_window): it can be appended, and serve gaps and glitches near the end
@@ -525,13 +568,13 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         windows[D] = tuple(w)
     streamed = sum((windows[x][1] - windows[x][0]) if x in windows else os.path.getsize(x) for x in donors if x not in {d for _, d in ats})
     if streamed > STREAMED_MAX: fail('the donors come to %.1f GB; at most %.0f GB in all (their line-up needs ~3.2 GB of memory plus ~90 MB per GB)' % (streamed / 1e9, STREAMED_MAX / 1e9))
-    times = {k: dict(atime_ns=os.stat(truth(ORIG[k])).st_atime_ns, mtime_ns=os.stat(truth(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}
+    times = {k: dict(atime_ns=os.stat(juicefs_path(ORIG[k])).st_atime_ns, mtime_ns=os.stat(juicefs_path(ORIG[k])).st_mtime_ns) for k in ('tpc', 'csv')}   # metadata
     # 0a. stretches the capture's own writer lost (teeloss.py: the live sidecar does not show them): each is bridged whole
     # from a clip, at the nearest clean scene cut either side (bridge.py); the clips used for it are not placed again
     bridges = []; used = []
     if clips and len(parts) == 1:
         import teeloss, bridge as B
-        tl = stage(W, 'teeloss', inputs, lambda: dict(episodes=teeloss.episodes(teeloss.census(truth(T), log)['losses'])))
+        tl = stage(W, 'teeloss', inputs, lambda: dict(episodes=teeloss.episodes(teeloss.census(T, log)['losses'])))
         # a stretch the live sidecar shows lost was lost in acquisition, not by the writer: the gap fill handles it as before
         lp_, lh_, lr_ = load_csv(parts[0][1]); live_bad = live_lost(lr_, {h: i for i, h in enumerate(lh_)})
         eps = []
@@ -545,7 +588,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             done = None; why = []
             for D in list(clips):                        # every clip, those that bridged an earlier stretch too
                 def pb(D=D, ep=ep, k=k):
-                    try: return B.measure(truth(T), B.plan(truth(T), truth(D), ep, log, window=windows.get(D)), name='bridge-%d' % k)
+                    try: return B.measure(T, B.plan(T, D, ep, log, window=windows.get(D)), name='bridge-%d' % k)
                     except ValueError as e: return dict(error=str(e))
                 r = stage(W, 'bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, episode=ep, donor=D), pb)
                 if 'error' in r: why.append('%s: %s' % (os.path.basename(D), r['error'])); continue
@@ -578,7 +621,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     if auto_gaps and len(parts) == 1 and os.environ.get('PATCH_GLITCH_BRIDGE', '1') != '0':
         import bridge as B
         from stretches import event_groups as eg0
-        _, nrows0 = eg0(parts[0][1]); size0 = os.path.getsize(truth(T)); kept = []
+        _, nrows0 = eg0(parts[0][1]); size0 = os.path.getsize(T); kept = []
         for k, gp in enumerate(auto_gaps):
             gb = glitch_bridge_of(gp)
             if gb is None: kept.append(gp); continue
@@ -587,7 +630,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if isinstance(win, str): log('the glitch stretch at rows %d-%d: not bridged whole (%s): filled cluster by cluster' % (gp['rows'][0], gp['rows'][-1], win)); kept.append(gp); continue
             lo, hi = win
             def pg(D=D, first=first, last=last, offA=offA, offB=offB, lo=lo, hi=hi, k=k):
-                try: return B.measure(truth(T), B.plan_glitch(truth(T), truth(D), first, last, offA, offB, lo, hi, log, window=windows.get(D)), name='bridge-glitch-%d' % k)
+                try: return B.measure(T, B.plan_glitch(T, D, first, last, offA, offB, lo, hi, log, window=windows.get(D)), name='bridge-glitch-%d' % k)
                 except ValueError as e: return dict(error=str(e))
             r = stage(W, 'glitch-bridge-%d-%s' % (k, hashlib.sha1(D.encode()).hexdigest()[:8]), dict(inputs, gap={x: gp[x] for x in ('rows', 'donor', 'off')}, ends=[first, last, offA, offB], window=[lo, hi]), pg)
             where = 'the glitch stretch at %d:%02d (units %d-%d, counters %d ahead)' % (gp['rows'][0] / 29.97 // 60, gp['rows'][0] / 29.97 % 60, first, last, (offA - offB) % 65536)
@@ -600,7 +643,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             if a['file_to'] > b['file_from']: fail('%s (units %d-%d) and %s (units %d-%d) overlap: bridging them as one is not built yet' % (
                 a['name'], a['units'][0], a['units'][1], b['name'], b['units'][0], b['units'][1]))
     # 0b. the joins and an append: measured, then the parts read as one capture (VT) with one live sidecar (LIVE)
-    VT, LIVE, part_rows, part_at = truth(T), truth(ORIG['csv']), [0], [0]
+    VT, LIVE, part_rows, part_at = T, ORIG['csv'], [0], [0]
     jparts = list(parts)                                 # the parts read, an appended clip's tail last
     if append_d:
         def ma():
@@ -614,6 +657,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     if append_d:
         acsv = append_d[:-len(KINDS['tpc'])] + KINDS['csv'] if append_d.endswith(KINDS['tpc']) else None
         if not acsv or not os.path.exists(acsv): fail('the appended clip has no live sidecar beside it (%s)' % acsv)
+        share_view([acsv])
         jparts.append((append_d, acsv, app['donor_start']))
     if joins_d or append_d:
         meas = []
@@ -698,7 +742,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
             log('the events at sidecar rows %d-%d share clip %s and its offset: planned together' % (groups[g][0], groups[g][-1], os.path.basename(D)))
         merged[g] = (g, D, pairing, off, rng, app_at, off_after, span, cmap)
     events = sorted(merged.values(), key=lambda e: e[0])          # in capture order: a run-ahead glitch renumbers what follows it
-    FL = stage(W, 'first-line', inputs, lambda: first_line(truth(T), W))['first_line']
+    FL = stage(W, 'first-line', inputs, lambda: first_line(T, W))['first_line']
     # 2. plan: each event from its own donor
     work = os.path.join(W, 'plan')
     def plan():
@@ -777,11 +821,11 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
         if A['bytes'] != expect or os.path.getsize(PATCH['tpc']) != expect: fail('patched capture: %d bytes written, %d on disk, %d expected' % (A['bytes'], os.path.getsize(PATCH['tpc']), expect))
         if on_share(PATCH['tpc']) and not (A.get('write_proof') or {}).get('complete'): fail('the patched capture has no write proof')
         if rendered and rendered != A['sha256']: fail('the stream the render read (SHA-256 %s) is not the assembled capture (%s)' % (rendered, A['sha256']))
-        return dict(bytes=A['bytes'], sha256=A['sha256'], mtime=int(os.stat(truth(PATCH['tpc'])).st_mtime), ino=os.stat(truth(PATCH['tpc'])).st_ino,
+        return dict(bytes=A['bytes'], sha256=A['sha256'], mtime=int(os.stat(juicefs_path(PATCH['tpc'])).st_mtime), ino=os.stat(juicefs_path(PATCH['tpc'])).st_ino,   # metadata
                     write_proof=A.get('write_proof'), rendered=bool(rendered))
     A = stage(W, 'assemble', dict(inputs, plan=pl), assemble)
     if made.get('render_error'): fail('%s (the patched capture is assembled and proven stored; the next run renders it from a checked read)' % made['render_error'])
-    if os.path.getsize(truth(PATCH['tpc'])) != expect or int(os.stat(truth(PATCH['tpc'])).st_mtime) != A['mtime']: fail('the patched capture changed after it was assembled')
+    if os.path.getsize(juicefs_path(PATCH['tpc'])) != expect or int(os.stat(juicefs_path(PATCH['tpc'])).st_mtime) != A['mtime']: fail('the patched capture changed after it was assembled')
     log('assembled %s: %d bytes, SHA-256 %s%s' % (PATCH['tpc'], A['bytes'], A['sha256'], ', proven stored as written (%d objects, %d downloaded)' % (
         A['write_proof']['objects'], A['write_proof']['downloaded_blocks']) if A.get('write_proof') else ''))
     # 4
@@ -800,7 +844,7 @@ def run(T, ats, joins_d, W, clips=None, placed=()):
     # bridge measurement, which every run makes or reuses, not from the plan record, which an earlier run may have stored
     cb = {b['name']: [(d - b['offset']) % 65536 for d in b.get('clip_broken', [])] for b in bridges}
     sc_sha, spans = sidecar_gate(LIVE, NEWLOG, [(u[0], u[1], hint(e), cb.get(e['name'], [])) for e in pl['entries'] for u in e['units']], OUTCSV, FL, jumps)
-    hd, tl = digests(truth(PATCH['tpc']), expect)
+    hd, tl = digests(juicefs_path(PATCH['tpc']), expect)          # verification: the stored file's ends, recorded for swap's check
     replaced = [p for pc in parts[1:] for p in pc]               # the later parts and their sidecars: removed by swap
     stats = {p: st(p) for pc in parts for p in pc}                 # as this run read them: swap deletes nothing that changed since
     res = dict(state='verified', name=name, dir=d, original=ORIG, replaced=replaced, patched=PATCH, sidecar=OUTCSV, sidecar_sha256=sc_sha, bytes=expect, sha256=A['sha256'], first_line=FL,
@@ -828,24 +872,27 @@ def swap(W):
     R = json.load(open(os.path.join(W, 'result.json')))
     if R['state'] != 'verified': fail('result.json says %s, not verified' % R['state'])
     O, P = R['original'], R['patched']
-    st = os.stat(truth(P['tpc']))
+    # a result.json written before 2026-11-26 names a split capture's later parts by their JuiceFS paths: each is checked
+    # busy, deleted and its ._ entry removed through the share
+    R['replaced'] = [SHARE + x[len(FUSE):] if x.startswith(FUSE + '/') else x for x in R.get('replaced', [])]
+    st = os.stat(juicefs_path(P['tpc']))                          # metadata
     if st.st_size != R['bytes'] or int(st.st_mtime) != R['patched_mtime'] or st.st_ino != R['patched_ino']: fail('the patched capture changed since the read-back')
-    if digests(truth(P['tpc']), R['bytes']) != (R['head'], R['tail']): fail('the patched capture\'s first or last 4 MiB changed since the read-back')
+    if digests(juicefs_path(P['tpc']), R['bytes']) != (R['head'], R['tail']): fail('the patched capture\'s first or last 4 MiB changed since the read-back')
     if hashlib.sha256(open(R['sidecar'], 'rb').read()).hexdigest() != R['sidecar_sha256']: fail('the verified sidecar changed')
     if not os.path.exists(P['mov']): fail('the patched render is missing: %s' % P['mov'])
     b = busy([O['tpc'], O['csv'], O['mov'], P['tpc'], P['mov']] + R.get('replaced', []))
-    for x, (size, mtime) in R.get('input_stats', {}).items():   # a part still growing, or rewritten, is not the one patched
-        if not os.path.exists(truth(x)) or os.path.getsize(truth(x)) != size or int(os.stat(truth(x)).st_mtime) != mtime:
-            fail('%s is not as the run read it (%s bytes, then %d): nothing deleted' % (x, os.path.getsize(truth(x)) if os.path.exists(truth(x)) else 'gone', size))
+    for x, (size, mtime) in R.get('input_stats', {}).items():   # a part still growing, or rewritten, is not the one patched (metadata)
+        if not os.path.exists(juicefs_path(x)) or os.path.getsize(juicefs_path(x)) != size or int(os.stat(juicefs_path(x)).st_mtime) != mtime:
+            fail('%s is not as the run read it (%s bytes, then %d): nothing deleted' % (x, os.path.getsize(juicefs_path(x)) if os.path.exists(juicefs_path(x)) else 'gone', size))
     if b: fail('in use: %s' % '; '.join(b))
     sc = open(R['sidecar'], 'rb').read(); step = 'start'
     try:
         step = 'delete the originals'
         for k in ('tpc', 'csv', 'mov'):
             if os.path.exists(O[k]): os.remove(O[k]); log('deleted %s' % O[k])
-        for x in R.get('replaced', []):                 # the later parts of a split capture, now inside the patched one
+        for x in R['replaced']:                          # the later parts of a split capture, now inside the patched one
             if os.path.exists(x): os.remove(x); log('deleted %s' % x)
-        if any(os.path.exists(truth(O[k])) for k in O) or any(os.path.exists(truth(x)) for x in R.get('replaced', [])): fail('an original name still exists after the delete')
+        if any(os.path.exists(juicefs_path(O[k])) for k in O) or any(os.path.exists(juicefs_path(x)) for x in R.get('replaced', [])): fail('an original name still exists after the delete')   # metadata
         step = 'rename the patched capture'; os.rename(P['tpc'], O['tpc']); log('renamed the patched capture to %s' % O['tpc'])
         step = 'rename the patched render'; os.rename(P['mov'], O['mov']); log('renamed the patched render to %s' % O['mov'])
         step = 'write the new sidecar'
@@ -860,18 +907,20 @@ def swap(W):
         if on_share(O['tpc']):
             for i in range(20):                    # JuiceMount's side must show the same files before their dates are set there
                 try:
-                    if os.stat(truth(O['tpc'])).st_ino == R['patched_ino'] and os.path.getsize(truth(O['csv'])) == len(sc): break
+                    if os.stat(juicefs_path(O['tpc'])).st_ino == R['patched_ino'] and os.path.getsize(juicefs_path(O['csv'])) == len(sc): break   # metadata
                 except OSError: pass
                 time.sleep(3)
             else: fail('JuiceMount\'s directory does not show the swapped files')
-        if os.path.getsize(truth(O['tpc'])) != R['bytes']: fail('the renamed capture has size %d' % os.path.getsize(truth(O['tpc'])))
-        if digests(truth(O['tpc']), R['bytes']) != (R['head'], R['tail']): fail('the renamed capture does not read back as verified')
-        if hashlib.sha256(open(truth(O['csv']), 'rb').read()).hexdigest() != R['sidecar_sha256']: fail('the new sidecar does not read back as written')
+        if os.path.getsize(juicefs_path(O['tpc'])) != R['bytes']: fail('the renamed capture has size %d' % os.path.getsize(juicefs_path(O['tpc'])))   # metadata
+        # verification: the renamed capture's ends and the sidecar just written, read back on JuiceFS itself
+        if digests(juicefs_path(O['tpc']), R['bytes']) != (R['head'], R['tail']): fail('the renamed capture does not read back as verified')
+        if sha256_file(juicefs_path(O['csv'])) != R['sidecar_sha256']: fail('the new sidecar does not read back as written')
         log('read back: the capture\'s first and last 4 MiB and the whole sidecar match')
         step = 'set dates'
         for k in ('tpc', 'csv'):
-            t = R['original_times'][k]; os.utime(truth(O[k]), ns=(t['atime_ns'], t['mtime_ns']))
-            if os.stat(truth(O[k])).st_mtime_ns != t['mtime_ns']: fail('the date of %s did not take' % O[k])
+            # metadata: set on JuiceFS, because JuiceMount (0.4.0) drops a date set through the share
+            t = R['original_times'][k]; os.utime(juicefs_path(O[k]), ns=(t['atime_ns'], t['mtime_ns']))
+            if os.stat(juicefs_path(O[k])).st_mtime_ns != t['mtime_ns']: fail('the date of %s did not take' % O[k])
         log('dates of the capture and sidecar set to the originals\'')
         # The share keeps listing the deleted originals' sizes: smaller for up to an hour (the Mac's attribute cache), and
         # larger for good when a replacement is smaller (JuiceMount's size mark; 2026-11-23, the fill patch of this capture
@@ -880,13 +929,13 @@ def swap(W):
         step = 'make the share list the new sizes'
         if on_share(O['tpc']):
             sys.path.insert(0, os.path.join(REPO, 'scripts', 'juicefs')); import share_refresh
-            want = {O['tpc']: R['bytes'], O['mov']: os.path.getsize(truth(O['mov'])), O['csv']: len(sc)}
+            want = {O['tpc']: R['bytes'], O['mov']: os.path.getsize(juicefs_path(O['mov'])), O['csv']: len(sc)}   # metadata
             bad = share_refresh.wait_sizes(want)
             for p, n in bad.items():
                 if n > want[p]: os.truncate(p, want[p]); log('the share listed %s at %d bytes, %d past its end: truncated to its length through the share' % (p, n, n - want[p]))
             if bad: bad = share_refresh.wait_sizes(want)
             for p, n in want.items():
-                if os.path.getsize(truth(p)) != n: fail('%s is %d bytes on JuiceFS after the share refresh, not %d' % (p, os.path.getsize(truth(p)), n))
+                if os.path.getsize(juicefs_path(p)) != n: fail('%s is %d bytes on JuiceFS after the share refresh, not %d' % (p, os.path.getsize(juicefs_path(p)), n))
             if bad: R['share_listing'] = bad; log('WARNING: the share still lists %s; JuiceFS holds the right sizes' % ', '.join('%s at %d bytes (not %d)' % (p, n, want[p]) for p, n in bad.items()))
             else: log('the share lists the capture, render and sidecar at their new sizes')
             # and the dates just set, and no ._ entry of the patched names: a listing right in size still showed the render's
