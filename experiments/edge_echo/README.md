@@ -980,6 +980,30 @@ process. and if its linear, then I really feel like you are hunting around at th
   0.92 and 1.03, so any removal whose amount depends on the strength changes visibly there while the capture's own
   ghost only grows steadily.
 
+### The sixth clip's removal, with nothing done around the moment the two paths trade places (2026-11-26)
+
+The owner, shown the sixth clip again: "mostly fine except that yes during the strongest moments you introduce those
+weird artifacts. the shifting around the picture frame, and those horizontal lines ... in the 'unforgivable' lettering
+as its zooming in"; the shifting "looks like the primary signal trading with the ghost"; get rid of those two "then I
+think we are good".
+
+- **One event.** The bar puts the reflection at or above the direct signal in exactly one run of this stretch, frames
+  556-592 (18.6-19.8 s). The capture's own line-to-line jitter at the left border rises there (0.25-0.5 samples
+  before, 0.56 at 19.4 s, 1.3 at 19.7 s). The picture-frame scene (17.9-18.6 s) is just before it, the title zoom
+  (18.9-20.7 s) during and after.
+- **In the sixth clip's frames there.** The removal moves the picture's right border by -0.5 samples before the cut
+  into the picture-frame scene and +0.2 to +0.5 after it, changing by up to 0.25 from one frame to the next inside the
+  scene, while what is left of the border's ghost goes 0.51 / 0.59 / 0.61 / 0.56. In the title zoom the captured rows
+  sit several samples apart sideways and carry dashed lines; the five-line cleaning and the echo prediction act on
+  that row by row.
+- **The rule** (`gate.py trade_weight`, `remove ... PAR.npy trade`): no removal from 30 frames before to 30 frames
+  after any frame where the bar's strength is 1.0 or more; ramped back to the usual removal over the next 24 frames.
+  Everything else exactly the sixth clip's setting (picture-read taps, mean of 5 frames, leftover hole 0.25 MHz, gain
+  3, gated; no thin-feature change, no median).
+- **Verified on the rendered frames:** frames 526-622 (17.55-20.75 s) identical to the capture; frames outside the
+  ramps identical to the sixth clip's removal (checked at 3.3, 10.0, 14.3, 16.0, 23.4, 28.4 s); ramps 502-525 and
+  623-646. Judged by the owner: pending.
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the

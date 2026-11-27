@@ -19,7 +19,8 @@
 #   python3 gate.py more LUMA.npy TAPS.npz                  -> 62-minute stretch only: gain and hole width against the ghost left on black beside the picture's
 #                                                              right border, the wall after the left border, and the still caption card
 #   python3 gate.py remove LUMA.npy AMOUNTS.npy TAPS.npz OUT_removed.npy [EPS [KAPPA [PAR.npy [FADE0]]]]   -> a whole stretch, gated (also OUT_read.npy
-#                                                              for clip.py); with PAR.npy faded out as the reflection nears the direct signal's strength
+#                                                              for clip.py); with PAR.npy faded out as the reflection nears the direct signal's strength;
+#                                                              FADE0 = trade: none around the moments the reflection is at least as strong (trade_weight)
 #   thin : the five-line cleaning replaces a sample that disagrees with its five-line median by the other rows' mean, so features
 #          one or two field rows tall (lettering) drop out of the estimate the echo is predicted from and keep their echo.  With
 #          THIN=1 such a sample is averaged with the rows that agree with IT instead (clean_keep).  Cost: a dropout streak, which
@@ -213,11 +214,19 @@ def cmd_score(name, lumf, trackf, tapf, amf):
         for lab, Pm in allm.items(): mdn = np.median(Pm[s], 0); print('   %-22s %s | %.3f' % (lab, np.round(mdn[tt], 2), rip(mdn)))
     print(' line-to-line change mid-frame, codes, bands 0-0.2 / 0.2-0.6 / 0.6-1.5 / 1.5-4 MHz (median of %d frames)' % len(bd['captured']))
     for lab in ['captured'] + list(rem): print('   %-22s %s' % (lab, np.median(bd[lab], 0)))
+NEAR, FAR = 30, 54                                  # frames: nothing within NEAR of the event, the usual removal from FAR on
+def trade_weight(S):                                # where the reflection is at least as strong as the direct signal (S >= 1) the two paths
+    # trade places: the picture itself shifts and its line timing breaks up.  No removal from one second before such a moment to one
+    # second after it; ramped back over the next 0.8 s.  Elsewhere 1.
+    hot = np.nonzero(S >= 1.0)[0]; n = np.arange(len(S))
+    if not len(hot): return np.ones(len(S))
+    dist = np.abs(n[:, None] - hot[None]).min(1); return np.clip((dist - NEAR) / float(FAR - NEAR), 0, 1)
 def cmd_remove(lumf, amf, tapf, outf, eps='0.01', kappa=str(KAPPA), parf='', fade0='0.9'):
     # parf (the bar's three numbers per frame, reflect_score.py): the removal is faded out as the reflection nears the direct signal's
     # strength, full up to fade0, none from 1.0 on.  Where the two are equal the cancelled band is gone from the recording.
     A = np.load(amf); t = np.load(tapf); Q, direct = np.array([steady(t['Q'], f, STEADY) for f in range(len(t['Q']))]), t['direct']; lum = np.load(lumf, mmap_mode='r'); lo = hi = 0; out = np.lib.format.open_memmap(outf, mode='w+', dtype=np.uint8, shape=lum.shape)
-    wf = np.clip((1 - np.hypot(*np.load(parf)[:, :2].T)) / (1 - float(fade0)), 0, 1) if parf else np.ones(lum.shape[0])
+    wf = (trade_weight(np.hypot(*np.load(parf)[:, :2].T)) if fade0 == 'trade' else np.clip((1 - np.hypot(*np.load(parf)[:, :2].T)) / (1 - float(fade0)), 0, 1)) if parf else np.ones(lum.shape[0])
+    if parf: print('removal: none in %d frames, part in %d, as usual in %d' % ((wf == 0).sum(), ((wf > 0) & (wf < 1)).sum(), (wf == 1).sum()))
     for f in range(lum.shape[0]):
         y = lum[f].astype(float) - M.BL; full = core(y, spec(Q[f]), float(eps)); m, _ = gate(full - y, float(kappa)); x = y + wf[f] * m * (full - y) + M.BL
         lo += int((x < 0).sum()); hi += int((x > 255).sum()); out[f] = np.clip(np.rint(x), 0, 255); H.guard()
