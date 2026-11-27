@@ -480,7 +480,11 @@ def sidecar_gate(LIVE, NEWLOG, filled16, OUTCSV, first_line=None, jumps=()):
     ev_live = [e for e in events(live) if e[0] not in GAP and not edge(e[0])]
     ev_new = [e for e in events(new) if e[0] not in GAP and not edge(e[0])]
     # a bridge's clip units the plan found broken bring their own device rows (a wrong-length unit), never a host loss's
-    clipdev = lambda e: e[1].lstrip('-').isdigit() and int(e[1]) in allow and e[2] not in ('Hole', 'RingFullTail')
+    # an Unframed row is named after the next header the parser reached (or 0 for none), not the unit its bytes came from: a
+    # broken clip unit right after the last whole one (a Shuttle stall unit, two or three units long) brings its own, as its
+    # session logged them (2026-11-27, two-pass merge: 12 such rows, each also in its source's sidecar after the same unit)
+    clipdev = lambda e: e[2] not in ('Hole', 'RingFullTail') and (e[1].lstrip('-').isdigit() and int(e[1]) in allow or
+                                                                  e[2] == 'Unframed' and e[0] is not None and e[0] + 1 in allow)
     in_new = collections.Counter(e for e in events(new) if e[0] in GAP and not edge(e[0]) and not clipdev(e))
     in_live = collections.Counter(e for e in events(live) if e[0] in GAP and not edge(e[0]))
     nclip = sum(1 for e in events(new) if e[0] in GAP and not edge(e[0]) and clipdev(e))
