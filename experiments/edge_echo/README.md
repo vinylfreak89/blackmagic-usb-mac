@@ -1047,7 +1047,8 @@ think we are good".
   follows the letter stems; no row-wise lines in the difference.
 - **Regression check on that render:** as above line for line (393 kHz 1.03 / 1.06 / 1.07; added on flat 0.330 ->
   0.274; wall 1.8 | 1.9; still card 0.91 and 0.77; title rows 1.04 / 1.36 / 1.17; rising edges unchanged; taps 0.0026
-  median, 0.013 largest); identical to the capture in frames 525-592. Judged by the owner: pending.
+  median, 0.013 largest); identical to the capture in frames 525-592. Judged by the owner: "Yes, we're good."
+  (This is the luma setting for this stretch; nothing is built into the pipeline. Next asked: chroma.)
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
