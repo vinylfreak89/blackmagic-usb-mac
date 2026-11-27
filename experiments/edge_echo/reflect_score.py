@@ -7,14 +7,9 @@ from scipy.optimize import least_squares
 np.set_printoptions(linewidth=250, precision=3, suppress=True)
 name, trackf, vbif = sys.argv[1:4]; N = int(sys.argv[4]) if len(sys.argv) > 4 else 2; eps = float(sys.argv[5]) if len(sys.argv) > 5 else 0.01; fc = float(sys.argv[6]) if len(sys.argv) > 6 else 9.0; import os
 v = np.load(P_.FITF); w, off, Gw, tauw = v[0], v[1], v[2] + 1j * v[3], v[4]; ref = P_.ref; TB = B.TB; T = B.T; FITM = B.FITM
-L, g = B.lines(vbif); n = L.shape[0]; par = np.zeros((n, 3)); err = np.zeros(n); x0 = np.r_[-0.5, -0.5, 6.5]
+L, g = B.lines(vbif); n = L.shape[0]; err = np.zeros(n)
 have = os.path.exists('reflect_par_%s%s.npy' % (name, '' if P_.SMOOTH else '_straight'))
-for k in range(0 if have else n):
-    ys = []; ms = []
-    for j in range(2):
-        wv = L[max(0, k - N):k + N + 1, j]; wv = wv[~np.isnan(g[max(0, k - N):k + N + 1, j])]; y = np.nanmean(wv, 0) if len(wv) else np.full(len(TB), np.nan); ys.append(y); ms.append(FITM & ~np.isnan(y) & (np.nan_to_num(y) > B.FLOOR))
-    f_ = lambda p: np.concatenate([(P_.predict(ref[j], p[0] + 1j * p[1], p[2], Gw, tauw, w, off) - ys[j])[ms[j]] for j in range(2)])
-    r = least_squares(f_, x0, bounds=([-2.5, -2.5, 1.0], [2.5, 2.5, 30.0]), x_scale=[0.3, 0.3, 2.0], max_nfev=25, diff_step=1e-4); par[k] = r.x; err[k] = np.sqrt((r.fun ** 2).mean()); x0 = r.x
+if not have: par, err = P_.fit_frames(L, g, N)
 if have: par = np.load('reflect_par_%s%s.npy' % (name, '' if P_.SMOOTH else '_straight'))
 gm = np.nanmean(g, 1); print('%s: per-frame fit leaves %.4f of the bar (median); strength %.2f..%.2f, phase %.0f..%.0f deg, delay %.1f..%.1f (5-95%%)' % (name, np.median(err), *np.percentile(np.hypot(par[:, 0], par[:, 1]), [5, 95]), *np.percentile(np.degrees(np.arctan2(par[:, 1], par[:, 0])), [5, 95]), *np.percentile(par[:, 2], [5, 95])))
 d = np.diff(par, axis=0); print('   frame-to-frame change (rms): strength-phase plane %.4f, delay %.3f samples' % (np.sqrt((d[:, :2] ** 2).mean()), np.sqrt((d[:, 2] ** 2).mean())))

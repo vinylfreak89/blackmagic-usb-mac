@@ -42,12 +42,13 @@ def clean_keep(x, half):                            # aware.clean, but a sample 
         out[a:b] = np.where(off, (st * w2).sum(0) / np.maximum(w2.sum(0), 1), base)
     return out
 if THIN: clean = clean_keep
+HALF = 220                                          # rows of one field in the arrays handed in (the experiment's crops: 220; a whole 480-line frame: 240)
 def spec(q): return np.fft.rfft(np.r_[0, q[1:]], NF)
 def remove_spec(Y, Qs, eps=0.01, iters=3):          # harness.remove_img (no lag, floor rule, five-line cleaning) for an echo given by its spectrum
     Hq = 1 + Qs; n = Y.shape[1]; fl = Y <= 0.5
     X = np.fft.irfft(np.fft.rfft(Y, NF, axis=1) * np.conj(Hq) / (np.abs(Hq) ** 2 + eps), NF, axis=1)[:, :n]
     for it in range(iters):
-        Xc = clean(X, 220); E = np.fft.irfft(np.fft.rfft(Xc, NF, axis=1) * Qs, NF, axis=1)[:, :n]; X = np.where(fl, np.minimum(Xc + E, Y), Y) - E
+        Xc = clean(X, HALF); E = np.fft.irfft(np.fft.rfft(Xc, NF, axis=1) * Qs, NF, axis=1)[:, :n]; X = np.where(fl, np.minimum(Xc + E, Y), Y) - E
     return X
 def division(Qs, gmax, sigma):                      # 1/H times a net response whose hole is no narrower than sigma MHz
     Hq = 1 + Qs; A = np.abs(Hq); b = np.maximum(0, 1 - gmax * A); b[FR > 4.2] = 0; idx = np.nonzero(b > 0)[0]; B = np.zeros_like(A)
@@ -56,13 +57,13 @@ def division(Qs, gmax, sigma):                      # 1/H times a net response w
     return (1 - B) / np.where(A > 1e-6, Hq, 1e-6)
 def remove_hole(Y, Qs, gmax=GMAX, sigma=HOLE):       # remove_spec with that division and one pass
     n = Y.shape[1]; fl = Y <= 0.5; X = np.fft.irfft(np.fft.rfft(Y, NF, axis=1) * division(Qs, gmax, sigma), NF, axis=1)[:, :n]
-    Xc = clean(X, 220); E = np.fft.irfft(np.fft.rfft(Xc, NF, axis=1) * Qs, NF, axis=1)[:, :n]; return np.where(fl, np.minimum(Xc + E, Y), Y) - E
+    Xc = clean(X, HALF); E = np.fft.irfft(np.fft.rfft(Xc, NF, axis=1) * Qs, NF, axis=1)[:, :n]; return np.where(fl, np.minimum(Xc + E, Y), Y) - E
 def core(y, Qs, eps=0.01): return remove_hole(y, Qs) if HOLE else remove_spec(y, Qs, eps=eps)      # the removal the gate is put on
 def box(a, w, axis):                                # running mean over w (odd) samples, edges repeated
     c = np.cumsum(np.pad(a, [(w // 2 + 1, w // 2) if i == axis else (0, 0) for i in range(a.ndim)], mode='edge'), axis=axis)
     return (np.take(c, range(w, c.shape[axis]), axis) - np.take(c, range(0, c.shape[axis] - w), axis)) / w
-def size(C, half=220):                              # local rms of a correction, per field
-    out = np.empty_like(C)
+def size(C, half=None):                             # local rms of a correction, per field
+    half = HALF if half is None else half; out = np.empty_like(C)
     for a, b in ((0, half), (half, C.shape[0])): out[a:b] = np.sqrt(np.maximum(box(box(box(C[a:b] ** 2, 17, 1), 17, 1), 3, 0), 0))
     return out
 MEDIAN = os.environ.get('MEDIAN', '0') == '1'; GATESMOOTH = float(os.environ.get('GATESMOOTH', 0))

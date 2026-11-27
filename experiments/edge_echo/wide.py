@@ -29,8 +29,9 @@ def cmd_build(K, survey, *vbis):
         Vt[i] *= np.sign(Vt[i][TR == 6][0]) if i == 0 else np.sign(Vt[i][np.argmax(np.abs(Vt[i]))])
     np.savez('wide.npz', own=own, V=Vt[:K]); print('%d bar rises; share of the departure from the no-echo edge carried by each shape: %s' % (len(R), (s ** 2 / (s ** 2).sum())[:K + 2]))
     for i in range(K): print('shape %d, t = -4..20: %s' % (i + 1, Vt[i][:25]))
-def frame_amounts(vbif):
-    z = np.load('wide.npz'); own, V = z['own'], z['V']; r, tops = rises(np.load(vbif, mmap_mode='r'), (4, 12)); n = len(r); out = np.full((n, 3 + len(V)), np.nan)
+def frame_amounts(vbif): return amounts_of(*rises(np.load(vbif, mmap_mode='r'), (4, 12)))
+def amounts_of(r, tops):                # per frame: reading, bar top, 1 if borrowed from the nearest frame with a bar, the K amounts
+    z = np.load('wide.npz'); own, V = z['own'], z['V']; n = len(r); out = np.full((n, 3 + len(V)), np.nan)
     for k in range(n):
         ok = ~np.isnan(r[k, :, 0])
         if ok.any(): rr = r[k, ok].mean(0); out[k] = np.r_[F.reading(rr, TR), tops[k, ok].mean(), 0, V @ (rr - own)]

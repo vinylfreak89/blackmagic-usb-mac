@@ -24,6 +24,17 @@ def predict(ref, Gs, taus, Gw, tauw, w, off):
     i = np.nonzero((TB >= -29) & (TB <= 71))[0]; seg = y[i]; k = np.argmax(seg >= 0.5); c = TB[i[k]] - 1 + (0.5 - seg[k - 1]) / (seg[k] - seg[k - 1])
     return B.sample(y, np.arange(len(TB)) + c)
 ref = np.load('barref.npz')['ref']
+def fit_frames(L, g, N=2, x0=None):       # three numbers per frame (strength-phase plane: two; delay) from its two test lines (barread.lines), the
+    # lines averaged over N frames either side; each frame's search starts from the frame before.  A frame with no bar in reach keeps nan.
+    v = np.load(FITF); w, off, Gw, tauw = v[0], v[1], v[2] + 1j * v[3], v[4]; n = L.shape[0]; par = np.full((n, 3), np.nan); err = np.full(n, np.nan); x0 = np.r_[-0.5, -0.5, 6.5] if x0 is None else x0
+    for k in range(n):
+        ys = []; ms = []
+        for j in range(2):
+            wv = L[max(0, k - N):k + N + 1, j]; wv = wv[~np.isnan(g[max(0, k - N):k + N + 1, j])]; y = np.nanmean(wv, 0) if len(wv) else np.full(len(TB), np.nan); ys.append(y); ms.append(FITM & ~np.isnan(y) & (np.nan_to_num(y) > B.FLOOR))
+        if ms[0].sum() + ms[1].sum() < 50: continue
+        f_ = lambda p: np.concatenate([(predict(ref[j], p[0] + 1j * p[1], p[2], Gw, tauw, w, off) - ys[j])[ms[j]] for j in range(2)])
+        r = least_squares(f_, x0, bounds=([-2.5, -2.5, 1.0], [2.5, 2.5, 30.0]), x_scale=[0.3, 0.3, 2.0], max_nfev=25, diff_step=1e-4); par[k] = r.x; err[k] = np.sqrt((r.fun ** 2).mean()); x0 = r.x
+    return par, err
 if __name__ == '__main__':
     groups = []
     for fn, bins in (('lo_vbi.npy', ((0.2, 0.3), (0.3, 0.45))), ('vbi_luma.npy', ((0.3, 0.45), (0.45, 0.55), (0.55, 0.65), (0.65, 0.75), (0.75, 1.0))), ('p2_vbi.npy', ((0.45, 0.55), (0.55, 0.65), (0.65, 0.75), (0.75, 1.0)))):
