@@ -101,7 +101,9 @@ def finish(plans, BU, ORIG, PATCH, NEWLOG, OUTCSV, FL, A, rendered, expect, name
         ua, ub = p['a'], p['b']; c_a, c_b = int(BU['counter'][ua]), int(BU['counter'][ub]); m = p['m']
         R = CP_s16(c_b - c_a - (m + 1)); p0 = c_a - before
         allowed = [(p0 + s) % 65536 for s, (k, x, r) in enumerate(p['slots'], 1) if k in ('DP', 'BP', 'X')]
-        filled.append(((p0 + 1) % 65536, (p0 + m) % 65536, int(ext[ua]) - before + 1, allowed))
+        # a gap with no slots (m == 0) fills nothing, only renumbers: as a span, first = last + 1 reads as 65,536 units of a
+        # wrapped 16-bit counter (2026-11-27: regions 1163 and 1277 failed the gate on 90,522 units no slot was ever put in)
+        if m: filled.append(((p0 + 1) % 65536, (p0 + m) % 65536, int(ext[ua]) - before + 1, allowed))
         if R: jumps.append((((c_a + m) if R > 0 else (c_b - 1)) % 65536, c_b % 65536, R, int(ext[ub])))
         before += R
     CP.log('gate: %d patched spans, %d run-ahead jumps lowering the capture by %d in all' % (len(filled), len(jumps), before))
