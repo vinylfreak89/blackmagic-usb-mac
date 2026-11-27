@@ -968,7 +968,17 @@ process. and if its linear, then I really feel like you are hunting around at th
   (captured 1.6-1.9; 4.5 in the fifth clip). Still card 1.03 against 0.93 (0.97 against 0.84 at 11.5-14.5 s, 0.83
   against 0.75 at 17.9-18.6 s). Rising edges: the dip at +6 / +8 from 0.35 / 0.59 to 0.82 / 0.74 under 0.8, from
   0.23 / 0.47 to 0.84 / 0.73 at 0.8-0.9, to 0.66 / 0.64 at 0.9-0.95 and 0.42 / 0.53 above; ripple 0.037-0.043.
-  Judged by the owner: pending.
+  Judged by the owner: "nope. this has the same problems as the version you said I liked. those intermittent vertical
+  bars in flat areas, the picture frame issue, and just general ringing".
+- **Where that leaves it.** Four ways of knowing the echo (picture edges, three numbers from the bar, the line-19
+  sweep, the bar leading with the picture correcting) and every full-strength removal shows bars or ringing to the
+  owner; the one version without them (the wide leftover hole, the sixth clip: "Bands gone", "mostly fine, definitely
+  more watchable") leaves much of the ghost where the echo is strong. The measures here passed renders the owner then
+  rejected: pooled medians over edges and frames average out a ripple whose phase changes from frame to frame, which
+  is exactly what the bars are. Only the still card's frame-to-frame change sees it, and it rises with the
+  reflection's strength for every kernel. The picture-frame scene (17.9-18.6 s) has the strength swinging between
+  0.92 and 1.03, so any removal whose amount depends on the strength changes visibly there while the capture's own
+  ghost only grows steadily.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 
