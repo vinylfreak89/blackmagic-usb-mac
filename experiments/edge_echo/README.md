@@ -1074,6 +1074,68 @@ strength from the bar, 0.6 to 1.1.
   (in the capture at every strength, not from the echo).
 - So: nothing is proposed for colour on this stretch.
 
+### The accepted removal over a whole capture, as a one-off render (`full_*.py`, 2026-11-27)
+
+The owner asked for one full encode of the capture with the accepted luma removal, made by the dashboard's renderer
+with the removal as its picture filter, outside the tool, replacing the capture's existing render. Nothing was built
+into the pipeline. It takes two reads of the capture:
+
+1. **Measure** (`full_measure.py`): the capture is read once as a stream and, per whole picture unit, the test-signal
+   rows, the picture's left-edge reading (`direct.gather`'s, same lines) and the CRC of one picture line are kept.
+   The frameserver cannot do this pass: its first published line is 19 at the lowest and the test bar is line 18.
+2. **Table** (`full_table.py`): one row per unit, made with the accepted setting's own functions (`wide.rises` and
+   `amounts_of`, `reflect.fit_frames`, `direct.combine`, `gate.trade_weight`): the taps and the share of the removal
+   to apply. Added for a whole capture: where no test bar is found for a while nothing is removed (a weight from the
+   share of nearby frames with a bar, Gaussian in time; a lone frame without a bar changes nothing).
+3. **Render** (`full_filter.py` as the plain render's `PLAIN_RENDER_FILTER`): each 720x480 frame's row is found by
+   the CRC, searched forward; `gate.remove_hole` runs on the whole frame (240 lines a field), the gate floor is
+   measured on the lines the accepted setting measured it on and weighted along time as `gate.py remove` does (the
+   filter reads 21 frames ahead); colour is untouched; a frame whose weight is 0 leaves byte for byte. Frames not
+   found in the table in numbers fail the render, and the render it would replace stays.
+
+Checks before the capture was touched, on the approved stretch: the table built in pieces by four processes equals
+the approved one (amounts and taps identical, the three numbers within 3e-8, weights within 4e-11); the filter's
+output is byte-identical to the same steps run in one process on the same frames (0 of 311 million samples); a
+full-height frame gives the crop's correction exactly once the five-line cleaner's noise figure is taken from the
+same lines (with the test's repeated lines above and below the crop it is not, and 9% of samples differ: the test
+input's doing). A dry run through the plain render script on a local test capture found all 915 units' rows; its 13
+partly shown units took the row after the last one found.
+
+The measuring pass: 107,670 whole units (59.9 min), every byte proven by the checked reader; on the approved stretch
+(rows 104,801-105,700, 58:17 into the capture: the "62-minute" stretch is at 58 minutes of picture) the test-signal
+rows and the left-edge readings are identical to the experiment's arrays. 63,518 frames have 30 or more left edges,
+19,700 none.
+
+The table over the whole capture:
+
+| | |
+|---|---|
+| reflection's strength | 5% 0.51, median 0.61, 95% 0.77, largest 1.25; by four-minute stretches the median is 0.56-0.63 until the last three minutes (0.70, 95% 1.05): the approved stretch is the capture's worst part |
+| at strength 1.0 or more | 629 frames in 18 runs (14:19, 16:42, 24:09, 52:23, and from 56:43 on); two runs are one frame long (57:39, inside a longer stretch; 58:56, alone: the removal is off for 1.0 s around one frame read as 1.00) |
+| nothing removed | 12 stretches, 36.3 s (1.0% of the capture), the longest 14.1 s at 57:31; in part: 20.3 s |
+| no test bar | 52 frames; nothing removed for that reason in 18 frames (0.6 s) |
+| picture left at the deepest point of the cancelled band | median 0.63 (approved stretch: 0.11-0.12) |
+| taps, change from one frame to the next | median 0.0013, largest 0.026 |
+
+The whole capture has one bar-to-picture fit where the approved stretch had its own. On the approved stretch the
+whole-capture taps differ from the approved ones by 0.0039 rms (taps 0.043 rms), the strength by at most 0.006, the
+weights not at all; the removed picture differs in 19% of samples, 1.1% by 4 codes or more, 0.85 codes rms. The
+regression check (`regress.py`) on that stretch with the whole-capture taps, against the approved result:
+
+| | captured | approved | whole-capture taps |
+|---|---|---|---|
+| 393 kHz in flat stretches, codes | 1.03 | 1.07 | 1.08 |
+| added where the capture is flat, codes rms | - | 0.274 | 0.278 |
+| wall after the left border, ripple: median, worst | 1.7, 1.9 | 1.8, 1.9 | 1.8, 2.0 |
+| still caption card, change frame to frame | 0.93 | 0.91 | 0.91 |
+| last title card; title lettering rows | 0.77; 1.04 | 0.77; 1.17 | 0.77; 1.17 |
+| dip at +6 / +8, strength 0.8-0.9; 0.9-1.0 | 0.23/0.47; 0.20/0.43 | 0.64/0.58; 0.57/0.53 | 0.64/0.59; 0.59/0.54 |
+| ripple +22..+92, strength 0.8-0.9; 0.9-1.0 | 0.034; 0.032 | 0.034; 0.048 | 0.036; 0.044 |
+| frames identical to the capture around the trade | - | 525-592 | 525-592 |
+
+Not judged by anyone before the render: everything outside the approved 30 seconds; the first and last lines of
+each field (the clips showed lines 34-253 / 297-516; the head-switch lines at the bottom get the removal too).
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -1137,6 +1199,7 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `onerefl.py` | the owner's model: one reflection per frame from the test bar, removed at full strength, with the fade near equal strength; three-row clip frames; results by strength |
 | `bartest.py` | the removal applied to each frame's own test bar: what is left on a shape that is known |
 | `gcr.py` | the line-19 ghost-cancelling sweep: per-frame echo by direct division, its known answer, and the bar test with it |
+| `full_measure.py`, `full_table.py`, `full_filter.py`, `full_review.py` | the accepted removal over a whole capture as a one-off render: measuring pass, table, the plain render's picture filter, and the table's review |
 | `regress.py` | regression check of a rendered 62-minute stretch against the capture and a reference render: every defect fixed on the way |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |
 | `tonesound.py` | the tone's frequency line by line against the captured sound |
