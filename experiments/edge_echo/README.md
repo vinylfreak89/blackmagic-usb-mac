@@ -1031,7 +1031,23 @@ think we are good".
   0.77/0.71 1.00/1.01 0.039; 0.7-0.8 0.74/0.68 0.042 -> 0.76/0.69 0.039; 0.8-0.9 0.64/0.59 0.034 -> 0.64/0.58 0.034;
   0.9-1.0 0.59/0.54 0.050 -> 0.57/0.53 0.048 (captured 0.20-0.35/0.43-0.60, 0.032-0.038). Identical to the capture
   in frames 525-623. Echo taps from one frame to the next 0.0087 median, 0.191 largest -> 0.0026, 0.013.
-  Nothing came out worse than the sixth clip's removal. Judged by the owner: pending.
+  Nothing came out worse than the sixth clip's removal.
+- **Owner on that clip:** "It's smooth. The only problem remaining is the ghost fades over time way too late on the
+  card now. It's like it's being seen as correctable too late and that's not carrying back to prior frames."
+- **Measured after the trade:** the bar's strength is 0.97 at 19.8 s, 0.91 at 20.0, 0.83 at 20.2, 0.79 at 20.4 and
+  settles at 0.78; the capture's line-to-line jitter inside a field (each row against the row above, 0.3-0.5 samples
+  normally) is 0.6-0.8 from 19.2 to 20.1 s and normal from 20.2 s; the title stops moving at about 20.4 s. The fixed
+  second after the trade kept the removal off until 20.8 s and fully back only at 21.5 s.
+- **The return follows the signal** (`gate.py trade_weight`): after a trade the removal comes back by how far the
+  strength (weighted along time, Gaussian of 2 frames) has come down from 1.0 toward the level it settles at (the
+  median over the second and a half that starts a second after the trade), eased at both ends; once back it stays
+  back. Before a trade the strength gives no warning (a plateau at 0.92-0.93), so that side stays eased out by time,
+  54 to 30 frames ahead. Amount applied: 0.03 at 19.8 s, 0.36 at 20.0, 0.84 at 20.2, 0.99 at 20.4; largest change in
+  one frame 0.09. Title lettering during the return (frames 598-616, captured / removed / difference): the correction
+  follows the letter stems; no row-wise lines in the difference.
+- **Regression check on that render:** as above line for line (393 kHz 1.03 / 1.06 / 1.07; added on flat 0.330 ->
+  0.274; wall 1.8 | 1.9; still card 0.91 and 0.77; title rows 1.04 / 1.36 / 1.17; rising edges unchanged; taps 0.0026
+  median, 0.013 largest); identical to the capture in frames 525-592. Judged by the owner: pending.
 
 ### One system for the whole test line (`sysid.py`): tried, not used
 

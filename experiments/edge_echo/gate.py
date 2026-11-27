@@ -220,13 +220,28 @@ def cmd_score(name, lumf, trackf, tapf, amf):
         for lab, Pm in allm.items(): mdn = np.median(Pm[s], 0); print('   %-22s %s | %.3f' % (lab, np.round(mdn[tt], 2), rip(mdn)))
     print(' line-to-line change mid-frame, codes, bands 0-0.2 / 0.2-0.6 / 0.6-1.5 / 1.5-4 MHz (median of %d frames)' % len(bd['captured']))
     for lab in ['captured'] + list(rem): print('   %-22s %s' % (lab, np.median(bd[lab], 0)))
-NEAR, FAR = 30, 54                                  # frames: nothing within NEAR of the event, the usual removal from FAR on
-def trade_weight(S):                                # where the reflection is at least as strong as the direct signal (S >= 1) the two paths
-    # trade places: the picture itself shifts and its line timing breaks up.  No removal from one second before such a moment to one
-    # second after it; ramped back over the next 0.8 s.  Elsewhere 1.
-    hot = np.nonzero(S >= 1.0)[0]; n = np.arange(len(S))
-    if not len(hot): return np.ones(len(S))
-    dist = np.abs(n[:, None] - hot[None]).min(1); return 0.5 - 0.5 * np.cos(np.pi * np.clip((dist - NEAR) / float(FAR - NEAR), 0, 1))   # eased at both ends: no corner
+NEAR, FAR = 30, 54                                  # frames, BEFORE a trade: nothing within NEAR of it, the usual removal up to FAR before it
+def trade_weight(S):
+    # Where the reflection is at least as strong as the direct signal (S >= 1) the two paths trade places: the picture itself shifts and
+    # its line timing breaks up.  No removal there.
+    #   Before a trade the strength gives no warning (it sits on a plateau), so the removal is eased out by time: from FAR to NEAR frames
+    #   ahead of it.
+    #   After a trade the strength itself shows the signal coming back, so the removal returns WITH it: by how far the strength has come
+    #   down from 1.0 toward the level it settles at (the median over the second and a half that starts a second after the trade),
+    #   eased at both ends.  The strength is weighted along time (Gaussian, 2 frames) first; nothing here steps.
+    n = len(S); hot = S >= 1.0; w = np.ones(n); back = {}
+    if not hot.any(): return w
+    Ss = tsmooth(S, 2.0); ease = lambda x: 0.5 - 0.5 * np.cos(np.pi * np.clip(x, 0, 1)); idx = np.nonzero(hot)[0]
+    ends = [e for e in idx if e + 1 >= n or not hot[e + 1]]
+    for f in range(n):
+        if hot[f]: w[f] = 0; continue
+        ahead = idx[idx > f]; a = ease((ahead[0] - f - NEAR) / float(FAR - NEAR)) if len(ahead) else 1.0
+        before = [e for e in ends if e < f]; b = 1.0
+        if before:
+            e = before[-1]; stop = ahead[0] if len(ahead) else n; seg = S[min(e + 30, stop - 1):min(e + 75, stop)]; settle = np.median(seg) if len(seg) else S[e + 1:stop].min()
+            b = back[e] = max(back.get(e, 0.0), ease((1.0 - Ss[f]) / max(1.0 - settle, 1e-3)))      # once back, it stays back (until the next trade's run-up)
+        w[f] = min(a, b)
+    return w
 def cmd_remove(lumf, amf, tapf, outf, eps='0.01', kappa=str(KAPPA), parf='', fade0='0.9'):
     # parf (the bar's three numbers per frame, reflect_score.py): the removal is faded out as the reflection nears the direct signal's
     # strength, full up to fade0, none from 1.0 on.  Where the two are equal the cancelled band is gone from the recording.
