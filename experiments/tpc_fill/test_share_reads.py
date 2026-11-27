@@ -17,7 +17,8 @@ and the run must have opened the target through the share. The assembly is taken
 against the real volume, which the stand-in share is not); that route reads the patched capture back through the share.
 Stat calls are not audited by Python: metadata through JuiceFS is allowed and goes unrecorded.
 Not seen here: a subprocess that maps /Volumes/zpool to JuiceFS by itself (the stand-in share is not under that path):
-measure_first_line.py reads a capture on the share through checked_read.py; and the paths only the other fixtures take
+measure_first_line.py reads a capture on the share through checked_read.py (verification: owner, 2026-11-26, "if it
+goes through checked_read then it is doing it for verification purposes so leave it alone"); and the paths only the other fixtures take
 (clips, bridges, joins, appends), which hand the same share paths to the same helpers."""
 import os, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
@@ -90,10 +91,23 @@ def main():
     check('run')
     assert opened, 'the run never opened the target through the share'
     CP.on_share = real_on_share
+    # the ._ cleanup: the share's ._ entries of every name the swap deletes or renames away (originals, patched names, and a
+    # later part named as a result.json written before 2026-11-26 names it, by its JuiceFS path) must be removed, through
+    # the share; the ._ of a name still there after the swap stays
+    part2 = os.path.join(cap, 'T.mov.raw.part2.tpc'); open(part2, 'wb').write(b'part 2')
+    R = CP.json.load(open(os.path.join(W, 'result.json'))); R['replaced'] = [CP.juicefs_path(part2)]
+    CP.json.dump(R, open(os.path.join(W, 'result.json'), 'w'))
+    gone = [R['patched']['tpc'], R['patched']['mov'], part2]; kept = [R['original']['tpc'], R['original']['csv']]
+    stub = lambda x: os.path.join(os.path.dirname(x), '._' + os.path.basename(x))
+    for x in gone + kept: open(stub(x), 'wb').write(b'\0' * 4096)
+    bad.clear()
     CP.swap(W)
-    for n in os.listdir(cap):
-        if n.startswith('._'): os.remove(os.path.join(cap, n))
     check('swap')
+    left = [stub(x) for x in gone if os.path.lexists(stub(x))]
+    assert not left, 'swap left ._ entries of names it removed: %s' % left
+    assert all(os.path.lexists(stub(x)) for x in kept), 'swap removed the ._ entry of a name still there'
+    assert not os.path.exists(part2), 'the later part named by its JuiceFS path was not deleted'
+    print('share reads: swap removed %d ._ entries and the later part through the share' % len(gone))
     print('share reads: run and swap opened the target through the share %d times and JuiceFS only to verify' % len(opened))
     os.remove(fuse); shutil.rmtree(S)
     print('share reads: all tests passed')
