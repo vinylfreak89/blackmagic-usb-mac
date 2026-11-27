@@ -88,6 +88,9 @@ int shuttle_test_usb_backend = -1;   /* the last start's cc_config.usb_backend (
 int shuttle_test_open_rc;            /* a refused live start returns this (0: -1) */
 int shuttle_test_close_during_open;  /* the next refused live start sees a close notice before it returns */
 int shuttle_test_close_watch = 1;    /* tests have no Shuttle on USB: whether arming the close watch succeeds */
+void (*shuttle_test_on_late)(uint64_t prev_ns, uint64_t t0_ns);   /* video worker: a handoff gap over FREEZE_GAP_NS was reported */
+void (*shuttle_test_on_applied)(void);                           /* media thread: an action was applied */
+unsigned shuttle_test_resume_delay_us;                           /* resume: hold the control thread after releasing the replay */
 #endif
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
@@ -287,6 +290,9 @@ static void on_frame(void *ctx, const fp_frame *fr){
         tr_event e = { fr->counter_ext, gap, call, {0} };
         fs_handoff_timing_get(s->fs, &e.h);   /* worker thread: this sink runs on it */
         tr_post(s->reports, &e);              /* never blog here: a log write on this thread delays the next frame */
+#ifdef SHUTTLE_TEST_HOOKS
+        if (gap > FREEZE_GAP_NS && shuttle_test_on_late) shuttle_test_on_late(t0 - gap, t0);   /* the reported gap's two handoffs */
+#endif
     }
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (units){   /* the seek bar's time: this frame's own counter, resolved near the session's expected position */
@@ -726,6 +732,9 @@ static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /
         else if (s->paused){
             atomic_fetch_add(&s->pause_epoch, 1);   /* before the release (pause_epoch): the first frame after it is never timed from before */
             if (fs_replay_pause(s->fs, 0) == 0){
+#ifdef SHUTTLE_TEST_HOOKS
+                if (shuttle_test_resume_delay_us) usleep(shuttle_test_resume_delay_us);   /* the control thread held up just after the release */
+#endif
                 s->paused = 0;
                 int expect = OBS_MEDIA_STATE_PAUSED;
                 atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PLAYING);
@@ -768,6 +777,9 @@ static void *media_thread(void *arg){
         pthread_mutex_unlock(&s->ctl_m);
         int disp = (act == ACT_RESTART || act == ACT_STOP) && atomic_load(&s->asleep) ? display_on() : 0;   /* outside s->m */
         pthread_mutex_lock(&s->m); media_apply(s, act, ms, disp); pthread_mutex_unlock(&s->m);
+#ifdef SHUTTLE_TEST_HOOKS
+        if (shuttle_test_on_applied) shuttle_test_on_applied();   /* a state transition the test may be waiting on */
+#endif
         pthread_mutex_lock(&s->ctl_m);
     }
     pthread_mutex_unlock(&s->ctl_m);
@@ -1284,6 +1296,7 @@ int shuttle_test_asleep(void *d){ return atomic_load(&((shuttle_src *)d)->asleep
 void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
 void shuttle_test_device_closed(void *d){ shuttle_device_closed(d); }   /* a close notice, as usb_interest receives it */
 int shuttle_test_reconnect_wanted(void *d){ return atomic_load(&((shuttle_src *)d)->reconnect_wanted); }
+int shuttle_test_replay_held(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); int h = s->fs && fs_replay_held(s->fs); pthread_mutex_unlock(&s->m); return h; }
 unsigned shuttle_test_reconnect_tries(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); unsigned t = s->reconnect_tries; pthread_mutex_unlock(&s->m); return t; }
 #endif
 
