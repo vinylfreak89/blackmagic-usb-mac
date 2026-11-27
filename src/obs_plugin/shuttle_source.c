@@ -199,7 +199,12 @@ typedef struct {
     int usb_iousbhost;                            /* the running live session reads through IOUSBHost (cc_config.usb_backend) */
     uint64_t session_start_unit;                  /* the running session's first unit, estimated: on_frame resolves counters from it */
     _Atomic int live_regrey;                      /* live: put OBS's controls back in their greyed restart state on the next tick */
-    _Atomic int handoff_reset;                    /* resumed from a pause: the next frame's gap is the pause, not a stall */
+    /* A pause is not a delivery stall. pause_epoch counts resumes of a held replay (control thread, bumped BEFORE the
+     * replay is released); handoff_epoch is the value the video worker read before its previous handoff. A gap whose two
+     * handoffs read different values spans a pause and is not timed. It only increases and is read before the handoff's
+     * time, so a delayed control thread or worker cannot make a pause read as a stall; frames still draining during the
+     * pause are timed as usual. Live sessions never hold, so never bump it. */
+    _Atomic uint64_t pause_epoch; uint64_t handoff_epoch;
 } shuttle_src;
 #define STOP_TICKS 3
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
@@ -268,10 +273,11 @@ static void on_frame(void *ctx, const fp_frame *fr){
     memcpy(f.color_matrix, s->color_matrix, sizeof f.color_matrix);
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
     f.full_range = false;
+    uint64_t epoch = atomic_load(&s->pause_epoch);   /* before t0 (pause_epoch) */
     uint64_t t0 = os_gettime_ns();
     obs_source_output_video(s->source, &f);
-    if (atomic_exchange(&s->handoff_reset, 0)) s->last_handoff_ns = 0;
-    uint64_t t1 = os_gettime_ns(), call = t1 - t0, gap = s->last_handoff_ns ? t0 - s->last_handoff_ns : 0;
+    int spans_pause = epoch != s->handoff_epoch; s->handoff_epoch = epoch;
+    uint64_t t1 = os_gettime_ns(), call = t1 - t0, gap = s->last_handoff_ns && !spans_pause ? t0 - s->last_handoff_ns : 0;
     s->last_handoff_ns = t0;
     if (gap > s->max_gap_ns) s->max_gap_ns = gap;
     if (call > s->max_call_ns) s->max_call_ns = call;
@@ -717,10 +723,13 @@ static void media_apply(shuttle_src *s, int act, int64_t ms, int user_disp){   /
     case ACT_PLAY:
         if (!running) replay_start_at(s, settings, s->pending_seek_ms >= 0 ? s->pending_seek_ms : 0);
         else if (s->pending_seek_ms >= 0) replay_start_at(s, settings, s->pending_seek_ms);
-        else if (s->paused && fs_replay_pause(s->fs, 0) == 0){
-            s->paused = 0; atomic_store(&s->handoff_reset, 1);
-            int expect = OBS_MEDIA_STATE_PAUSED;
-            atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PLAYING);
+        else if (s->paused){
+            atomic_fetch_add(&s->pause_epoch, 1);   /* before the release (pause_epoch): the first frame after it is never timed from before */
+            if (fs_replay_pause(s->fs, 0) == 0){
+                s->paused = 0;
+                int expect = OBS_MEDIA_STATE_PAUSED;
+                atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PLAYING);
+            }
         }
         break;
     case ACT_SEEK: {
@@ -1020,7 +1029,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.on_end = on_end; cfg.end_ctx = s;
     atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->video_clock = (shuttle_video_clock){0}; atomic_store(&s->video_estimated, 0);
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
-    atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
+    atomic_store(&s->last_counter, 0); s->handoff_epoch = atomic_load(&s->pause_epoch);   /* before any worker exists */
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
     if (!s->replaying && was_replay) atomic_store(&s->live_regrey, 1);   /* from replay to live: OBS's controls still show the replay's bar; grey them */
 #ifdef SHUTTLE_TEST_HOOKS
