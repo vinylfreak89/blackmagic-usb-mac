@@ -67,7 +67,17 @@ def main():
     else: FL, A, rendered = assemble_render(src, PATCH, NEWLOG, aj, flf, W, work, expect)
     finish(plans, BU, ORIG, PATCH, NEWLOG, OUTCSV, FL, A, rendered, expect, name, d, times, stats, planf, work, W)
 
+def render_ready():
+    """plain_render.sh's own refusals about its replay tool, checked before anything is written: a render that refuses
+    at start leaves the assembler blocked on its stream after 1 MiB (2026-11-27 00:16)"""
+    import subprocess
+    rp = os.path.join(CP.REPO, 'src', 'frameserver', 'frameserver_replay')
+    if not os.access(rp, os.X_OK): CP.fail('build %s first (make -C src/frameserver frameserver_replay)' % rp)
+    if subprocess.run(['make', '-C', os.path.join(CP.REPO, 'src', 'frameserver'), '-q', 'frameserver_replay']).returncode != 0: CP.fail('%s is older than its source; rebuild it' % rp)
+    if subprocess.run(['codesign', '-v', rp], capture_output=True).returncode != 0: CP.fail('%s fails its code-signature check' % rp)
+
 def assemble_render(src, PATCH, NEWLOG, aj, flf, W, work, expect):
+    render_ready()
     FL = CP.first_line(src, W)['first_line']; open(flf, 'w').write(FL)
     # assemble + render, one pass
     for x in (NEWLOG, aj):
