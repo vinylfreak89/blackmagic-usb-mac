@@ -296,7 +296,7 @@ def build_cluster(ids, plans, BU, DU, base_tpc, donor_tpc, prev_end):
 def check_range(mod, G):
     """the rebuilt range read back: sequence continuity per endpoint, packets within their request, every picture header
     (no-signal units aside) one on from the one before, through each region's slots, and the resyncs the same; each
-    region's new resync intervals under a unit and a half"""
+    region's new resync intervals at most two units"""
     from region import Region as RR
     N = RR(memoryview(mod['data']), mod['file_from']); last = {}
     for pos, t, ep, pi, seq, st, req, al in N.recs:
@@ -312,7 +312,9 @@ def check_range(mod, G):
     for c1, c2 in zip(rc, rc[1:]): assert (c2 - c1) % 65536 == 1, ('resync counters not consecutive', c1, c2)
     for g in G:
         k = rc.index(g['c0'] % 65536)
-        for s1, s2 in zip(si[k:k + g['m'] + 1], si[k + 1:k + g['m'] + 2]): assert 0 < s2 - s1 <= 2402, ('resync interval', g['i'], s2 - s1)
+        # at most two units: a region whose picture holds one frame fewer than its sound (1163, 1277: none at all, 3201
+        # samples between a and b) keeps b at its time on the sound; the render fills the slot no frame reaches
+        for s1, s2 in zip(si[k:k + g['m'] + 1], si[k + 1:k + g['m'] + 2]): assert 0 < s2 - s1 <= 3204, ('resync interval', g['i'], s2 - s1)
 
 STAGING_MAX = float(os.environ.get('TWO_PASS_STAGING_MAX_GB', '6')) * 1e9
 STATS = os.path.expanduser('~/.juicemount/fuse-internal/.stats')
