@@ -100,6 +100,7 @@ struct frameserver {
     // pool + ring (single producer = delivery thread, single consumer = worker)
     unsigned n_slots; uint8_t *pool; _Atomic int *slot_used;
     fs_item ring[RING_ITEMS]; _Atomic unsigned r_head, r_tail;
+    _Atomic unsigned r_done;   // worker: items fully processed (sink calls returned); r_done == r_head = nothing queued or in progress
     pthread_mutex_t m; pthread_cond_t c;
     pthread_mutex_t life_m; pthread_cond_t life_c;
     int m_init,c_init,life_m_init,life_c_init;
@@ -905,6 +906,7 @@ static void *worker_main(void *arg){
           f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++;
           f->ht.up_gap_ns=it.up_gap_ns; f->ht.up_cpu_ns=it.up_cpu_ns; f->ht.up_ring_bytes=it.up_ring_bytes; }
         process_item(f, &it);
+        atomic_store_explicit(&f->r_done, t + 1, memory_order_release);
         fs_test_after_item(f);
     }
     if(f->geometry)geometry_flush(f);
@@ -1177,6 +1179,11 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
 }
 uint64_t fs_packets_delivered(const frameserver *f){ return cc_packets_delivered(f->cap); }
+int fs_replay_held(const frameserver *f){
+    /* the capture side first: once it holds, every unit the parser will emit before the resume is already in the ring */
+    if (!f || !f->cap || !cc_replay_held(f->cap)) return 0;
+    return atomic_load_explicit(&f->r_done, memory_order_acquire) == atomic_load_explicit(&f->r_head, memory_order_acquire);
+}
 int fs_replay_pause(frameserver *f, int paused){ return f && f->cap && cc_replay_pause(f->cap, paused) == CC_OK ? 0 : -1; }
 void fs_close(frameserver *f){
     if (!f) return;

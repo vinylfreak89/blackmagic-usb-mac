@@ -244,6 +244,9 @@ void fs_get_stats(const frameserver *f, fs_stats *out);
 uint64_t fs_packets_delivered(const frameserver *f);
 // Replay only: hold (paused != 0) or resume delivery; see cc_replay_pause. -1 for a device session.
 int fs_replay_pause(frameserver *f, int paused);
+// Replay only: 1 when the paused replay holds (cc_replay_held) and the video worker has processed every unit queued
+// before it, sink calls included. Nothing more is published until a resume. 0 otherwise.
+int fs_replay_held(const frameserver *f);
 void fs_close(frameserver *f);
 
 #ifdef __cplusplus
