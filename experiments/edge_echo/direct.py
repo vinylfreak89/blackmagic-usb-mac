@@ -58,7 +58,7 @@ def tsmooth(v, sig):                    # along frames, Gaussian weights (a cont
     for o, w in zip(range(-h, h + 1), k):
         a, b = max(0, -o), min(n, n - o); num[a:b] += w * v[a + o:b + o]; den[a:b] += w
     return num / den.reshape((n,) + (1,) * (v.ndim - 1))
-def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None, shared=False):
+def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None, shared=False, outlier=False):
     # The echo changes smoothly from frame to frame; a frame's picture edges change with the picture.  So:
     #   the test bar (in every frame, the same signal whatever the scene) carries the change from frame to frame: its fit (a straight
     #   line in the bar's two amounts), the amounts weighted along time with a Gaussian of WBAR frames;
@@ -74,16 +74,24 @@ def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None, shared=False):
     #   step) is the same in every frame for as long as the scene holds.  shared_error measures that repeating part from the capture
     #   itself, by edge count, and it is kept out of the averaging over time: however many frames repeat a reading, the correction
     #   is trusted no further than one such reading deserves.  With many edges the repeating part is nil and nothing changes.
+    #   outlier=True (the narrow fix, 2026-11-27): a frame's reading that departs from the bar (rms over lags 2..40) by more than any
+    #   frame with RELIABLE or more edges does anywhere in the capture is not a reading of the echo: it counts in full up to that
+    #   largest reliable departure, not at all from twice it, a cosine between.  Every other reading counts as before, so the taps
+    #   are unchanged wherever no such reading lies within the slow weighting's reach.
     wslow = WSLOW if wslow is None else wslow; wbar = WBAR if wbar is None else wbar; have = cnt >= 2; n = len(cnt); k = cnt[:, None].astype(float); many = cnt >= 30
     a = np.median(S[many] * ph[many, None], 0); Ss = np.sqrt(((k - 1) * np.nan_to_num(S) ** 2 + K0 * (a[None] / np.maximum(ph, 1)[:, None]) ** 2) / np.maximum(k - 1 + K0, 1))
     se = np.where(have[:, None], 1.2533 * Ss / np.sqrt(np.maximum(k, 1)), np.inf); wf = np.where(have, 1 / np.mean(np.where(np.isfinite(se), se, 1) ** 2, 1), 0)
     B = np.linalg.lstsq(X[have] * np.sqrt(wf[have])[:, None], Dn[have] * np.sqrt(wf[have])[:, None], rcond=None)[0]; bar = tsmooth(X, wbar) @ B; r = np.where(have[:, None], np.nan_to_num(Dn) - bar, 0)
     vb = np.maximum((wf[have, None] * (r[have] ** 2 - se[have] ** 2)).sum(0) / wf[have].sum(), (0.25 * np.median(se[have], 0)) ** 2)
     iv = np.where(have[:, None], 1 / se ** 2, 0)
+    if outlier: iv = iv * outlier_weight(r, have, cnt)[0][:, None]
     if wslow > 0: h = int(4 * wslow) + 1; kk = np.exp(-0.5 * (np.arange(-h, h + 1) / wslow) ** 2); conv = lambda v: np.apply_along_axis(lambda c_: np.convolve(c_, kk, mode='same'), 0, v)
     else: conv = lambda v: v
     num = conv(iv * r); den = conv(iv); eb = conv(iv * shared_error(r, have, cnt, vb)[0]) if shared else 0.0; full = den + (1 + eb) / vb[None]
     return bar + num / full, den / full, bar, np.sqrt(vb), se
+RELIABLE = 120
+def outlier_weight(r, have, cnt):
+    tt = (T >= 2) & (T <= 40); rr = np.sqrt((r[:, tt] ** 2).mean(1)); s0 = rr[have & (cnt >= RELIABLE)].max(); return np.where(have, 0.5 + 0.5 * np.cos(np.pi * np.clip((rr - s0) / s0, 0, 1)), 1.0), s0, rr
 KBINS = np.array([2, 3, 4, 6, 10, 20, 30, 60, 120, 1e9])
 def shared_error(r, have, cnt, vb):
     # The part of a frame's reading error that repeats in the next frame, as a variance per sample of T, by the frame's edge count.

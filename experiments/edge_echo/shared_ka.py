@@ -1,6 +1,7 @@
 # Known answer for direct.combine(shared=True): made-up readings with a known echo.  Scenes of two or three edges, ten seconds
 # long, each repeating one wrong shape: the old weighting follows them, the new one must not; with honest few-edge scenes (noise
-# only) and far from any few-edge scene the two must agree.   python3 shared_ka.py   (from the scratch directory)
+# only) and far from any few-edge scene the two must agree.  The same for outlier=True, which far from any few-edge scene must give
+# the old numbers exactly.   python3 shared_ka.py   (from the scratch directory)
 import numpy as np, direct as D
 from scipy.ndimage import gaussian_filter1d
 rng = np.random.default_rng(3); n = 6000; nT = len(D.T); tt = (D.T >= 2) & (D.T <= 40)
@@ -20,10 +21,12 @@ def make(biased):
 for biased in (True, False):
     Dn, S, cnt, ph, few = make(biased); bar_true = X @ Bt + truec
     old = D.combine(Dn, S, cnt, ph, X)[0]; new = D.combine(Dn, S, cnt, ph, X, shared=True)[0]
+    out = D.combine(Dn, S, cnt, ph, X, outlier=True)[0]
     e = lambda v, k: np.sqrt(((v - bar_true)[k][:, tt] ** 2).mean())
     k1 = np.zeros(n, bool); k1[2800:2900] = True; far = np.ones(n, bool)
     for a in range(300, n - 400, 800): far[a - 250:a + 550] = False
     print('few-edge scenes %s:' % ('each with its own repeated wrong shape' if biased else 'honest (noise only)'))
     print('   error of the taps\' reading against the truth (rms, T 2..40): inside the tested stretch  old %.3f  new %.3f | all few-edge frames  old %.3f  new %.3f | far from any few-edge scene  old %.4f  new %.4f | bar alone inside %.3f' % (e(old, k1), e(new, k1), e(old, few), e(new, few), e(old, far), e(new, far), e(X @ Bt, k1)))
     have = cnt >= 2; b = D.combine(Dn, S, cnt, ph, X)[2]; r = np.where(have[:, None], Dn - b, 0); vb = np.full(nT, 0.0); _, cen, val = D.shared_error(r, have, cnt, D.combine(Dn, S, cnt, ph, X)[3] ** 2)
+    print('   outlier=True: inside the tested stretch %.3f | all few-edge frames %.3f | far from any few-edge scene %.4f, largest difference from old there %.2g' % (e(out, k1), e(out, few), e(out, far), np.abs(out - old)[far].max()))
     print('   measured repeating error (rms over T 2..40) by edges: ' + ', '.join('%d: %.3f' % (c, np.sqrt(v[tt].mean())) for c, v in zip(cen, val)))

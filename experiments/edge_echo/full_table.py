@@ -11,10 +11,12 @@
 # starts WARM frames early so its first frame starts from where a single run would have been.
 # Run from the scratch directory (wide.npz, calib.npz, reflect_fit.npy, barref.npz):
 #   python3 full_table.py MEASDIR OUT.npz [PROCESSES]
+# REUSE=TABLE.npz: the bar amounts and the three numbers (the slow part, which no FIX changes) are taken from a table already made
+# from the same measuring pass instead of being worked out again; FIX=none REUSE=T reproduces T.
 import sys, os, time, numpy as np
 os.environ.update(KAPPA='9', STEADY='1', MEDIAN='0', THIN='0', HOLE='0.25', GMAX='3', GATESMOOTH='5', WSLOW='45', WBAR='5')
 import model as M, harness as H, barread as B, wide as W, reflect as RF, direct as D, gate as G
-MEAS = sys.argv[1]; VBI = os.path.join(MEAS, 'vbi.npy'); NAV = 2; WARM = 40; PIECE = int(os.environ.get('PIECE', 2000)); BARSIG = 5.0; SHARED = os.environ.get('SHARED', '1') == '1'
+MEAS = sys.argv[1]; VBI = os.path.join(MEAS, 'vbi.npy'); NAV = 2; WARM = 40; PIECE = int(os.environ.get('PIECE', 2000)); BARSIG = 5.0; FIX = os.environ.get('FIX', 'outlier')    # 'outlier' (the narrow fix), 'shared' (the capture-wide accounting), 'none' (the table as first rendered)
 def _rises(ab): return W.rises(np.load(VBI, mmap_mode='r')[ab[0]:ab[1]], (4, 12))
 def _fit(ab):
     a, b, n = ab; lo = max(0, a - WARM - NAV); hi = min(n, b + NAV); L, g = B.lines(np.load(VBI, mmap_mode='r')[lo:hi]); par, err = RF.fit_frames(L, g, NAV); return par[a - lo:b - lo], err[a - lo:b - lo]
@@ -24,10 +26,17 @@ def bar_weight(hasbar):
     s = G.tsmooth(hasbar.astype(float), BARSIG); return 0.5 - 0.5 * np.cos(np.pi * np.clip((s - 0.2) / 0.3, 0, 1))
 def build(meas, n, pool):
     t0 = time.time(); pieces = [(a, min(n, a + PIECE)) for a in range(0, n, PIECE)]
-    rt = pool.map(_rises, pieces); r = np.concatenate([x[0] for x in rt]); tops = np.concatenate([x[1] for x in rt]); A = W.amounts_of(r, tops); print('bar amounts: %d frames, no bar in %d; %.0f s' % (n, int(A[:, 2].sum()), time.time() - t0), flush=True)
-    pe = pool.map(_fit, [(a, b, n) for a, b in pieces]); par = np.concatenate([x[0] for x in pe]); err = np.concatenate([x[1] for x in pe]); S = np.hypot(par[:, 0], par[:, 1]); print('three numbers: no fit in %d frames; %.0f s' % (int(np.isnan(S).sum()), time.time() - t0), flush=True)
+    if os.environ.get('REUSE'):
+        old = np.load(os.environ['REUSE']); assert np.array_equal(old['sig'], meas['sig'][:n]) and np.array_equal(old['ctr'], meas['ctr'][:n]), 'REUSE: not a table of this measuring pass'
+        A, par, err = old['A'], old['par'], old['err']; print('bar amounts and three numbers taken from %s' % os.environ['REUSE'], flush=True)
+    else:
+        A, par, err = None, None, None
+    if A is None:
+        rt = pool.map(_rises, pieces); r = np.concatenate([x[0] for x in rt]); tops = np.concatenate([x[1] for x in rt]); A = W.amounts_of(r, tops); print('bar amounts: %d frames, no bar in %d; %.0f s' % (n, int(A[:, 2].sum()), time.time() - t0), flush=True)
+        pe = pool.map(_fit, [(a, b, n) for a, b in pieces]); par = np.concatenate([x[0] for x in pe]); err = np.concatenate([x[1] for x in pe]);
+    S = np.hypot(par[:, 0], par[:, 1]); print('three numbers: no fit in %d frames; %.0f s' % (int(np.isnan(S).sum()), time.time() - t0), flush=True)
     Sf = nearest_fill(S); wt = G.trade_weight(Sf); wb = bar_weight(A[:, 2] == 0)
-    Dh, ws, bar, sb, se = D.combine(meas['Dn'][:n], meas['S'][:n], meas['cnt'][:n], meas['ph'][:n], np.c_[np.ones(n), A[:, 3:5]], shared=SHARED); own = np.load('calib.npz')['own']; Q = np.zeros((n, D.K1 + 1)); Q[:, 1:] = Dh @ D.solver(own).T
+    Dh, ws, bar, sb, se = D.combine(meas['Dn'][:n], meas['S'][:n], meas['cnt'][:n], meas['ph'][:n], np.c_[np.ones(n), A[:, 3:5]], shared=FIX == 'shared', outlier=FIX == 'outlier'); own = np.load('calib.npz')['own']; Q = np.zeros((n, D.K1 + 1)); Q[:, 1:] = Dh @ D.solver(own).T
     print('taps and weights: %.0f s' % (time.time() - t0), flush=True); return dict(Q=Q, w=wt * wb, wtrade=wt, wbar=wb, S=Sf, par=par, err=err, A=A, pw=ws[:, (D.T >= 2) & (D.T <= 40)].mean(1))
 if __name__ == '__main__':
     from multiprocessing import Pool
