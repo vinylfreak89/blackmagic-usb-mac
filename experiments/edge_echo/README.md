@@ -1215,6 +1215,29 @@ tables, 0 with every row skipped, 0 with the same table twice; and through `plai
 pass-through filter ending in status 7: existing output untouched, the finished render kept, then published by
 `finish.py`.
 
+**The re-render's outcome (2026-11-28): held, status 7.** 107,677 frames, 107,670 found in the table, replay, encode
+and audio clean. 33,650 frames differ at all from the first render; 1 sample in 1000 differs by more than 3 codes in
+706 frames: 265 in the stretch being fixed (3:21.9-3:30.7, up to 86 codes at 1 in 1000) and 441 in four stretches the
+check was there to find:
+
+| stretch | frames over | 1 in 1000, largest | rms, largest | largest tap change | the test bar after removal: first render / held |
+|---|---|---|---|---|---|
+| 9:19.2-9:26.0 | 180 | 11 codes | 1.3 | 0.065 | 0.036 / 0.046 |
+| 32:47.3-32:51.3 | 122 | 10 | 1.9 | 0.083 | 0.044 / 0.058 |
+| 34:42.8-34:46.0 | 95 | 13 | 1.9 | 0.056 | 0.051 / 0.045 |
+| 50:50.8-50:52.3 | 44 | 6 | 1.0 | 0.015 | 0.042 / 0.045 |
+
+Everywhere else (106,930 frames): rms at most 0.74 codes, 1 sample in 1000 at most 3. All four are stretches with 0-1
+countable left edges per frame, as 3:23 is. The last column is each frame's own test bar with each table's taps
+through `gate.remove_hole` (what the bar then differs from its clean shape by, share of the bar, rms over the 2T
+pulse, the rise and the top; median over the stretch): at 3:22-3:30 the first render's taps wreck the bar (0.145;
+captured 0.027) and the held render's leave it as captured (0.030); in the four small stretches the two are within
+0.015 of each other, the held one a little better in one and a little worse in three, the difference mostly on the 2T
+pulse. In stills at 3x the two renders cannot be told apart there without a difference map. So the readings the narrow
+fix weighs down between one and two times the reliable limit are not all wrong: by the bar, some of them were worth
+having. Colour samples are identical in the two renders. The held file stays under the render's working name until the
+owner has seen this list.
+
 **Colour (the owner: "the whole color profile looks oversaturated. could that happen from a misread of the burst
 signal?").** The burst itself is outside the captured window. Measured instead (`colour_ref.py`):
 - The render's colour samples are the capture's (one decoded second: slope 0.98-1.00, mean colour size 14.52 against
