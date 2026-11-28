@@ -166,7 +166,11 @@ def build_cluster(ids, plans, BU, DU, base_tpc, donor_tpc, prev_end):
                         bk_, o1, o2 = bt; bu_ = BU[bk_]; jb_ = B.mark_at[int(bu_['off'])]; bb = bytes(B.R.v[jb_:jb_ + int(bu_['size'])])
                         assert (bb[4] | bb[5] << 8) == int(bu_['counter']) and len(bb) == int(bu_['size']), ('bottom unit', g['i'], s)
                         assert bb[o1 + 7 * 1440:o1 + 16 * 1440] == bytes([0x80, 0x10]) * (9 * 720), ('bottom: no 261 block after rows 254-260', g['i'], s)
-                        assert bb[o2 + 7 * 1440:] == bytes([0x80, 0x10]) * (2 * 720), ('bottom: no final block after rows 516-522', g['i'], s)
+                        PADR = bytes([0x80, 0x10]) * 720; std = 48 + 516 * 1440
+                        assert (bb[o2 + 7 * 1440:] == PADR * 2 or                      # the final block right after them
+                                (o2 == std and o1 == 48 + 254 * 1440 and               # or cut short at the end, all in place:
+                                 (len(bb) == 48 + 524 * 1440 and bb[-1440:] == PADR or    # after row 523's padding
+                                  len(bb) == 48 + 523 * 1440 and bb[-1440:] != PADR))), ('bottom: rows 516-522 not placed', g['i'], s)   # where the final block begins
                         bot = (bb[o1:o1 + 7 * 1440], bb[o2:o2 + 7 * 1440]); kinds['DW bottom rows from the base'] += 1
                     ub_ = donor_whole(ub_, DONOR_MAP, bot); kinds['DW in the base look'] += 1
                 g['units'].append(renumber_unit(ub_, c))
