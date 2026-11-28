@@ -44,6 +44,34 @@ def spread(n_big, n): return [((i + 1) * n_big) // n > (i * n_big) // n for i in
 def s16(x): return ((x + 32768) % 65536) - 32768
 
 def header(counter): return MARK + int(counter % 65536).to_bytes(2, 'little') + b'\x01\xe8' + ZEROS
+
+# Donor whole units are matched to the base's look (owner, 2026-11-27: the two passes' luma and chroma differ, and a donor
+# frame between base frames flashes). TWO_PASS_DONOR_MAP (JSON, measured on matched whole-unit pairs): y_lut (256 codes),
+# u / v [gain about 128, offset], shift_samples (the donor's picture sits this many samples right of the base's: every row
+# moves left, its last sample pair repeated). The padding rows (the Shuttle's Y16/C128 ruler) and the header are not touched.
+# A plan region's 'bottom' {slot: [base unit, offset of its rows 254-260, offset of 516-522]} (bytes from the base unit's
+# marker, placed by bottom_plan.py from the padding blocks) puts the base partial's own rows back where the donor blanks
+# them, raw (base look, base position).
+PAD_ROWS = np.r_[0:7, 261:270, 523:525]
+def load_map(path):
+    M = json.load(open(path)); lut = np.array(M['y_lut'], np.uint8); assert lut.shape == (256,)
+    ch = lambda g, o: np.clip(np.round(128 + g * (np.arange(256) - 128) + o), 1, 254).astype(np.uint8)
+    return dict(y=lut, u=ch(*M['u']), v=ch(*M['v']), shift=int(M['shift_samples']))
+def donor_whole(u, M, bottom=None):
+    """a donor whole unit (marker on) in the base's look; bottom: (rows 254-260 bytes, rows 516-522 bytes) of the base"""
+    assert len(u) == UNIT
+    a = np.frombuffer(u, np.uint8, offset=48).reshape(525, 1440).copy(); keep = a[PAD_ROWS].copy()
+    s = 4 * (M['shift'] // 2); assert M['shift'] % 2 == 0 and s >= 0
+    if s:
+        a[:, :-s] = a[:, s:].copy()
+        a[:, -s:] = np.tile(a[:, 1440 - s - 4:1440 - s], (1, s // 4))   # the row's last sample pair (U Y V Y) repeated
+    a[:, 1::2] = M['y'][a[:, 1::2]]; a[:, 0::4] = M['u'][a[:, 0::4]]; a[:, 2::4] = M['v'][a[:, 2::4]]
+    a[PAD_ROWS] = keep
+    if bottom:
+        b1, b2 = bottom; assert len(b1) == len(b2) == 7 * 1440
+        a[254:261] = np.frombuffer(b1, np.uint8).reshape(7, 1440); a[516:523] = np.frombuffer(b2, np.uint8).reshape(7, 1440)
+    return bytes(u[:48]) + a.tobytes()
+DONOR_MAP = load_map(os.environ['TWO_PASS_DONOR_MAP']) if os.environ.get('TWO_PASS_DONOR_MAP') else None
 def renumber_unit(u, counter):
     """unit bytes u (starting at its marker) with its header's counter set"""
     assert u[:4] == MARK and u[7] == 0xe8, 'not a picture header'
@@ -132,6 +160,15 @@ def build_cluster(ids, plans, BU, DU, base_tpc, donor_tpc, prev_end):
                     # 1017): not a header the parser renumbering (renum.py) or the checks recognise, and its bytes are the
                     # repair stage's evidence, so it is not cleaned up either: the slot takes a stub
                     g['units'].append(header(c)); kinds[k + ' header not clean: stub'] += 1; continue
+                if k == 'DW' and DONOR_MAP:
+                    bt = plans[g['i']].get('bottom', {}).get(str(s)); bot = None
+                    if bt:
+                        bk_, o1, o2 = bt; bu_ = BU[bk_]; jb_ = B.mark_at[int(bu_['off'])]; bb = bytes(B.R.v[jb_:jb_ + int(bu_['size'])])
+                        assert (bb[4] | bb[5] << 8) == int(bu_['counter']) and len(bb) == int(bu_['size']), ('bottom unit', g['i'], s)
+                        assert bb[o1 + 7 * 1440:o1 + 16 * 1440] == bytes([0x80, 0x10]) * (9 * 720), ('bottom: no 261 block after rows 254-260', g['i'], s)
+                        assert bb[o2 + 7 * 1440:] == bytes([0x80, 0x10]) * (2 * 720), ('bottom: no final block after rows 516-522', g['i'], s)
+                        bot = (bb[o1:o1 + 7 * 1440], bb[o2:o2 + 7 * 1440]); kinds['DW bottom rows from the base'] += 1
+                    ub_ = donor_whole(ub_, DONOR_MAP, bot); kinds['DW in the base look'] += 1
                 g['units'].append(renumber_unit(ub_, c))
             kinds[k] += 1
         g['ulen'] = [len(u) for u in g['units']]; g['ustart'] = np.cumsum([0] + g['ulen'])
