@@ -1147,7 +1147,7 @@ rms from the captured picture; regressing (render - captured) on (removed - capt
 That read-back shows the removal reached the encoded picture; it says nothing about how it looks outside the approved
 30 seconds.
 
-### After the first watch: one wrong stretch, its cause, and a fix not yet rendered (2026-11-27)
+### After the first watch: one wrong stretch, its cause, and two fixes (2026-11-27)
 
 The owner on the first two minutes: "a lot better than the raw. much more crisp", no strange artifacts; then "between
 3:23 and 3:28 it gets really bad and then it fades out by 3:30".
@@ -1167,8 +1167,8 @@ more edges some frames later is 0.03-0.06: that is the echo's own departure from
 The rest is tied to the edges themselves and repeats while the scene holds; with 30-59 edges it is as large as the
 correction being measured.
 
-**Fix (`direct.combine(shared=True)`, `shared_error`; `full_table.py` now uses it, `SHARED=0` for the table as
-rendered).** The repeating part is measured from the capture by edge count (product of successive frames' departures
+**The capture-wide accounting (`direct.combine(shared=True)`, `shared_error`; `full_table.py` with `FIX=shared`;
+shown to the owner as clip 15, not rendered).** The repeating part is measured from the capture by edge count (product of successive frames' departures
 minus the echo's own share; joined by straight lines in log(edges)) and kept out of the averaging over time: however
 many frames repeat a reading, the correction is trusted no further than one such reading deserves. The time weighting
 is unchanged (Gaussian, `WSLOW`), nothing is switched. Known answer (`shared_ka.py`): few-edge scenes ten seconds
@@ -1185,7 +1185,35 @@ reading came from, so the rendered 0.83 is partly the taps fitted to those edges
 the taps change by 0.0020 rms (taps 0.043), the picture differs from the approved one by 1.14 codes rms (0.85 for the
 table as rendered), and `regress.py` reads the approved numbers within a few hundredths (393 kHz 1.07, added on flat
 0.225, wall ripple 1.8 / 1.9, cards 0.91 / 0.77, title rows 1.21 against 1.17, dip 0.77/0.71 ... 0.59/0.54, same 68
-untouched frames at the trade, taps' largest step 0.012). Not rendered: the render on the share is still the first one.
+untouched frames at the trade, taps' largest step 0.012).
+
+**The narrow fix, which is what the re-render uses (`direct.combine(outlier=True)`; `full_table.py`'s default,
+`FIX=outlier`).** The owner, on being asked to re-render: "can you also do a regression check when you re-render... if
+any other part of the capture changes more than a few codes, present it to me before replacing the render". The
+capture-wide accounting fails that by its nature: on the ordinary scene at 3:13-3:21 it moves 1 sample in 1000 by 13
+codes or more against the render the owner watched (rms 1.5, 3.9% of samples by more than 3), and the taps move by more
+than 0.02 in 42% of frames. The narrow fix leaves every reading alone but the ones no reliable frame resembles: over the
+whole capture a frame with 120 or more edges never departs from the bar by more than 0.33 (rms, lags 2..40; 99.9% under
+0.26); a reading beyond that counts less (cosine), and not at all from twice it. 405 readings count in part, 114 not at
+all, of 84,894. Known answer (`shared_ka.py`): 0.413 -> 0.010 inside the tested scene, honest few-edge scenes
+unchanged, far from any few-edge scene the old numbers exactly. On the capture the taps change by more than 0.02 with
+the removal on in four stretches: 3:21.9-3:30.4 (up to 0.76: largest tap 0.73 -> 0.18), 9:19-9:24 (0.06), 32:47-32:52
+(0.08), 34:43-34:46 (0.06); on the approved stretch by at most 0.0010. On 3:13-3:38 the picture is the rendered one
+outside 3:22-3:30 (rms 0.01-0.13 codes apart) and inside it the change made to the picture falls from 7.5-9.8 to 1.8-2.5
+codes rms (1.1-1.2 with the capture-wide accounting: the narrow fix keeps the correction the scene before it supports).
+`full_table.py` got `REUSE=TABLE` (the bar amounts and three numbers, which no fix changes, taken from an existing
+table; `FIX=none REUSE=T` reproduces `T` exactly, every field).
+
+**The re-render's regression check (`full_filter.py TABLE F1,F2 PROCS OLD_TABLE REPORT LIMIT SKIP_A:SKIP_B`).** The
+filter works every frame out with both tables, exactly as the first render's filter did with the old one, writes what
+the new luma differs from the old by per frame, and ends with status 7 after the last frame if any frame outside the
+skipped rows (3:21.5-3:30.9 here) has 1 sample in 1000 changed by more than LIMIT (3 codes): the plain render then
+fails before its last step, keeps the finished render under its working name and leaves the existing render in place;
+`finish.py` publishes it later. Tested before the capture was touched: output byte-identical to the previous filter;
+the report equal, frame by frame, to an independent comparison of two single-table outputs; status 7 with changed
+tables, 0 with every row skipped, 0 with the same table twice; and through `plain_render.sh` on a 2.6 s slice with a
+pass-through filter ending in status 7: existing output untouched, the finished render kept, then published by
+`finish.py`.
 
 **Colour (the owner: "the whole color profile looks oversaturated. could that happen from a misread of the burst
 signal?").** The burst itself is outside the captured window. Measured instead (`colour_ref.py`):
