@@ -14,7 +14,7 @@
 import sys, os, time, numpy as np
 os.environ.update(KAPPA='9', STEADY='1', MEDIAN='0', THIN='0', HOLE='0.25', GMAX='3', GATESMOOTH='5', WSLOW='45', WBAR='5')
 import model as M, harness as H, barread as B, wide as W, reflect as RF, direct as D, gate as G
-MEAS = sys.argv[1]; VBI = os.path.join(MEAS, 'vbi.npy'); NAV = 2; WARM = 40; PIECE = int(os.environ.get('PIECE', 2000)); BARSIG = 5.0
+MEAS = sys.argv[1]; VBI = os.path.join(MEAS, 'vbi.npy'); NAV = 2; WARM = 40; PIECE = int(os.environ.get('PIECE', 2000)); BARSIG = 5.0; SHARED = os.environ.get('SHARED', '1') == '1'
 def _rises(ab): return W.rises(np.load(VBI, mmap_mode='r')[ab[0]:ab[1]], (4, 12))
 def _fit(ab):
     a, b, n = ab; lo = max(0, a - WARM - NAV); hi = min(n, b + NAV); L, g = B.lines(np.load(VBI, mmap_mode='r')[lo:hi]); par, err = RF.fit_frames(L, g, NAV); return par[a - lo:b - lo], err[a - lo:b - lo]
@@ -27,7 +27,7 @@ def build(meas, n, pool):
     rt = pool.map(_rises, pieces); r = np.concatenate([x[0] for x in rt]); tops = np.concatenate([x[1] for x in rt]); A = W.amounts_of(r, tops); print('bar amounts: %d frames, no bar in %d; %.0f s' % (n, int(A[:, 2].sum()), time.time() - t0), flush=True)
     pe = pool.map(_fit, [(a, b, n) for a, b in pieces]); par = np.concatenate([x[0] for x in pe]); err = np.concatenate([x[1] for x in pe]); S = np.hypot(par[:, 0], par[:, 1]); print('three numbers: no fit in %d frames; %.0f s' % (int(np.isnan(S).sum()), time.time() - t0), flush=True)
     Sf = nearest_fill(S); wt = G.trade_weight(Sf); wb = bar_weight(A[:, 2] == 0)
-    Dh, ws, bar, sb, se = D.combine(meas['Dn'][:n], meas['S'][:n], meas['cnt'][:n], meas['ph'][:n], np.c_[np.ones(n), A[:, 3:5]]); own = np.load('calib.npz')['own']; Q = np.zeros((n, D.K1 + 1)); Q[:, 1:] = Dh @ D.solver(own).T
+    Dh, ws, bar, sb, se = D.combine(meas['Dn'][:n], meas['S'][:n], meas['cnt'][:n], meas['ph'][:n], np.c_[np.ones(n), A[:, 3:5]], shared=SHARED); own = np.load('calib.npz')['own']; Q = np.zeros((n, D.K1 + 1)); Q[:, 1:] = Dh @ D.solver(own).T
     print('taps and weights: %.0f s' % (time.time() - t0), flush=True); return dict(Q=Q, w=wt * wb, wtrade=wt, wbar=wb, S=Sf, par=par, err=err, A=A, pw=ws[:, (D.T >= 2) & (D.T <= 40)].mean(1))
 if __name__ == '__main__':
     from multiprocessing import Pool

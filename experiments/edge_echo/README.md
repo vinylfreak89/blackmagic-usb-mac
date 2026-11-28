@@ -1147,6 +1147,62 @@ rms from the captured picture; regressing (render - captured) on (removed - capt
 That read-back shows the removal reached the encoded picture; it says nothing about how it looks outside the approved
 30 seconds.
 
+### After the first watch: one wrong stretch, its cause, and a fix not yet rendered (2026-11-27)
+
+The owner on the first two minutes: "a lot better than the raw. much more crisp", no strange artifacts; then "between
+3:23 and 3:28 it gets really bad and then it fades out by 3:30".
+
+**Cause, from the table and the picture.** From 3:22 to 3:28 the taps are the largest of the capture (largest tap
+0.73; median 0.15, bar alone 0.06 there). The frames have two or three left edges each, all on one object whose edge
+is not a clean step (captured, its level 6 and 8 samples after the edge is 1.58 / 1.41 of the step, where a step with
+the echo reads about 0.45 / 0.70). Their reading departs from the bar's by 0.85 rms (usual: 0.04 with 120 or more
+edges, 0.15 with two), yet its claimed error was 0.09, and `direct.combine` counted each of the 150 frames as a fresh
+reading, so the slow correction followed them. The removal then changed the picture by 7.5-9.8 codes rms there (1.8-4.8
+in the scenes before and after) and forced those edges to the reference shape (0.91 / 0.94).
+
+**What is wrong in the weighting, measured.** A frame's departure from the bar is still there in the next frame: as an
+rms over lags 2..40, 0.21 with 2-3 edges, 0.12 with 4-9, 0.10 with 10-29, 0.074 with 30-59, 0.057 with 60-119, 0.052
+with 120 or more; for 2-3 edges it is unchanged 90 frames on. What a frame of any class shares with a frame of 120 or
+more edges some frames later is 0.03-0.06: that is the echo's own departure from the bar, about 0.05 for every class.
+The rest is tied to the edges themselves and repeats while the scene holds; with 30-59 edges it is as large as the
+correction being measured.
+
+**Fix (`direct.combine(shared=True)`, `shared_error`; `full_table.py` now uses it, `SHARED=0` for the table as
+rendered).** The repeating part is measured from the capture by edge count (product of successive frames' departures
+minus the echo's own share; joined by straight lines in log(edges)) and kept out of the averaging over time: however
+many frames repeat a reading, the correction is trusted no further than one such reading deserves. The time weighting
+is unchanged (Gaussian, `WSLOW`), nothing is switched. Known answer (`shared_ka.py`): few-edge scenes ten seconds
+long, each repeating one wrong shape: error of the reading against the truth inside the tested scene 0.413 before,
+0.003 after (bar alone 0.020); honest few-edge scenes (noise only) 0.005 both; far from any few-edge scene 0.0017 both.
+
+On the capture: largest tap at 3:22-3:28 0.73 -> 0.06-0.09; change made to the picture there 7.5-9.8 -> 1.1-1.2 codes
+rms. Over the whole capture the picture's correction keeps a median weight of 0.66 (was 1.00); the largest tap changes
+by more than 0.02 in 42% of frames, by more than 0.10 in 33 stretches (all with 16 or fewer edges a frame but 51:03; the longest
+22:19-22:29, 38:35-38:44, 12:18-12:27, 16:33-16:41, 3:22-3:29, 49:59-50:07). **What it costs:** in scenes of 20-40 edges
+the removal follows the picture's edges less: at 3:13-3:20 the level 6 samples after rising left edges is 0.45
+captured, 0.83 as rendered, 0.72 with the fix (overshoot 1.15 / 1.25 / 1.21). That measure is taken on the edges the
+reading came from, so the rendered 0.83 is partly the taps fitted to those edges' own shape. On the approved stretch
+the taps change by 0.0020 rms (taps 0.043), the picture differs from the approved one by 1.14 codes rms (0.85 for the
+table as rendered), and `regress.py` reads the approved numbers within a few hundredths (393 kHz 1.07, added on flat
+0.225, wall ripple 1.8 / 1.9, cards 0.91 / 0.77, title rows 1.21 against 1.17, dip 0.77/0.71 ... 0.59/0.54, same 68
+untouched frames at the trade, taps' largest step 0.012). Not rendered: the render on the share is still the first one.
+
+**Colour (the owner: "the whole color profile looks oversaturated. could that happen from a misread of the burst
+signal?").** The burst itself is outside the captured window. Measured instead (`colour_ref.py`):
+- The render's colour samples are the capture's (one decoded second: slope 0.98-1.00, mean colour size 14.52 against
+  14.53); the removal and the encode change no colour.
+- Lines 14-20 and 277-282 arrive without colour. Line 283 carries the station's composite test signal with colour: a
+  white bar, a staircase with a subcarrier of fixed size at burst phase, a 12.5T pulse. At 21 points through the hour
+  (12 frames each; two more points carry no test signal) and frame by frame on two stretches, the staircase's colour
+  is 32-36 codes in size at most points (41-45 at a few) and mostly within 0..+14 degrees of burst phase; it does not follow the echo's
+  strength (correlation -0.05 over the points, -0.04 and -0.17 within the stretches). With the Rec.601 conversion and
+  the bar as 100 IRE it is 14-15 IRE peak where the standard is 20: 40-88% of standard, median 69%. By that reference
+  the colour is weaker than standard, not stronger. The Shuttle's colour scale has not been checked against a
+  generator here, so the percentage may be off by one fixed factor; the steadiness does not depend on it.
+- The white bar is not steady: 192 to 248 codes above blanking from point to point. Colour held, brightness moving:
+  the colour-to-brightness ratio moves by about 13% either way through the hour.
+- In the dark scenes at 3:25, 16-22% of samples decode to a colour channel below zero (luma median 47-54 codes).
+
 ### One system for the whole test line (`sysid.py`): tried, not used
 
 Captured line = (weak line through one kernel, lags -14..+60, two amounts per field), cut at the
@@ -1210,6 +1266,8 @@ run to zero and is not to be read as the edge without echo (see Withdrawn).
 | `onerefl.py` | the owner's model: one reflection per frame from the test bar, removed at full strength, with the fade near equal strength; three-row clip frames; results by strength |
 | `bartest.py` | the removal applied to each frame's own test bar: what is left on a shape that is known |
 | `gcr.py` | the line-19 ghost-cancelling sweep: per-frame echo by direct division, its known answer, and the bar test with it |
+| `shared_ka.py` | known answer for the repeating-error accounting in `direct.combine(shared=True)` |
+| `colour_ref.py` | the station's colour test signal (line 283) at points through a capture: colour size and phase against the standard, against the echo |
 | `full_measure.py`, `full_table.py`, `full_filter.py`, `full_review.py` | the accepted removal over a whole capture as a one-off render: measuring pass, table, the plain render's picture filter, and the table's review |
 | `regress.py` | regression check of a rendered 62-minute stretch against the capture and a reference render: every defect fixed on the way |
 | `tonecut.py` | taking the 393 kHz tone out by patch-wise fit and subtract; known answers; measuring its size |

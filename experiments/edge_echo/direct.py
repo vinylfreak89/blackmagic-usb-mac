@@ -58,7 +58,7 @@ def tsmooth(v, sig):                    # along frames, Gaussian weights (a cont
     for o, w in zip(range(-h, h + 1), k):
         a, b = max(0, -o), min(n, n - o); num[a:b] += w * v[a + o:b + o]; den[a:b] += w
     return num / den.reshape((n,) + (1,) * (v.ndim - 1))
-def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None):
+def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None, shared=False):
     # The echo changes smoothly from frame to frame; a frame's picture edges change with the picture.  So:
     #   the test bar (in every frame, the same signal whatever the scene) carries the change from frame to frame: its fit (a straight
     #   line in the bar's two amounts), the amounts weighted along time with a Gaussian of WBAR frames;
@@ -69,6 +69,11 @@ def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None):
     #   median step height.  Standard error of a pooled median: 1.2533 * spread / sqrt(edges); the spread of a frame with few edges is
     #   shrunk toward what its step height predicts (the spread goes as 1 / step; the constant from the frames with 30+ edges), worth
     #   K0 edges.  With no reading near, the correction falls to zero (the bar alone), by a prior as wide as the bar's own error.
+    #   shared=True (added for the whole capture, 2026-11-27): the weighting above treats each frame's reading as a fresh one, so 150
+    #   frames of the same two edges count as 150 readings.  They are one: what those edges get wrong (an edge that is not a clean
+    #   step) is the same in every frame for as long as the scene holds.  shared_error measures that repeating part from the capture
+    #   itself, by edge count, and it is kept out of the averaging over time: however many frames repeat a reading, the correction
+    #   is trusted no further than one such reading deserves.  With many edges the repeating part is nil and nothing changes.
     wslow = WSLOW if wslow is None else wslow; wbar = WBAR if wbar is None else wbar; have = cnt >= 2; n = len(cnt); k = cnt[:, None].astype(float); many = cnt >= 30
     a = np.median(S[many] * ph[many, None], 0); Ss = np.sqrt(((k - 1) * np.nan_to_num(S) ** 2 + K0 * (a[None] / np.maximum(ph, 1)[:, None]) ** 2) / np.maximum(k - 1 + K0, 1))
     se = np.where(have[:, None], 1.2533 * Ss / np.sqrt(np.maximum(k, 1)), np.inf); wf = np.where(have, 1 / np.mean(np.where(np.isfinite(se), se, 1) ** 2, 1), 0)
@@ -77,7 +82,20 @@ def combine(Dn, S, cnt, ph, X, wslow=None, wbar=None):
     iv = np.where(have[:, None], 1 / se ** 2, 0)
     if wslow > 0: h = int(4 * wslow) + 1; kk = np.exp(-0.5 * (np.arange(-h, h + 1) / wslow) ** 2); conv = lambda v: np.apply_along_axis(lambda c_: np.convolve(c_, kk, mode='same'), 0, v)
     else: conv = lambda v: v
-    num = conv(iv * r); den = conv(iv); c = num / (den + 1 / vb[None]); return bar + c, den / (den + 1 / vb[None]), bar, np.sqrt(vb), se
+    num = conv(iv * r); den = conv(iv); eb = conv(iv * shared_error(r, have, cnt, vb)[0]) if shared else 0.0; full = den + (1 + eb) / vb[None]
+    return bar + num / full, den / full, bar, np.sqrt(vb), se
+KBINS = np.array([2, 3, 4, 6, 10, 20, 30, 60, 120, 1e9])
+def shared_error(r, have, cnt, vb):
+    # The part of a frame's reading error that repeats in the next frame, as a variance per sample of T, by the frame's edge count.
+    # Measured: the product of two successive frames' departures from the bar averages to (what the echo really differs from the bar
+    # by, which changes slowly: vb) + (the error the two frames share); each frame's own noise drops out of the product.  By edge
+    # count in bins, joined by straight lines in log(edges) so a frame's value has no steps as its count changes.
+    pair = have[:-1] & have[1:]; kk = np.sqrt(cnt[:-1] * cnt[1:].astype(float))[pair]; prod = (r[:-1] * r[1:])[pair]; cen = []; val = []
+    for a, b in zip(KBINS[:-1], KBINS[1:]):
+        k = (kk >= a) & (kk < b)
+        if k.sum() >= 50: cen.append(np.log(np.exp(np.log(kk[k]).mean()))); val.append(np.maximum(prod[k].mean(0) - vb, 0))
+    cen = np.array(cen); val = np.array(val); lk = np.log(np.maximum(cnt, 2).astype(float)); out = np.stack([np.interp(lk, cen, val[:, j]) for j in range(val.shape[1])], 1)
+    return np.where(have[:, None], out, 0), np.exp(cen), val
 def gather(lum, even=False):
     n = lum.shape[0]; Dn = np.full((n, len(T)), np.nan); S = np.full((n, len(T)), np.nan); cnt = np.zeros(n, int); ph = np.zeros(n); own = np.load('calib.npz')['own']
     for f in range(n):
