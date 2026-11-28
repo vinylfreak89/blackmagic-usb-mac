@@ -1238,6 +1238,11 @@ fix weighs down between one and two times the reliable limit are not all wrong: 
 having. Colour samples are identical in the two renders. The held file stays under the render's working name until the
 owner has seen this list.
 
+**Published (2026-11-28).** The owner saw the list and a side-by-side clip of the five stretches: "Yes, replace". The
+held render took the capture's render name through the render's own last step (`finish.py`, RESULT OK: 215,370 frames,
+one audio track, no audio breaks; same inode and size in JuiceFS's own directory after the rename, working name gone).
+The capture's render is now the narrow-fix one (`FIX=outlier`); a plain re-render from the dashboard loses the removal.
+
 **Colour (the owner: "the whole color profile looks oversaturated. could that happen from a misread of the burst
 signal?").** The burst itself is outside the captured window. Measured instead (`colour_ref.py`):
 - The render's colour samples are the capture's (one decoded second: slope 0.98-1.00, mean colour size 14.52 against
